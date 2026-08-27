@@ -1,0 +1,43 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node.js / React / TypeScript
+node_modules/
+dist/
+build/
+.env
+.env.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+.svelte-kit/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Go
+bin/
+obj/
+*.exe
+*.test
+*.out
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+logs/
+.DS_Store
+docs/.DS_Store
