@@ -2,7 +2,7 @@
 
 ## Phase
 
-Documentation and architecture definition.
+Implemented Onboarding feature.
 
 ## Implemented
 
