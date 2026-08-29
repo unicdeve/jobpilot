@@ -8,10 +8,12 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
+	"github.com/unicdev/job-agent/internal/adapters/secondary/discovery"
 	"github.com/unicdev/job-agent/internal/adapters/secondary/llm"
 	"github.com/unicdev/job-agent/internal/adapters/secondary/sqlite"
 	"github.com/unicdev/job-agent/internal/adapters/secondary/system"
 	"github.com/unicdev/job-agent/internal/core/domain"
+	"github.com/unicdev/job-agent/internal/core/ports"
 	"github.com/unicdev/job-agent/internal/core/services"
 )
 
@@ -32,15 +34,21 @@ func main() {
 
 	candRepo := sqlite.NewCandidateRepository(db.Conn())
 	resRepo := sqlite.NewResumeRepository(db.Conn())
+	jobRepo := sqlite.NewJobRepository(db.Conn())
 	llmProv := llm.NewOllamaProvider("http://localhost:11434")
+
+	mockSource := discovery.NewMockJobSource()
+	sources := []ports.JobSource{mockSource}
 
 	onboardingSvc := services.NewOnboardingService(candRepo, resRepo, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
 	resumeSvc := services.NewResumeService(resRepo)
+	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
 
 	rootCmd.AddCommand(newOnboardCmd(onboardingSvc))
 	rootCmd.AddCommand(newProfileCmd(profileSvc, candRepo))
 	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo))
+	rootCmd.AddCommand(newSearchCmd(discoverySvc))
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -254,6 +262,87 @@ func newResumeCmd(svc *services.ResumeService, repo *sqlite.CandidateRepository)
 				return
 			}
 			fmt.Println("✅ Resume deleted successfully.")
+		},
+	})
+
+	return cmd
+}
+
+func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
+	cmd := &cobra.Command{Use: "search", Short: "Discover jobs"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "run [keywords]",
+		Short: "Search for jobs using keywords",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+			keywords := args[0]
+
+			criteria := domain.SearchCriteria{
+				Keywords: keywords,
+			}
+
+			jobs, err := svc.Search(ctx, criteria)
+			if err != nil {
+				fmt.Printf("Error searching for jobs: %v\n", err)
+				return
+			}
+
+			if len(jobs) == 0 {
+				fmt.Println("No jobs found matching your criteria.")
+				return
+			}
+
+			fmt.Printf("Found %d jobs:\n", len(jobs))
+			for i, j := range jobs {
+				fmt.Printf("%d. %s at %s (ID: %s)\n", i+1, j.Title, j.CompanyName, j.ID)
+			}
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all discovered jobs",
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+			// Note: we need to access the repo here.
+			// For the MVP, we'll assume the user wants the most recent jobs.
+			// But we don't have the repo in discoverySvc's public API.
+			// Let's use the search service to list (maybe by empty criteria).
+
+			jobs, err := svc.Search(ctx, domain.SearchCriteria{})
+			if err != nil {
+				fmt.Printf("Error listing jobs: %v\n", err)
+				return
+			}
+
+			if len(jobs) == 0 {
+				fmt.Println("No jobs discovered yet.")
+				return
+			}
+
+			fmt.Printf("Discovered Jobs:\n")
+			for i, j := range jobs {
+				fmt.Printf("%d. %s at %s (ID: %s)\n", i+1, j.Title, j.CompanyName, j.ID)
+			}
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "import [url]",
+		Short: "Import a job from a specific URL",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+			url := args[0]
+
+			job, err := svc.ImportJob(ctx, url)
+			if err != nil {
+				fmt.Printf("Error importing job: %v\n", err)
+				return
+			}
+			fmt.Printf("✅ Job imported: %s at %s (ID: %s)\n", job.Title, job.CompanyName, job.ID)
 		},
 	})
 

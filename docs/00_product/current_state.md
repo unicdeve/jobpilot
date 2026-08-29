@@ -2,7 +2,8 @@
 
 ## Phase
 
-Implemented Onboarding feature.
+Implemented Onboarding, Candidate Profile, Resume Management, and Job Discovery
+features.
 
 ## Implemented
 
