@@ -36,7 +36,8 @@ integrations, and the plugin ecosystem are post-MVP.
 
 ## Documentation
 
-Start with `AGENTS.md`, then `.agents/SETUP.md` and `docs/MASTER_SPEC.md`.
+Start with `AGENTS.md`, then `.agents/SETUP.md` and `docs/MASTER_SPEC.md`. For a
+list of available CLI commands, see [docs/CLI.md](docs/CLI.md).
 
 ## Development
 

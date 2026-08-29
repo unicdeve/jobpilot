@@ -75,3 +75,34 @@ func (r *ResumeRepository) Delete(ctx context.Context, id string) error {
 
 	return nil
 }
+
+func (r *ResumeRepository) GetByCandidateID(ctx context.Context, candidateID string) ([]*domain.Resume, error) {
+	query := `SELECT
+		id, candidate_id, name, original_file_path, markdown_content, parsed_metadata, created_at, updated_at
+	FROM resumes WHERE candidate_id = ?`
+
+	rows, err := r.db.QueryContext(ctx, query, candidateID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query resumes: %w", err)
+	}
+	defer rows.Close()
+
+	var resumes []*domain.Resume
+	for rows.Next() {
+		var res domain.Resume
+		err := rows.Scan(
+			&res.ID, &res.CandidateID, &res.Name, &res.OriginalFilePath,
+			&res.MarkdownContent, &res.ParsedMetadata, &res.CreatedAt, &res.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan resume: %w", err)
+		}
+		resumes = append(resumes, &res)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating resumes: %w", err)
+	}
+
+	return resumes, nil
+}

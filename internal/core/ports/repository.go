@@ -15,5 +15,6 @@ type CandidateRepository interface {
 type ResumeRepository interface {
 	Save(ctx context.Context, resume *domain.Resume) error
 	GetByID(ctx context.Context, id string) (*domain.Resume, error)
+	GetByCandidateID(ctx context.Context, candidateID string) ([]*domain.Resume, error)
 	Delete(ctx context.Context, id string) error
 }

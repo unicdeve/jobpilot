@@ -45,6 +45,7 @@ func (db *DB) InitializeSchema() error {
 			work_preferences TEXT,
 			salary_preferences TEXT,
 			work_authorization TEXT,
+			application_preferences TEXT,
 			skills TEXT,
 			experiences TEXT,
 			education TEXT,
@@ -179,6 +180,9 @@ func (db *DB) InitializeSchema() error {
 			return fmt.Errorf("failed to execute schema creation: %s: %w", schema, err)
 		}
 	}
+
+	// Migration: Ensure candidates table has application_preferences
+	_, _ = db.conn.Exec(`ALTER TABLE candidates ADD COLUMN application_preferences TEXT;`)
 
 	return nil
 }
