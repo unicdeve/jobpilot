@@ -35,6 +35,7 @@ func main() {
 	candRepo := sqlite.NewCandidateRepository(db.Conn())
 	resRepo := sqlite.NewResumeRepository(db.Conn())
 	jobRepo := sqlite.NewJobRepository(db.Conn())
+	matchRepo := sqlite.NewMatchRepository(db.Conn())
 	llmProv := llm.NewOllamaProvider("http://localhost:11434")
 
 	mockSource := discovery.NewMockJobSource()
@@ -44,11 +45,13 @@ func main() {
 	profileSvc := services.NewProfileService(candRepo)
 	resumeSvc := services.NewResumeService(resRepo)
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
+	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 
 	rootCmd.AddCommand(newOnboardCmd(onboardingSvc))
 	rootCmd.AddCommand(newProfileCmd(profileSvc, candRepo))
 	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo))
 	rootCmd.AddCommand(newSearchCmd(discoverySvc))
+	rootCmd.AddCommand(newMatchCmd(matchingSvc, candRepo))
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -306,11 +309,6 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 		Short: "List all discovered jobs",
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
-			// Note: we need to access the repo here.
-			// For the MVP, we'll assume the user wants the most recent jobs.
-			// But we don't have the repo in discoverySvc's public API.
-			// Let's use the search service to list (maybe by empty criteria).
-
 			jobs, err := svc.Search(ctx, domain.SearchCriteria{})
 			if err != nil {
 				fmt.Printf("Error listing jobs: %v\n", err)
@@ -343,6 +341,74 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 				return
 			}
 			fmt.Printf("✅ Job imported: %s at %s (ID: %s)\n", job.Title, job.CompanyName, job.ID)
+		},
+	})
+
+	return cmd
+}
+
+func newMatchCmd(svc *services.MatchingService, repo *sqlite.CandidateRepository) *cobra.Command {
+	cmd := &cobra.Command{Use: "match", Short: "Analyze job fit"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "analyze [job-id]",
+		Short: "Analyze how well a job matches the candidate",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+			jobID := args[0]
+
+			profile, err := repo.GetFirstCandidate(ctx)
+			if err != nil {
+				fmt.Printf("Error: No candidate profile found. Please run 'onboard' first.\n")
+				return
+			}
+
+			match, err := svc.AnalyzeJobForCandidate(ctx, profile.ID, jobID)
+			if err != nil {
+				fmt.Printf("Error analyzing job: %v\n", err)
+				return
+			}
+
+			fmt.Printf("✅ Analysis complete!\nScore: %d/100 (Confidence: %.2f)\n", match.Score, match.Confidence)
+			fmt.Printf("Rationale: %s\n", match.Rationale)
+			fmt.Println("\nStrengths:")
+			for _, s := range match.Strengths {
+				fmt.Printf("- %s\n", s)
+			}
+			fmt.Println("\nGaps:")
+			for _, g := range match.Gaps {
+				fmt.Printf("- %s\n", g)
+			}
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all match analyses",
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+			profile, err := repo.GetFirstCandidate(ctx)
+			if err != nil {
+				fmt.Printf("Error: No candidate profile found.\n")
+				return
+			}
+
+			matches, err := svc.ListMatches(ctx, profile.ID)
+			if err != nil {
+				fmt.Printf("Error listing matches: %v\n", err)
+				return
+			}
+
+			if len(matches) == 0 {
+				fmt.Println("No matches analyzed yet.")
+				return
+			}
+
+			fmt.Println("Match Analyses:")
+			for i, m := range matches {
+				fmt.Printf("%d. Job ID: %s | Score: %d/100 | Confidence: %.2f\n", i+1, m.JobID, m.Score, m.Confidence)
+			}
 		},
 	})
 

@@ -27,3 +27,12 @@ type JobRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+type MatchRepository interface {
+	Save(ctx context.Context, match *domain.JobMatch) error
+	GetByID(ctx context.Context, id string) (*domain.JobMatch, error)
+	GetByJobID(ctx context.Context, jobID string) (*domain.JobMatch, error)
+	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error)
+	Delete(ctx context.Context, id string) error
+}
+
+

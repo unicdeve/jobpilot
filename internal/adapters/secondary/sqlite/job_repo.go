@@ -108,7 +108,7 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // Not found is not an error for deduplication
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get job by URL: %w", err)
 	}
@@ -169,47 +169,4 @@ func (r *JobRepository) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to delete job: %w", err)
 	}
 	return nil
-}
-
-// Helper functions for slice <-> string conversion in SQLite
-func joinStrings(s []string) string {
-	if len(s) == 0 {
-		return ""
-	}
-	var res string
-	for i, v := range s {
-		if i > 0 {
-			res += ","
-		}
-		res += v
-	}
-	return res
-}
-
-func splitStrings(s string) []string {
-	if s == "" {
-		return []string{}
-	}
-	// Very simple comma split for MVP
-	// In a real app, we might use JSON or a separate table
-	return splitCSV(s)
-}
-
-func splitCSV(s string) []string {
-	var res []string
-	var current string
-	inQuotes := false
-
-	for _, r := range s {
-		if r == '"' {
-			inQuotes = !inQuotes
-		} else if r == ',' && !inQuotes {
-			res = append(res, current)
-			current = ""
-		} else {
-			current += string(r)
-		}
-	}
-	res = append(res, current)
-	return res
 }
