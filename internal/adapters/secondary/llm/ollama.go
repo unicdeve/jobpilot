@@ -1,3 +1,5 @@
+// Package llm provides ports.LLMProvider implementations for local and
+// remote LLM backends.
 package llm
 
 import (
@@ -11,33 +13,53 @@ import (
 	"github.com/unicdev/job-agent/internal/core/ports"
 )
 
+// DefaultModel is used when OllamaProvider is constructed without an
+// explicit model name.
+const DefaultModel = "llama3"
+
+// OllamaProvider is a ports.LLMProvider backed by a local Ollama instance.
 type OllamaProvider struct {
 	baseURL    string
+	model      string
 	httpClient *http.Client
 }
 
+type generateOptions struct {
+	Temperature float64 `json:"temperature,omitempty"`
+	NumPredict  int     `json:"num_predict,omitempty"`
+}
+
 type generateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	System string `json:"system"`
-	Stream bool   `json:"stream"`
+	Model   string           `json:"model"`
+	Prompt  string           `json:"prompt"`
+	System  string           `json:"system"`
+	Stream  bool             `json:"stream"`
+	Options *generateOptions `json:"options,omitempty"`
 }
 
 type generateResponse struct {
+	Model    string `json:"model"`
 	Response string `json:"response"`
 }
 
-func NewOllamaProvider(baseURL string) *OllamaProvider {
+// NewOllamaProvider constructs an OllamaProvider targeting baseURL. If model
+// is empty, DefaultModel is used.
+func NewOllamaProvider(baseURL, model string) *OllamaProvider {
+	if model == "" {
+		model = DefaultModel
+	}
 	return &OllamaProvider{
 		baseURL: baseURL,
+		model:   model,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
+// TestConnectivity checks that the configured Ollama instance is reachable.
 func (p *OllamaProvider) TestConnectivity(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+"/api/tags", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/tags", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -46,23 +68,32 @@ func (p *OllamaProvider) TestConnectivity(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to Ollama at %s: %w", p.baseURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Ollama returned non-OK status: %d", resp.StatusCode)
+		return fmt.Errorf("ollama returned non-OK status: %d", resp.StatusCode)
 	}
 
 	return nil
 }
 
+// Generate sends req to Ollama's /api/generate endpoint and returns the
+// generated content.
 func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports.Response, error) {
-	// For the initial MVP, we'll assume a default model like 'llama3' or 'mistral'.
-	// In a real implementation, this should be configurable.
+	var options *generateOptions
+	if req.Temperature != 0 || req.MaxTokens != 0 {
+		options = &generateOptions{
+			Temperature: req.Temperature,
+			NumPredict:  req.MaxTokens,
+		}
+	}
+
 	genReq := generateRequest{
-		Model:  "llama3",
-		Prompt: req.UserPrompt,
-		System: req.SystemPrompt,
-		Stream: false,
+		Model:   p.model,
+		Prompt:  req.UserPrompt,
+		System:  req.SystemPrompt,
+		Stream:  false,
+		Options: options,
 	}
 
 	body, err := json.Marshal(genReq)
@@ -70,7 +101,7 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		return ports.Response{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/api/generate", bytes.NewBuffer(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/generate", bytes.NewBuffer(body))
 	if err != nil {
 		return ports.Response{}, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -80,10 +111,10 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 	if err != nil {
 		return ports.Response{}, fmt.Errorf("failed to call Ollama: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return ports.Response{}, fmt.Errorf("Ollama returned non-OK status: %d", resp.StatusCode)
+		return ports.Response{}, fmt.Errorf("ollama returned non-OK status: %d", resp.StatusCode)
 	}
 
 	var genResp generateResponse
@@ -91,5 +122,10 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		return ports.Response{}, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return ports.Response{Content: genResp.Response}, nil
+	return ports.Response{Content: genResp.Response, Model: genResp.Model}, nil
+}
+
+// Provider identifies this backend as "ollama".
+func (p *OllamaProvider) Provider() string {
+	return "ollama"
 }

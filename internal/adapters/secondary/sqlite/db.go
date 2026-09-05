@@ -43,19 +43,31 @@ func (db *DB) Conn() *sql.DB {
 	return db.conn
 }
 
+// migrationProvider builds the goose provider over the embedded migrations
+// in migrations/, shared by InitializeSchema and the migrate dev tool
+// (cmd/migrate) so both use the exact same migration set and dialect.
+func (db *DB) migrationProvider() (*goose.Provider, error) {
+	migrations, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load embedded migrations: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.conn, migrations)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create migration provider: %w", err)
+	}
+
+	return provider, nil
+}
+
 // InitializeSchema brings the database up to date with the embedded goose
 // migrations in migrations/. It is safe to call on every startup: goose
 // tracks applied migrations in a goose_db_version table and only runs new
 // ones.
 func (db *DB) InitializeSchema(ctx context.Context) error {
-	migrations, err := fs.Sub(migrationsFS, "migrations")
+	provider, err := db.migrationProvider()
 	if err != nil {
-		return fmt.Errorf("failed to load embedded migrations: %w", err)
-	}
-
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.conn, migrations)
-	if err != nil {
-		return fmt.Errorf("failed to create migration provider: %w", err)
+		return err
 	}
 
 	if _, err := provider.Up(ctx); err != nil {
@@ -63,4 +75,38 @@ func (db *DB) InitializeSchema(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// MigrateDown rolls back the most recently applied migration. It is a
+// development helper (see cmd/migrate), not something the application
+// itself calls.
+func (db *DB) MigrateDown(ctx context.Context) (*goose.MigrationResult, error) {
+	provider, err := db.migrationProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := provider.Down(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to roll back migration: %w", err)
+	}
+
+	return result, nil
+}
+
+// MigrationStatus reports which embedded migrations have been applied. It
+// is a development helper (see cmd/migrate), not something the application
+// itself calls.
+func (db *DB) MigrationStatus(ctx context.Context) ([]*goose.MigrationStatus, error) {
+	provider, err := db.migrationProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	statuses, err := provider.Status(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get migration status: %w", err)
+	}
+
+	return statuses, nil
 }
