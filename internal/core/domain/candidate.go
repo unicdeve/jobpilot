@@ -1,7 +1,11 @@
+// Package domain contains the core business entities shared across services,
+// independent of any storage, transport, or LLM implementation detail.
 package domain
 
 import "time"
 
+// Candidate represents a job seeker's profile: identity, preferences, and
+// career history used to evaluate and apply to jobs.
 type Candidate struct {
 	ID                     string    `json:"id"`
 	Name                   string    `json:"name"`

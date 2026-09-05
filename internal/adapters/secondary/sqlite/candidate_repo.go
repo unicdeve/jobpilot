@@ -1,8 +1,11 @@
+// Package sqlite implements the core/ports repository interfaces on top of
+// a local SQLite database.
 package sqlite
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,14 +13,17 @@ import (
 	"github.com/unicdev/job-agent/internal/core/domain"
 )
 
+// CandidateRepository is a ports.CandidateRepository backed by SQLite.
 type CandidateRepository struct {
 	db *sql.DB
 }
 
+// NewCandidateRepository constructs a CandidateRepository over db.
 func NewCandidateRepository(db *sql.DB) *CandidateRepository {
 	return &CandidateRepository{db: db}
 }
 
+// Save inserts a new candidate, generating an ID and timestamps if unset.
 func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candidate) error {
 	if candidate.ID == "" {
 		candidate.ID = uuid.NewString()
@@ -48,6 +54,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 	return nil
 }
 
+// GetByID retrieves a candidate by ID.
 func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.Candidate, error) {
 	query := `SELECT
 		id, name, contact, location, summary, work_preferences,
@@ -65,7 +72,7 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 		&c.Certifications, &c.Links, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("candidate not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get candidate: %w", err)
@@ -74,6 +81,7 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 	return &c, nil
 }
 
+// Update overwrites an existing candidate's fields.
 func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Candidate) error {
 	candidate.UpdatedAt = time.Now()
 
@@ -96,6 +104,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 	return nil
 }
 
+// Delete removes a candidate by ID.
 func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM candidates WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, id)
@@ -106,6 +115,9 @@ func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetFirstCandidate returns the first candidate profile in the database.
+// Job Agent currently manages a single local candidate profile per
+// installation, so this is the standard way to fetch "the" profile.
 func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Candidate, error) {
 	query := `SELECT
 		id, name, contact, location, summary, work_preferences,
@@ -123,7 +135,7 @@ func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Ca
 		&c.Certifications, &c.Links, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("no candidate profile found")
 		}
 		return nil, fmt.Errorf("failed to get first candidate: %w", err)

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,14 +11,18 @@ import (
 	"github.com/unicdev/job-agent/internal/core/domain"
 )
 
+// MatchRepository is a ports.MatchRepository backed by SQLite.
 type MatchRepository struct {
 	db *sql.DB
 }
 
+// NewMatchRepository constructs a MatchRepository over db.
 func NewMatchRepository(db *sql.DB) *MatchRepository {
 	return &MatchRepository{db: db}
 }
 
+// Save inserts a new job-match analysis, generating an ID and timestamp if
+// unset.
 func (r *MatchRepository) Save(ctx context.Context, match *domain.JobMatch) error {
 	if match.ID == "" {
 		match.ID = uuid.NewString()
@@ -45,6 +50,7 @@ func (r *MatchRepository) Save(ctx context.Context, match *domain.JobMatch) erro
 	return nil
 }
 
+// GetByID retrieves a match analysis by ID.
 func (r *MatchRepository) GetByID(ctx context.Context, id string) (*domain.JobMatch, error) {
 	query := `SELECT
 		id, job_id, candidate_id, score, confidence, strengths,
@@ -63,7 +69,7 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*domain.JobMa
 		&m.Rationale, &m.ModelProvider, &m.ModelName, &m.CreatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("match not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get match: %w", err)
@@ -78,6 +84,8 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*domain.JobMa
 	return &m, nil
 }
 
+// GetByJobID retrieves the match analysis for a job, returning (nil, nil)
+// if none exists.
 func (r *MatchRepository) GetByJobID(ctx context.Context, jobID string) (*domain.JobMatch, error) {
 	query := `SELECT
 		id, job_id, candidate_id, score, confidence, strengths,
@@ -96,7 +104,7 @@ func (r *MatchRepository) GetByJobID(ctx context.Context, jobID string) (*domain
 		&m.Rationale, &m.ModelProvider, &m.ModelName, &m.CreatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get match by job ID: %w", err)
@@ -111,6 +119,8 @@ func (r *MatchRepository) GetByJobID(ctx context.Context, jobID string) (*domain
 	return &m, nil
 }
 
+// ListByCandidate returns all match analyses for a candidate, most recent
+// first.
 func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error) {
 	query := `SELECT
 		id, job_id, candidate_id, score, confidence, strengths,
@@ -122,7 +132,7 @@ func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to list matches: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []*domain.JobMatch
 	for rows.Next() {
@@ -153,6 +163,7 @@ func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID strin
 	return matches, nil
 }
 
+// Delete removes a match analysis by ID.
 func (r *MatchRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM job_matches WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, id)

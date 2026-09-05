@@ -1,3 +1,5 @@
+// Package system provides platform-specific filesystem helpers, such as
+// locating the application's local data directory.
 package system
 
 import (

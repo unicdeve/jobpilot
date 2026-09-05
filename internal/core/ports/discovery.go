@@ -1,3 +1,7 @@
+// Package ports defines the interfaces (the "ports" in hexagonal
+// architecture) that core services depend on, letting secondary adapters
+// (SQLite, Ollama, job-board connectors, ...) be swapped without touching
+// business logic.
 package ports
 
 import (

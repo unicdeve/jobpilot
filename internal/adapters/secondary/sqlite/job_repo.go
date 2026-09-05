@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,14 +11,17 @@ import (
 	"github.com/unicdev/job-agent/internal/core/domain"
 )
 
+// JobRepository is a ports.JobRepository backed by SQLite.
 type JobRepository struct {
 	db *sql.DB
 }
 
+// NewJobRepository constructs a JobRepository over db.
 func NewJobRepository(db *sql.DB) *JobRepository {
 	return &JobRepository{db: db}
 }
 
+// Save inserts a new job posting, generating an ID and timestamps if unset.
 func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 	if job.ID == "" {
 		job.ID = uuid.NewString()
@@ -51,6 +55,7 @@ func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 	return nil
 }
 
+// GetByID retrieves a job by ID.
 func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, error) {
 	query := `SELECT
 		id, canonical_url, source_id, source_job_id, title, company_name,
@@ -73,7 +78,7 @@ func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, er
 		&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("job not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
@@ -85,6 +90,8 @@ func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, er
 	return &j, nil
 }
 
+// GetByCanonicalURL retrieves a job by its canonical URL, returning (nil,
+// nil) if no such job exists.
 func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*domain.Job, error) {
 	query := `SELECT
 		id, canonical_url, source_id, source_job_id, title, company_name,
@@ -107,7 +114,7 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 		&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get job by URL: %w", err)
@@ -119,6 +126,8 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 	return &j, nil
 }
 
+// List returns discovered jobs ordered by discovery time, most recent
+// first, paginated by limit/offset.
 func (r *JobRepository) List(ctx context.Context, limit, offset int) ([]*domain.Job, error) {
 	query := `SELECT
 		id, canonical_url, source_id, source_job_id, title, company_name,
@@ -132,7 +141,7 @@ func (r *JobRepository) List(ctx context.Context, limit, offset int) ([]*domain.
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var jobs []*domain.Job
 	for rows.Next() {
@@ -162,6 +171,7 @@ func (r *JobRepository) List(ctx context.Context, limit, offset int) ([]*domain.
 	return jobs, nil
 }
 
+// Delete removes a job by ID.
 func (r *JobRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM jobs WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, id)

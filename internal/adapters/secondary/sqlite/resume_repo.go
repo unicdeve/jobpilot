@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,14 +11,17 @@ import (
 	"github.com/unicdev/job-agent/internal/core/domain"
 )
 
+// ResumeRepository is a ports.ResumeRepository backed by SQLite.
 type ResumeRepository struct {
 	db *sql.DB
 }
 
+// NewResumeRepository constructs a ResumeRepository over db.
 func NewResumeRepository(db *sql.DB) *ResumeRepository {
 	return &ResumeRepository{db: db}
 }
 
+// Save inserts a new resume, generating an ID and timestamps if unset.
 func (r *ResumeRepository) Save(ctx context.Context, resume *domain.Resume) error {
 	if resume.ID == "" {
 		resume.ID = uuid.NewString()
@@ -44,6 +48,7 @@ func (r *ResumeRepository) Save(ctx context.Context, resume *domain.Resume) erro
 	return nil
 }
 
+// GetByID retrieves a resume by ID.
 func (r *ResumeRepository) GetByID(ctx context.Context, id string) (*domain.Resume, error) {
 	query := `SELECT
 		id, candidate_id, name, original_file_path, markdown_content, parsed_metadata, created_at, updated_at
@@ -57,7 +62,7 @@ func (r *ResumeRepository) GetByID(ctx context.Context, id string) (*domain.Resu
 		&res.MarkdownContent, &res.ParsedMetadata, &res.CreatedAt, &res.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("resume not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get resume: %w", err)
@@ -66,6 +71,7 @@ func (r *ResumeRepository) GetByID(ctx context.Context, id string) (*domain.Resu
 	return &res, nil
 }
 
+// Delete removes a resume by ID.
 func (r *ResumeRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM resumes WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, id)
@@ -76,6 +82,7 @@ func (r *ResumeRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetByCandidateID returns all resumes belonging to a candidate.
 func (r *ResumeRepository) GetByCandidateID(ctx context.Context, candidateID string) ([]*domain.Resume, error) {
 	query := `SELECT
 		id, candidate_id, name, original_file_path, markdown_content, parsed_metadata, created_at, updated_at
@@ -85,7 +92,7 @@ func (r *ResumeRepository) GetByCandidateID(ctx context.Context, candidateID str
 	if err != nil {
 		return nil, fmt.Errorf("failed to query resumes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var resumes []*domain.Resume
 	for rows.Next() {

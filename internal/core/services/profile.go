@@ -8,10 +8,13 @@ import (
 	"github.com/unicdev/job-agent/internal/core/ports"
 )
 
+// ProfileService manages the candidate's profile.
 type ProfileService struct {
 	repo ports.CandidateRepository
 }
 
+// NewProfileService constructs a ProfileService backed by the given
+// candidate repository.
 func NewProfileService(repo ports.CandidateRepository) *ProfileService {
 	return &ProfileService{
 		repo: repo,

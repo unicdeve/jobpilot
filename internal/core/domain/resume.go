@@ -2,6 +2,8 @@ package domain
 
 import "time"
 
+// Resume represents a single resume document belonging to a candidate,
+// stored alongside its converted Markdown content.
 type Resume struct {
 	ID               string    `json:"id"`
 	CandidateID      string    `json:"candidate_id"`

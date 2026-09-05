@@ -1,8 +1,12 @@
+// Package services implements the application's use cases (business logic)
+// on top of the core/ports interfaces, independent of any CLI, HTTP, or
+// storage concern.
 package services
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/unicdev/job-agent/internal/core/domain"
 	"github.com/unicdev/job-agent/internal/core/ports"
@@ -14,6 +18,8 @@ type JobDiscoveryService struct {
 	sources []ports.JobSource
 }
 
+// NewJobDiscoveryService constructs a JobDiscoveryService backed by the given
+// job repository and search sources.
 func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource) *JobDiscoveryService {
 	return &JobDiscoveryService{
 		repo:    repo,
@@ -33,8 +39,9 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 
 		jobs, err := source.Search(ctx, criteria)
 		if err != nil {
-			// Log error but continue with other sources
-			fmt.Printf("Source %s failed search: %v\n", source.ID(), err)
+			// Log and continue with other sources: a single source failing
+			// shouldn't fail the whole search.
+			slog.WarnContext(ctx, "job source search failed", "source", source.ID(), "error", err)
 			continue
 		}
 		allJobs = append(allJobs, jobs...)

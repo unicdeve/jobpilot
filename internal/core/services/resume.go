@@ -10,10 +10,13 @@ import (
 	"github.com/unicdev/job-agent/internal/core/ports"
 )
 
+// ResumeService manages a candidate's imported resumes.
 type ResumeService struct {
 	resumeRepo ports.ResumeRepository
 }
 
+// NewResumeService constructs a ResumeService backed by the given resume
+// repository.
 func NewResumeService(repo ports.ResumeRepository) *ResumeService {
 	return &ResumeService{
 		resumeRepo: repo,
@@ -32,7 +35,7 @@ func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, fi
 		CandidateID:      candidateID,
 		Name:             filepath.Base(filePath),
 		OriginalFilePath: filePath,
-		MarkdownContent:   content.Markdown,
+		MarkdownContent:  content.Markdown,
 	}
 
 	if err := s.resumeRepo.Save(ctx, resume); err != nil {
