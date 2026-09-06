@@ -14,6 +14,10 @@ This document lists the currently implemented CLI commands for the JobPilot.
 - `jobpilot-cli resume list`: Lists all resumes currently imported for the candidate.
 - `jobpilot-cli resume delete [id]`: Deletes a specific resume by its ID.
 
+## Settings
+- `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured).
+- `jobpilot-cli settings set-llm`: Interactively configure the LLM provider and model. Choose from known providers (Ollama, llama.cpp, LM Studio) or a custom OpenAI-compatible endpoint, confirm/edit the base URL, and enter the model name manually. Settings are saved even if the endpoint can't be reached at save time.
+
 ## Usage Example
 ```bash
 # First time setup
@@ -27,4 +31,7 @@ jobpilot-cli profile get
 
 # Update profile
 jobpilot-cli profile update
+
+# Configure the LLM provider/model
+jobpilot-cli settings set-llm
 ```

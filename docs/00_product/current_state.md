@@ -38,14 +38,19 @@ started.
   strengths, gaps, missing skills, rationale), persisted per candidate/job.
 - SQLite persistence for candidates, resumes, jobs, and matches, with
   goose-based versioned migrations (embedded in the binary).
+- LLM provider/model settings (`jobpilot-cli settings show`/`set-llm`):
+  choose from known local providers (Ollama, llama.cpp, LM Studio) or a
+  custom OpenAI-compatible endpoint, with a manually-entered model name;
+  persisted in SQLite's `user_settings` table. A single active provider
+  configuration is supported, per `docs/01_architecture/05_llm.md`.
 
 ## Known gaps within Phases 0–3
 
 - No automated test suite anywhere in the repo (Phase 0 "Test
   infrastructure" not started).
-- No settings/configuration system yet (`docs/02_features/13_settings.md`
-  not implemented) — LLM provider and model are hardcoded defaults, not
-  user-configurable.
+- No settings/configuration system beyond LLM provider/model
+  (`docs/02_features/13_settings.md` — other categories like prompt
+  customization, search preferences, and notifications are unimplemented).
 - Job discovery has no real public connectors yet, only the mock source used
   for development.
 - No persisted search-history feature (Phase 2).
@@ -57,9 +62,8 @@ started.
 
 1. Add core test coverage (services and repository adapters) to close the
    Phase 0 gap before building further.
-2. Implement the Settings feature so LLM provider/model selection is
-   user-configurable instead of hardcoded.
-3. Begin Phase 4 (application generation): application schema, cover letter
+2. Begin Phase 4 (application generation): application schema, cover letter
    generation, application answers.
-4. Longer-term: real job-board connectors (Phase 2 completion), Desktop app
-   (Phase 5).
+3. Longer-term: real job-board connectors (Phase 2 completion), remaining
+   Settings categories (prompt customization, search preferences,
+   notifications, data retention), Desktop app (Phase 5).

@@ -43,3 +43,9 @@ type MatchRepository interface {
 	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error)
 	Delete(ctx context.Context, id string) error
 }
+
+// SettingsRepository persists arbitrary local key/value settings.
+type SettingsRepository interface {
+	Get(ctx context.Context, key string) (value string, found bool, err error)
+	Set(ctx context.Context, key, value string) error
+}

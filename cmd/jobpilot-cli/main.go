@@ -52,7 +52,18 @@ func main() {
 	resRepo := sqlite.NewResumeRepository(db.Conn())
 	jobRepo := sqlite.NewJobRepository(db.Conn())
 	matchRepo := sqlite.NewMatchRepository(db.Conn())
-	llmProv := llm.NewOllamaProvider("http://localhost:11434", llm.DefaultModel)
+	settingsRepo := sqlite.NewSettingsRepository(db.Conn())
+	settingsSvc := services.NewSettingsService(settingsRepo)
+
+	llmSettings, err := settingsSvc.GetLLMSettings(context.Background())
+	if err != nil {
+		log.Fatalf("Error loading LLM settings: %v", err)
+	}
+	llmProv, err := llm.NewProvider(*llmSettings)
+	if err != nil {
+		log.Fatalf("Error configuring LLM provider: %v", err)
+	}
+	resolvedLLMSettings := llm.ResolveSettings(*llmSettings)
 
 	mockSource := discovery.NewMockJobSource()
 	sources := []ports.JobSource{mockSource}
@@ -63,11 +74,12 @@ func main() {
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 
-	rootCmd.AddCommand(newOnboardCmd(onboardingSvc, profileSvc))
+	rootCmd.AddCommand(newOnboardCmd(onboardingSvc, profileSvc, resolvedLLMSettings))
 	rootCmd.AddCommand(newProfileCmd(profileSvc, candRepo))
 	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo, profileSvc))
 	rootCmd.AddCommand(newSearchCmd(discoverySvc))
 	rootCmd.AddCommand(newMatchCmd(matchingSvc, candRepo))
+	rootCmd.AddCommand(newSettingsCmd(settingsSvc))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code. Using RunE (rather than log.Fatalf/os.Exit inside
@@ -80,7 +92,7 @@ func main() {
 	}
 }
 
-func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.ProfileService) *cobra.Command {
+func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.ProfileService, llmSettings domain.LLMSettings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "onboard",
 		Short: "Initialize a new JobPilot installation",
@@ -101,9 +113,10 @@ func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.Profile
 
 			fmt.Println("\n--- LLM Configuration ---")
 			if err := svc.ConfigureLLM(ctx); err != nil {
-				return fmt.Errorf("LLM connectivity check failed: %w (please ensure Ollama is running on http://localhost:11434)", err)
+				return fmt.Errorf("LLM connectivity check failed: %w (please ensure %s is running at %s, or run 'jobpilot-cli settings set-llm' to configure a different provider)",
+					err, llmSettings.Provider, llmSettings.BaseURL)
 			}
-			fmt.Println("✅ Ollama connectivity verified.")
+			fmt.Printf("✅ %s connectivity verified.\n", llmSettings.Provider)
 
 			fmt.Println("\n--- Candidate Profile ---")
 			profile := domain.Candidate{}
@@ -466,6 +479,88 @@ func newMatchCmd(svc *services.MatchingService, repo ports.CandidateRepository) 
 			for i, m := range matches {
 				fmt.Printf("%d. Job ID: %s | Score: %d/100 | Confidence: %.2f\n", i+1, m.JobID, m.Score, m.Confidence)
 			}
+			return nil
+		},
+	})
+
+	return cmd
+}
+
+func newSettingsCmd(svc *services.SettingsService) *cobra.Command {
+	cmd := &cobra.Command{Use: "settings", Short: "Manage JobPilot settings"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show the configured LLM provider and model",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			settings, err := svc.GetLLMSettings(ctx)
+			if err != nil {
+				return fmt.Errorf("loading LLM settings: %w", err)
+			}
+
+			resolved := llm.ResolveSettings(*settings)
+			note := ""
+			if settings.Provider == "" {
+				note = " (default, not yet configured)"
+			}
+			fmt.Printf("Provider: %s%s\nBase URL: %s\nModel: %s\n", resolved.Provider, note, resolved.BaseURL, resolved.Model)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "set-llm",
+		Short: "Interactively configure the LLM provider and model",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+
+			labels := make([]string, len(llm.Presets))
+			for i, p := range llm.Presets {
+				labels[i] = p.Label
+			}
+			providerSelect := promptui.Select{Label: "LLM Provider", Items: labels}
+			idx, _, err := providerSelect.Run()
+			if err != nil {
+				return fmt.Errorf("selecting provider: %w", err)
+			}
+			preset := llm.Presets[idx]
+
+			urlPrompt := promptui.Prompt{Label: "Base URL", Default: preset.DefaultBaseURL}
+			baseURL, err := urlPrompt.Run()
+			if err != nil {
+				return fmt.Errorf("prompting for base URL: %w", err)
+			}
+
+			modelPrompt := promptui.Prompt{
+				Label: "Model name",
+				Validate: func(v string) error {
+					if v == "" {
+						return fmt.Errorf("model name is required")
+					}
+					return nil
+				},
+			}
+			model, err := modelPrompt.Run()
+			if err != nil {
+				return fmt.Errorf("prompting for model: %w", err)
+			}
+
+			settings := domain.LLMSettings{Provider: preset.Key, BaseURL: baseURL, Model: model}
+			if err := svc.SaveLLMSettings(ctx, &settings); err != nil {
+				return fmt.Errorf("saving LLM settings: %w", err)
+			}
+
+			provider, err := llm.NewProvider(settings)
+			if err != nil {
+				fmt.Printf("⚠️  Settings saved, but could not build provider: %v\n", err)
+				return nil
+			}
+			if err := provider.TestConnectivity(ctx); err != nil {
+				fmt.Printf("⚠️  Settings saved, but could not connect: %v\n", err)
+				return nil
+			}
+			fmt.Println("✅ Settings saved and verified.")
 			return nil
 		},
 	})
