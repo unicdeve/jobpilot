@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -56,15 +57,15 @@ func main() {
 	mockSource := discovery.NewMockJobSource()
 	sources := []ports.JobSource{mockSource}
 
-	resumeSvc := services.NewResumeService(resRepo)
+	resumeSvc := services.NewResumeService(resRepo, llmProv)
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 
-	rootCmd.AddCommand(newOnboardCmd(onboardingSvc))
+	rootCmd.AddCommand(newOnboardCmd(onboardingSvc, profileSvc))
 	rootCmd.AddCommand(newProfileCmd(profileSvc, candRepo))
-	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo))
+	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo, profileSvc))
 	rootCmd.AddCommand(newSearchCmd(discoverySvc))
 	rootCmd.AddCommand(newMatchCmd(matchingSvc, candRepo))
 
@@ -79,7 +80,7 @@ func main() {
 	}
 }
 
-func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
+func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.ProfileService) *cobra.Command {
 	return &cobra.Command{
 		Use:   "onboard",
 		Short: "Initialize a new JobPilot installation",
@@ -141,10 +142,12 @@ func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
 			}
 
 			if resumePath != "" {
-				if err := svc.ProcessResume(ctx, profile.ID, resumePath); err != nil {
+				resume, err := svc.ProcessResume(ctx, profile.ID, resumePath)
+				if err != nil {
 					fmt.Printf("❌ Error processing resume: %v\n", err)
 				} else {
 					fmt.Println("✅ Resume imported and converted successfully.")
+					suggestProfileFromResume(ctx, resume.MarkdownContent, &profile, svc.ProposeProfileDraft, profileSvc)
 				}
 			}
 
@@ -152,6 +155,45 @@ func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// suggestProfileFromResume asks the LLM (via propose) to draft a Summary and
+// Skills list from resumeMarkdown, shows the draft to the user for
+// review/edit, and persists whatever they accept via profileSvc. A resume
+// has already been imported successfully by the time this runs, so any
+// failure here (LLM unavailable, bad response, etc.) is reported as a
+// warning rather than an error — it must never undo or block the import.
+func suggestProfileFromResume(
+	ctx context.Context,
+	resumeMarkdown string,
+	profile *domain.Candidate,
+	propose func(context.Context, string) (*domain.ProfileDraft, error),
+	profileSvc *services.ProfileService,
+) {
+	draft, err := propose(ctx, resumeMarkdown)
+	if err != nil {
+		fmt.Printf("⚠️  Could not generate profile suggestions from resume: %v\n", err)
+		return
+	}
+
+	fmt.Println("\n📝 Suggested profile details from resume (edit or accept):")
+
+	updateField := func(label string, current string, setter func(string)) {
+		prompt := promptui.Prompt{Label: label, Default: current}
+		val, err := prompt.Run()
+		if err == nil {
+			setter(val)
+		}
+	}
+
+	updateField("Summary", draft.Summary, func(v string) { profile.Summary = v })
+	updateField("Skills", strings.Join(draft.Skills, ", "), func(v string) { profile.Skills = v })
+
+	if err := profileSvc.UpdateProfile(ctx, profile); err != nil {
+		fmt.Printf("⚠️  Could not save suggested profile updates: %v\n", err)
+		return
+	}
+	fmt.Println("✅ Profile updated with resume suggestions.")
 }
 
 func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository) *cobra.Command {
@@ -215,7 +257,7 @@ func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository)
 	return cmd
 }
 
-func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository) *cobra.Command {
+func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, profileSvc *services.ProfileService) *cobra.Command {
 	cmd := &cobra.Command{Use: "resume", Short: "Manage resumes"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -236,6 +278,8 @@ func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository) *
 				return fmt.Errorf("importing resume: %w", err)
 			}
 			fmt.Printf("✅ Resume imported: %s (ID: %s)\n", resume.Name, resume.ID)
+
+			suggestProfileFromResume(ctx, resume.MarkdownContent, profile, svc.ProposeProfileDraft, profileSvc)
 			return nil
 		},
 	})

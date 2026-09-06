@@ -29,7 +29,9 @@ started.
 - Onboarding flow: data directory + schema init, LLM connectivity check,
   initial candidate profile, optional resume import.
 - Candidate profile management: get, update, delete.
-- Resume management: import (via Go MarkItDown), list, delete.
+- Resume management: import (via Go MarkItDown), list, delete, with an
+  optional review-gated LLM suggestion step (Summary/Skills draft) applied
+  to the candidate profile after import.
 - Job discovery: search, list, import-by-URL, with canonical-URL
   deduplication — currently against a deterministic `MockJobSource` only.
 - Job matching via Ollama: structured JSON output (score, confidence,

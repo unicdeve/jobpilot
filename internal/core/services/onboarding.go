@@ -66,7 +66,12 @@ func (s *OnboardingService) InitializeProfile(ctx context.Context, profile *doma
 }
 
 // ProcessResume converts a resume file to markdown and stores it.
-func (s *OnboardingService) ProcessResume(ctx context.Context, candidateID string, filePath string) error {
-	_, err := s.resumeSvc.ImportResume(ctx, candidateID, filePath)
-	return err
+func (s *OnboardingService) ProcessResume(ctx context.Context, candidateID string, filePath string) (*domain.Resume, error) {
+	return s.resumeSvc.ImportResume(ctx, candidateID, filePath)
+}
+
+// ProposeProfileDraft asks the LLM to suggest a candidate Summary and Skills
+// list from resume content, for the user to review before it is applied.
+func (s *OnboardingService) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
+	return s.resumeSvc.ProposeProfileDraft(ctx, resumeMarkdown)
 }
