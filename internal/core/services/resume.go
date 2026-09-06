@@ -39,7 +39,7 @@ func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, fi
 	}
 
 	if err := s.resumeRepo.Save(ctx, resume); err != nil {
-		return nil, fmt.Errorf("failed to save resume: %w", err)
+		return nil, fmt.Errorf("failed to import resume: %w", err)
 	}
 
 	return resume, nil

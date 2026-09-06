@@ -128,7 +128,7 @@ func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
 			}
 			profile.Location = location
 
-			if err := svc.InitializeProfile(ctx, profile); err != nil {
+			if err := svc.InitializeProfile(ctx, &profile); err != nil {
 				return fmt.Errorf("saving profile: %w", err)
 			}
 			fmt.Println("✅ Candidate profile created.")
