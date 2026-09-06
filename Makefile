@@ -1,21 +1,28 @@
 # Build flags
 BINARY_NAME=job-agent
 CLI_BINARY_NAME=job-agent-cli
-DB_PATH ?= ./job-agent.db
+
+# Optional override for the migrate-* targets' database file. Left empty by
+# default so cmd/migrate falls back to system.DefaultDBPath() — the exact
+# same path cmd/job-agent-cli itself opens — so the two can never point at
+# different databases. Only set this to target a scratch/test database
+# instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
+DB_PATH ?=
 
 .PHONY: all build clean run fmt fmt-check vet lint tidy test check \
 	migrate-up migrate-down migrate-create migrate-status
-
-# Path to the SQLite database file the migrate-* targets operate on (the
-# running app finds this itself via system.GetDataDir(), e.g.
-# ~/Library/Application Support/job-agent/job-agent.db on macOS or
-# ~/.config/job-agent/job-agent.db on Linux). Not needed for migrate-create.
 
 all: build
 
 build:
 	go build -o bin/$(BINARY_NAME) ./cmd/job-agent
 	go build -o bin/$(CLI_BINARY_NAME) ./cmd/job-agent-cli
+
+run:
+	go run ./cmd/job-agent
+
+clean:
+	rm -rf bin/
 
 # migrate-* wrap cmd/migrate, a thin dev-only wrapper around the same goose
 # library calls the app itself uses (sqlite.DB.InitializeSchema and friends).
@@ -26,26 +33,17 @@ build:
 # SQLite-only (see docs/09_decisions/0003-sqlite.md); Postgres and friends
 # are explicitly out of scope per AGENTS.md.
 migrate-up:
-	@if [ -z "$(DB_PATH)" ]; then echo "Usage: make migrate-up DB_PATH=/path/to/job-agent.db"; exit 1; fi
 	go run ./cmd/migrate -db "$(DB_PATH)" up
 
 migrate-down:
-	@if [ -z "$(DB_PATH)" ]; then echo "Usage: make migrate-down DB_PATH=/path/to/job-agent.db"; exit 1; fi
 	go run ./cmd/migrate -db "$(DB_PATH)" down
 
 migrate-status:
-	@if [ -z "$(DB_PATH)" ]; then echo "Usage: make migrate-status DB_PATH=/path/to/job-agent.db"; exit 1; fi
 	go run ./cmd/migrate -db "$(DB_PATH)" status
 
 migrate-create:
 	@if [ -z "$(NAME)" ]; then echo "Usage: make migrate-create NAME=migration_name"; exit 1; fi
 	go run ./cmd/migrate create $(NAME)
-
-run:
-	go run ./cmd/job-agent
-
-clean:
-	rm -rf bin/
 
 fmt:
 	gofmt -w .

@@ -26,11 +26,10 @@ func main() {
 	var rootCmd = &cobra.Command{Use: "job-agent-cli", SilenceUsage: true, SilenceErrors: true}
 
 	// Dependencies
-	dir, err := system.EnsureDataDir()
+	dbPath, err := system.DefaultDBPath()
 	if err != nil {
-		log.Fatalf("Error creating data dir: %v", err)
+		log.Fatalf("Error resolving database path: %v", err)
 	}
-	dbPath := fmt.Sprintf("%s/job-agent.db", dir)
 	db, err := sqlite.NewDB(dbPath)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)

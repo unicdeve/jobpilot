@@ -15,6 +15,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/unicdev/job-agent/internal/adapters/secondary/sqlite"
+	"github.com/unicdev/job-agent/internal/adapters/secondary/system"
 )
 
 // migrationsDir must match the embed pattern in
@@ -22,7 +23,8 @@ import (
 const migrationsDir = "internal/adapters/secondary/sqlite/migrations"
 
 func main() {
-	dbPath := flag.String("db", "", "path to the SQLite database file (required for up/down/status)")
+	dbPath := flag.String("db", "", "path to the SQLite database file for up/down/status "+
+		"(defaults to the same path the app itself uses, via system.DefaultDBPath)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n")
 		fmt.Fprintf(os.Stderr, "  %s -db <path> up|down|status\n", os.Args[0])
@@ -51,10 +53,16 @@ func main() {
 		}
 
 	case "up", "down", "status":
-		if *dbPath == "" {
-			log.Fatal("-db is required for up/down/status")
+		resolvedPath := *dbPath
+		if resolvedPath == "" {
+			var err error
+			resolvedPath, err = system.DefaultDBPath()
+			if err != nil {
+				log.Fatalf("failed to resolve default database path: %v", err)
+			}
+			fmt.Printf("-db not given, using default: %s\n", resolvedPath)
 		}
-		db, err := sqlite.NewDB(*dbPath)
+		db, err := sqlite.NewDB(resolvedPath)
 		if err != nil {
 			log.Fatalf("failed to open database: %v", err)
 		}

@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 )
 
-const appName = "job-agent"
+const (
+	appName    = "job-agent"
+	dbFileName = "job-agent.db"
+)
 
 // GetDataDir returns the platform-specific application data directory.
 func GetDataDir() (string, error) {
@@ -34,4 +37,17 @@ func EnsureDataDir() (string, error) {
 	}
 
 	return dir, nil
+}
+
+// DefaultDBPath returns the path to the application's SQLite database file,
+// creating the data directory if needed. This is the single source of
+// truth for that path: both cmd/job-agent-cli and cmd/migrate call it, so
+// the two can never disagree about which database file they're pointing at.
+func DefaultDBPath() (string, error) {
+	dir, err := EnsureDataDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, dbFileName), nil
 }
