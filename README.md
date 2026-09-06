@@ -1,8 +1,8 @@
-# Job Agent
+# JobPilot
 
 Open-source, local-first AI job search and application assistant.
 
-Job Agent helps users discover relevant jobs, evaluate them against their
+JobPilot helps users discover relevant jobs, evaluate them against their
 candidate profile and resume, generate tailored application answers, and prepare
 applications for user review. It is designed to run locally, preserve user data
 locally, and support local LLMs such as Ollama.

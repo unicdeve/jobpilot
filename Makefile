@@ -1,10 +1,10 @@
 # Build flags
-BINARY_NAME=job-agent
-CLI_BINARY_NAME=job-agent-cli
+BINARY_NAME=jobpilot
+CLI_BINARY_NAME=jobpilot-cli
 
 # Optional override for the migrate-* targets' database file. Left empty by
 # default so cmd/migrate falls back to system.DefaultDBPath() — the exact
-# same path cmd/job-agent-cli itself opens — so the two can never point at
+# same path cmd/jobpilot-cli itself opens — so the two can never point at
 # different databases. Only set this to target a scratch/test database
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
@@ -15,11 +15,11 @@ DB_PATH ?=
 all: build
 
 build:
-	go build -o bin/$(BINARY_NAME) ./cmd/job-agent
-	go build -o bin/$(CLI_BINARY_NAME) ./cmd/job-agent-cli
+	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
+	go build -o bin/$(CLI_BINARY_NAME) ./cmd/jobpilot-cli
 
 run:
-	go run ./cmd/job-agent
+	go run ./cmd/jobpilot
 
 clean:
 	rm -rf bin/

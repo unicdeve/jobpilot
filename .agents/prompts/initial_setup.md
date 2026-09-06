@@ -1,6 +1,6 @@
 # Initial AI Coding Agent Prompt
 
-You are joining the Job Agent repository.
+You are joining the JobPilot repository.
 
 Do not modify code yet.
 

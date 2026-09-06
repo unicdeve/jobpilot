@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // ProfileService manages the candidate's profile.

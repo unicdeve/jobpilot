@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build Job Agent as a production-quality, open-source, local-first AI job search
+Build JobPilot as a production-quality, open-source, local-first AI job search
 and application assistant.
 
 The coding agent is an implementer. Product and architecture decisions must come

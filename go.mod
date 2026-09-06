@@ -1,4 +1,4 @@
-module github.com/unicdev/job-agent
+module github.com/unicdev/jobpilot
 
 go 1.26.4
 

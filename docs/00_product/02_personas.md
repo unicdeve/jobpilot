@@ -10,4 +10,4 @@ A technically sophisticated user who wants to configure local LLMs, job sources,
 
 ## Developer user
 
-An open-source contributor who wants to create a connector, tool, or plugin for Job Agent.
+An open-source contributor who wants to create a connector, tool, or plugin for JobPilot.

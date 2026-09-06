@@ -2,7 +2,7 @@
 
 ## Name
 
-Job Agent
+JobPilot
 
 ## Vision
 
@@ -10,7 +10,7 @@ An open-source, local-first AI agent that helps people discover relevant jobs, e
 
 ## Product positioning
 
-Job Agent is not primarily a scraper. Job discovery is a pluggable capability. The product is an agent runtime specialized for job hunting and applications.
+JobPilot is not primarily a scraper. Job discovery is a pluggable capability. The product is an agent runtime specialized for job hunting and applications.
 
 ## Core value
 

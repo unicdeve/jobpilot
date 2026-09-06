@@ -5,42 +5,42 @@ The exact command framework can be chosen during implementation. Cobra is the pr
 ## Commands
 
 ```text
-jobagent init
-jobagent status
-jobagent doctor
+jobpilot init
+jobpilot status
+jobpilot doctor
 
-jobagent profile show
-jobagent profile edit
-jobagent resume add
-jobagent resume list
-jobagent resume remove
+jobpilot profile show
+jobpilot profile edit
+jobpilot resume add
+jobpilot resume list
+jobpilot resume remove
 
-jobagent search
-jobagent search list
-jobagent search run
+jobpilot search
+jobpilot search list
+jobpilot search run
 
-jobagent job list
-jobagent job show <id>
-jobagent job analyze <id>
+jobpilot job list
+jobpilot job show <id>
+jobpilot job analyze <id>
 
-jobagent application list
-jobagent application show <id>
-jobagent application generate <job-id>
-jobagent application history
+jobpilot application list
+jobpilot application show <id>
+jobpilot application generate <job-id>
+jobpilot application history
 
-jobagent llm status
-jobagent llm configure
+jobpilot llm status
+jobpilot llm configure
 
-jobagent prompt list
-jobagent prompt show <id>
-jobagent prompt set <id>
+jobpilot prompt list
+jobpilot prompt show <id>
+jobpilot prompt set <id>
 
-jobagent config show
-jobagent config set
+jobpilot config show
+jobpilot config set
 
-jobagent history
-jobagent data delete
-jobagent logs
+jobpilot history
+jobpilot data delete
+jobpilot logs
 ```
 
 Commands may evolve. Avoid implementing commands that do not have a product purpose.

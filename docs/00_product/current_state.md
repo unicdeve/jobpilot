@@ -48,7 +48,7 @@ started.
   for development.
 - No persisted search-history feature (Phase 2).
 - No user-configurable prompt customization for matching (Phase 3).
-- `cmd/job-agent` (the daemon) is still a stub, and the Desktop app (Phase 5)
+- `cmd/jobpilot` (the daemon) is still a stub, and the Desktop app (Phase 5)
   hasn't started — everything above is CLI-only.
 
 ## Next

@@ -14,8 +14,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	"github.com/unicdev/job-agent/internal/adapters/secondary/sqlite"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/system"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
 )
 
 // migrationsDir must match the embed pattern in

@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/unicdev/job-agent/internal/adapters/secondary/sqlite"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/system"
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // OnboardingService walks a new user through first-run setup: local storage,

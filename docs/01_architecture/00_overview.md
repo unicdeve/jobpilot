@@ -43,4 +43,4 @@ The daemon may be started on demand, launched by the desktop application, or inv
 
 ## Resource principle
 
-Idle Job Agent should consume minimal resources. Work should be event-driven, scheduled, or explicitly requested.
+Idle JobPilot should consume minimal resources. Work should be event-driven, scheduled, or explicitly requested.

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/unicdev/job-agent/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
 // CandidateRepository is a ports.CandidateRepository backed by SQLite.
@@ -116,7 +116,7 @@ func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
 }
 
 // GetFirstCandidate returns the first candidate profile in the database.
-// Job Agent currently manages a single local candidate profile per
+// JobPilot currently manages a single local candidate profile per
 // installation, so this is the standard way to fetch "the" profile.
 func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Candidate, error) {
 	query := `SELECT

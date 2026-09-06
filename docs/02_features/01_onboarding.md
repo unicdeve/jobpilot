@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Prepare a local Job Agent installation for use.
+Prepare a local JobPilot installation for use.
 
 ## Requirements
 

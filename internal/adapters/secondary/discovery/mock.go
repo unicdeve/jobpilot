@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // MockJobSource is a fake job source for development and testing.

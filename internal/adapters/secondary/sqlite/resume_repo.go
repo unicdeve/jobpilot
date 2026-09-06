@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/unicdev/job-agent/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
 // ResumeRepository is a ports.ResumeRepository backed by SQLite.

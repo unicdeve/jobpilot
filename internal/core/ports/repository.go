@@ -2,7 +2,7 @@ package ports
 
 import (
 	"context"
-	"github.com/unicdev/job-agent/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
 // CandidateRepository persists and retrieves candidate profiles.
@@ -12,7 +12,7 @@ type CandidateRepository interface {
 	Update(ctx context.Context, candidate *domain.Candidate) error
 	Delete(ctx context.Context, id string) error
 	// GetFirstCandidate returns the first candidate profile in the
-	// database. Job Agent currently manages a single local candidate
+	// database. JobPilot currently manages a single local candidate
 	// profile per installation, so this is the standard way to fetch
 	// "the" profile.
 	GetFirstCandidate(ctx context.Context) (*domain.Candidate, error)

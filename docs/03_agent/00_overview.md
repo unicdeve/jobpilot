@@ -1,6 +1,6 @@
 # Agent Architecture Overview
 
-The Job Agent uses an orchestrated tool-calling architecture rather than a large collection of autonomous agents.
+The JobPilot uses an orchestrated tool-calling architecture rather than a large collection of autonomous agents.
 
 ```text
 Observe

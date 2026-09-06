@@ -2,7 +2,7 @@
 
 ## Current objective
 
-Turn the agreed Job Agent concept into an implementation-ready specification and repository.
+Turn the agreed JobPilot concept into an implementation-ready specification and repository.
 
 ## Current focus
 

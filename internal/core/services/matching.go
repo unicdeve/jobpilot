@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // MatchingService evaluates the fit between a candidate and a job.

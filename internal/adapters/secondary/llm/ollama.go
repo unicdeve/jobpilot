@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // DefaultModel is used when OllamaProvider is constructed without an

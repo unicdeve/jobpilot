@@ -1,4 +1,4 @@
-# Job Agent Master Specification
+# JobPilot Master Specification
 
 ## Product
 

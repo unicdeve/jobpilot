@@ -6,7 +6,7 @@ package ports
 
 import (
 	"context"
-	"github.com/unicdev/job-agent/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
 // JobSource defines the interface for a job discovery connector.

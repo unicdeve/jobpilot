@@ -1,4 +1,4 @@
-// Command job-agent-cli is the Job Agent command-line interface: onboarding,
+// Command jobpilot-cli is the JobPilot command-line interface: onboarding,
 // profile/resume management, job discovery, and match analysis.
 package main
 
@@ -10,20 +10,20 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/discovery"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/llm"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/sqlite"
-	"github.com/unicdev/job-agent/internal/adapters/secondary/system"
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
-	"github.com/unicdev/job-agent/internal/core/services"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/services"
 )
 
 func main() {
 	// rootCmd.Execute() is the single place errors from any command are
 	// printed and turned into a process exit code (below); silence Cobra's
 	// own error/usage printing so each error is reported exactly once.
-	var rootCmd = &cobra.Command{Use: "job-agent-cli", SilenceUsage: true, SilenceErrors: true}
+	var rootCmd = &cobra.Command{Use: "jobpilot-cli", SilenceUsage: true, SilenceErrors: true}
 
 	// Dependencies
 	dbPath, err := system.DefaultDBPath()
@@ -82,7 +82,7 @@ func main() {
 func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
 	return &cobra.Command{
 		Use:   "onboard",
-		Short: "Initialize a new Job Agent installation",
+		Short: "Initialize a new JobPilot installation",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
 
@@ -148,7 +148,7 @@ func newOnboardCmd(svc *services.OnboardingService) *cobra.Command {
 				}
 			}
 
-			fmt.Println("\n🎉 Onboarding complete! You can now use Job Agent.")
+			fmt.Println("\n🎉 Onboarding complete! You can now use JobPilot.")
 			return nil
 		},
 	}

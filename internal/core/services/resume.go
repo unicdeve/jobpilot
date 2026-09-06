@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/conductor-oss/markitdown"
-	"github.com/unicdev/job-agent/internal/core/domain"
-	"github.com/unicdev/job-agent/internal/core/ports"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // ResumeService manages a candidate's imported resumes.
