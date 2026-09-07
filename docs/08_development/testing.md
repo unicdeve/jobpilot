@@ -24,6 +24,9 @@ Add selectively for:
 - SQLite repositories
 - LLM provider adapter behavior using mocks/fakes
 - connector parsing
+- the daemon's HTTP API (`internal/adapters/primary/httpapi`): real client
+  against a real `httptest` server, with fake ports/adapters underneath —
+  see `server_test.go` in that package
 
 ## Browser tests
 
