@@ -1,50 +1,36 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { HashRouter, Route, Routes } from "react-router-dom";
+import { Layout } from "./components/layout";
+import { DaemonProvider } from "./lib/daemon";
+import { ToastProvider } from "./lib/toast";
+import { ApplicationDetail } from "./pages/application-detail";
+import { Applications } from "./pages/applications";
+import { Dashboard } from "./pages/dashboard";
+import { Jobs } from "./pages/jobs";
+import { Matches } from "./pages/matches";
+import { Profile } from "./pages/profile";
+import { Resumes } from "./pages/resumes";
+import { Settings } from "./pages/settings";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <ToastProvider>
+      <DaemonProvider>
+        <HashRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<Dashboard />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="resumes" element={<Resumes />} />
+              <Route path="jobs" element={<Jobs />} />
+              <Route path="matches" element={<Matches />} />
+              <Route path="applications" element={<Applications />} />
+              <Route path="applications/:id" element={<ApplicationDetail />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+          </Routes>
+        </HashRouter>
+      </DaemonProvider>
+    </ToastProvider>
   );
 }
 
