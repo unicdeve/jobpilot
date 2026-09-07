@@ -180,6 +180,124 @@ func (c *Client) SaveLLMSettings(ctx context.Context, settings domain.LLMSetting
 	return &SaveLLMSettingsResult{Settings: resp.Settings, ConnectivityError: resp.ConnectivityError}, nil
 }
 
+// CreateApplication starts tracking a candidate's application to a job.
+func (c *Client) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
+	req := createApplicationRequest{JobID: jobID, CandidateID: candidateID, ResumeID: resumeID, Mode: mode}
+	var app domain.Application
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications", req, &app)
+	if err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
+// ListApplications returns every application for candidateID.
+func (c *Client) ListApplications(ctx context.Context, candidateID string) ([]*domain.Application, error) {
+	var apps []*domain.Application
+	path := "/v1/applications?" + url.Values{"candidate_id": {candidateID}}.Encode()
+	_, err := c.do(ctx, http.MethodGet, path, nil, &apps)
+	return apps, err
+}
+
+// GetApplication retrieves an application by ID.
+func (c *Client) GetApplication(ctx context.Context, id string) (*domain.Application, error) {
+	var app domain.Application
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(id), nil, &app)
+	if err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
+// TransitionApplication moves an application to a new state.
+func (c *Client) TransitionApplication(ctx context.Context, id string, toState domain.ApplicationState, reason string) (*domain.Application, error) {
+	req := transitionApplicationRequest{ToState: toState, Reason: reason}
+	var app domain.Application
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(id)+"/transition", req, &app)
+	if err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
+// ListApplicationHistory returns the durable state-transition history for an
+// application.
+func (c *Client) ListApplicationHistory(ctx context.Context, id string) ([]*domain.ApplicationStateTransition, error) {
+	var history []*domain.ApplicationStateTransition
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(id)+"/history", nil, &history)
+	return history, err
+}
+
+// GenerateCoverLetter drafts a new cover letter version for an application
+// (also used to regenerate one).
+func (c *Client) GenerateCoverLetter(ctx context.Context, applicationID string) (*domain.CoverLetter, error) {
+	var coverLetter domain.CoverLetter
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/cover-letter", nil, &coverLetter)
+	if err != nil {
+		return nil, err
+	}
+	return &coverLetter, nil
+}
+
+// ListCoverLetterVersions returns every cover letter version generated for
+// an application.
+func (c *Client) ListCoverLetterVersions(ctx context.Context, applicationID string) ([]*domain.CoverLetter, error) {
+	var versions []*domain.CoverLetter
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(applicationID)+"/cover-letters", nil, &versions)
+	return versions, err
+}
+
+// EditCoverLetter persists a user's manual edit to an existing cover letter
+// version.
+func (c *Client) EditCoverLetter(ctx context.Context, coverLetterID, content string) (*domain.CoverLetter, error) {
+	req := editCoverLetterRequest{Content: content}
+	var coverLetter domain.CoverLetter
+	_, err := c.do(ctx, http.MethodPut, "/v1/cover-letters/"+url.PathEscape(coverLetterID), req, &coverLetter)
+	if err != nil {
+		return nil, err
+	}
+	return &coverLetter, nil
+}
+
+// AddQuestion registers a new question on an application.
+func (c *Client) AddQuestion(ctx context.Context, applicationID, label string, questionType domain.QuestionType, required bool) (*domain.ApplicationQuestion, error) {
+	req := addQuestionRequest{Label: label, Type: questionType, Required: required}
+	var question domain.ApplicationQuestion
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/questions", req, &question)
+	if err != nil {
+		return nil, err
+	}
+	return &question, nil
+}
+
+// ListQuestions returns every question on an application.
+func (c *Client) ListQuestions(ctx context.Context, applicationID string) ([]*domain.ApplicationQuestion, error) {
+	var questions []*domain.ApplicationQuestion
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(applicationID)+"/questions", nil, &questions)
+	return questions, err
+}
+
+// ResolveQuestion attempts to answer a question via the resolver chain.
+func (c *Client) ResolveQuestion(ctx context.Context, questionID string) (*domain.ApplicationQuestion, error) {
+	var question domain.ApplicationQuestion
+	_, err := c.do(ctx, http.MethodPost, "/v1/questions/"+url.PathEscape(questionID)+"/resolve", nil, &question)
+	if err != nil {
+		return nil, err
+	}
+	return &question, nil
+}
+
+// SetQuestionAnswer records a user-supplied answer for a question.
+func (c *Client) SetQuestionAnswer(ctx context.Context, questionID, answer string) (*domain.ApplicationQuestion, error) {
+	req := setQuestionAnswerRequest{Answer: answer}
+	var question domain.ApplicationQuestion
+	_, err := c.do(ctx, http.MethodPut, "/v1/questions/"+url.PathEscape(questionID)+"/answer", req, &question)
+	if err != nil {
+		return nil, err
+	}
+	return &question, nil
+}
+
 // do sends an HTTP request to path with an optional JSON body, decodes a
 // JSON response into out (if non-nil), and turns a non-2xx response into a
 // Go error carrying the server's message.

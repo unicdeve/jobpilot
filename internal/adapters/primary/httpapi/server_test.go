@@ -234,6 +234,156 @@ func (f *fakeJobSource) GetJob(_ context.Context, _ string) (*domain.Job, error)
 	return f.getJobResult, nil
 }
 
+type fakeApplicationRepository struct {
+	applications map[string]*domain.Application
+	transitions  map[string][]*domain.ApplicationStateTransition
+}
+
+func newFakeApplicationRepository() *fakeApplicationRepository {
+	return &fakeApplicationRepository{
+		applications: map[string]*domain.Application{},
+		transitions:  map[string][]*domain.ApplicationStateTransition{},
+	}
+}
+
+func (f *fakeApplicationRepository) Save(_ context.Context, a *domain.Application) error {
+	if a.ID == "" {
+		a.ID = fmt.Sprintf("app-%d", len(f.applications)+1)
+	}
+	f.applications[a.ID] = a
+	return nil
+}
+
+func (f *fakeApplicationRepository) GetByID(_ context.Context, id string) (*domain.Application, error) {
+	a, ok := f.applications[id]
+	if !ok {
+		return nil, fmt.Errorf("application not found: %s", id)
+	}
+	return a, nil
+}
+
+func (f *fakeApplicationRepository) Update(_ context.Context, a *domain.Application) error {
+	f.applications[a.ID] = a
+	return nil
+}
+
+func (f *fakeApplicationRepository) ListByCandidate(_ context.Context, candidateID string) ([]*domain.Application, error) {
+	var out []*domain.Application
+	for _, a := range f.applications {
+		if a.CandidateID == candidateID {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeApplicationRepository) Delete(_ context.Context, id string) error {
+	delete(f.applications, id)
+	return nil
+}
+
+func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicationID string, from, to domain.ApplicationState, reason string) error {
+	a, ok := f.applications[applicationID]
+	if !ok {
+		return fmt.Errorf("application not found: %s", applicationID)
+	}
+	if a.State != from {
+		return fmt.Errorf("application %s is not currently in state %s", applicationID, from)
+	}
+	a.State = to
+	f.transitions[applicationID] = append(f.transitions[applicationID], &domain.ApplicationStateTransition{
+		ApplicationID: applicationID, FromState: from, ToState: to, Reason: reason,
+	})
+	return nil
+}
+
+func (f *fakeApplicationRepository) ListStateTransitions(_ context.Context, applicationID string) ([]*domain.ApplicationStateTransition, error) {
+	return f.transitions[applicationID], nil
+}
+
+type fakeCoverLetterRepository struct {
+	letters map[string]*domain.CoverLetter
+}
+
+func newFakeCoverLetterRepository() *fakeCoverLetterRepository {
+	return &fakeCoverLetterRepository{letters: map[string]*domain.CoverLetter{}}
+}
+
+func (f *fakeCoverLetterRepository) Save(_ context.Context, c *domain.CoverLetter) error {
+	if c.ID == "" {
+		c.ID = fmt.Sprintf("cl-%d", len(f.letters)+1)
+	}
+	f.letters[c.ID] = c
+	return nil
+}
+
+func (f *fakeCoverLetterRepository) GetByID(_ context.Context, id string) (*domain.CoverLetter, error) {
+	c, ok := f.letters[id]
+	if !ok {
+		return nil, fmt.Errorf("cover letter not found: %s", id)
+	}
+	return c, nil
+}
+
+func (f *fakeCoverLetterRepository) Update(_ context.Context, c *domain.CoverLetter) error {
+	f.letters[c.ID] = c
+	return nil
+}
+
+func (f *fakeCoverLetterRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.CoverLetter, error) {
+	var out []*domain.CoverLetter
+	for _, c := range f.letters {
+		if c.ApplicationID == applicationID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+type fakeApplicationQuestionRepository struct {
+	questions map[string]*domain.ApplicationQuestion
+}
+
+func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
+	return &fakeApplicationQuestionRepository{questions: map[string]*domain.ApplicationQuestion{}}
+}
+
+func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.ApplicationQuestion) error {
+	if q.ID == "" {
+		q.ID = fmt.Sprintf("q-%d", len(f.questions)+1)
+	}
+	f.questions[q.ID] = q
+	return nil
+}
+
+func (f *fakeApplicationQuestionRepository) GetByID(_ context.Context, id string) (*domain.ApplicationQuestion, error) {
+	q, ok := f.questions[id]
+	if !ok {
+		return nil, fmt.Errorf("application question not found: %s", id)
+	}
+	return q, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Update(_ context.Context, q *domain.ApplicationQuestion) error {
+	f.questions[q.ID] = q
+	return nil
+}
+
+func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.ApplicationQuestion, error) {
+	var out []*domain.ApplicationQuestion
+	for _, q := range f.questions {
+		if q.ApplicationID == applicationID {
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
+	delete(f.questions, id)
+	return nil
+}
+
 // testServer wires a full set of real services over fake ports/adapters,
 // serves them via NewHandler on a real loopback listener, and returns a
 // Client pointed at it — exercising the client and server together, the
@@ -246,17 +396,23 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	jobRepo := newFakeJobRepository()
 	matchRepo := newFakeMatchRepository()
 	settingsRepo := newFakeSettingsRepository()
+	appRepo := newFakeApplicationRepository()
+	coverLetterRepo := newFakeCoverLetterRepository()
+	questionRepo := newFakeApplicationQuestionRepository()
 	llmProv := &fakeLLMProvider{response: ports.Response{Content: `{"score":80,"confidence":0.9,"rationale":"good fit"}`, Model: "fake-model"}}
 	source := &fakeJobSource{}
 
 	svc := Services{
-		Candidates: candRepo,
-		Onboarding: services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), llmProv, nil),
-		Profile:    services.NewProfileService(candRepo),
-		Resume:     services.NewResumeService(resRepo, llmProv),
-		Discovery:  services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}),
-		Matching:   services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
-		Settings:   services.NewSettingsService(settingsRepo),
+		Candidates:  candRepo,
+		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), llmProv, nil),
+		Profile:     services.NewProfileService(candRepo),
+		Resume:      services.NewResumeService(resRepo, llmProv),
+		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}),
+		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
+		Settings:    services.NewSettingsService(settingsRepo),
+		Application: services.NewApplicationService(appRepo),
+		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
+		Answers:     services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))
@@ -375,4 +531,105 @@ func TestClient_NotFoundSurfacesServerError(t *testing.T) {
 	_, err := client.GetProfile(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no candidate profile found")
+}
+
+func TestClient_ApplicationLifecycle(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{Name: "Ada Lovelace", Contact: "ada@example.com"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Engineer"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-1")
+	require.NoError(t, err)
+
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+	require.Equal(t, domain.ApplicationStateDiscovered, app.State)
+
+	got, err := client.GetApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Equal(t, app.ID, got.ID)
+
+	apps, err := client.ListApplications(ctx, candidate.ID)
+	require.NoError(t, err)
+	require.Len(t, apps, 1)
+
+	transitioned, err := client.TransitionApplication(ctx, app.ID, domain.ApplicationStateMatched, "auto-matched")
+	require.NoError(t, err)
+	require.Equal(t, domain.ApplicationStateMatched, transitioned.State)
+
+	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStateSubmitted, "")
+	require.Error(t, err, "SUBMITTED must only be reachable from APPROVED")
+
+	history, err := client.ListApplicationHistory(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	require.Equal(t, "auto-matched", history[0].Reason)
+}
+
+func TestClient_CoverLetterLifecycle(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{Name: "Grace Hopper"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-2", Title: "Compiler Engineer"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-2")
+	require.NoError(t, err)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+
+	first, err := client.GenerateCoverLetter(ctx, app.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, first.Content)
+
+	second, err := client.GenerateCoverLetter(ctx, app.ID)
+	require.NoError(t, err)
+	require.NotEqual(t, first.ID, second.ID, "regenerating must create a new version")
+
+	versions, err := client.ListCoverLetterVersions(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, versions, 2, "regeneration must not discard the earlier version")
+
+	edited, err := client.EditCoverLetter(ctx, second.ID, "manually edited content")
+	require.NoError(t, err)
+	require.Equal(t, "manually edited content", edited.Content)
+	require.True(t, edited.UserEdited)
+}
+
+func TestClient_QuestionResolution(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{Name: "Alan Turing", Contact: "alan@example.com"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-3", Title: "Cryptanalyst"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-3")
+	require.NoError(t, err)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+
+	factual, err := client.AddQuestion(ctx, app.ID, "Email address", domain.QuestionTypeFactual, true)
+	require.NoError(t, err)
+	resolved, err := client.ResolveQuestion(ctx, factual.ID)
+	require.NoError(t, err)
+	require.Equal(t, "alan@example.com", resolved.Answer)
+	require.Equal(t, domain.AnswerCategoryProfileFact, resolved.Category)
+
+	unknown, err := client.AddQuestion(ctx, app.ID, "What is your driver's license number?", domain.QuestionTypeFactual, false)
+	require.NoError(t, err)
+	resolvedUnknown, err := client.ResolveQuestion(ctx, unknown.ID)
+	require.NoError(t, err)
+	require.Empty(t, resolvedUnknown.Answer)
+	require.Equal(t, domain.AnswerCategoryNeedsUserInput, resolvedUnknown.Category)
+
+	answered, err := client.SetQuestionAnswer(ctx, unknown.ID, "ABC123")
+	require.NoError(t, err)
+	require.Equal(t, "ABC123", answered.Answer)
+	require.True(t, answered.UserEdited)
+
+	questions, err := client.ListQuestions(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, questions, 2)
 }

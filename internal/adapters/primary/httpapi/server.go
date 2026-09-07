@@ -19,13 +19,16 @@ import (
 // mirrors exactly what cmd/jobpilot-cli wired directly before this package
 // existed — this is a transport change, not a behavior change.
 type Services struct {
-	Candidates ports.CandidateRepository
-	Onboarding *services.OnboardingService
-	Profile    *services.ProfileService
-	Resume     *services.ResumeService
-	Discovery  *services.JobDiscoveryService
-	Matching   *services.MatchingService
-	Settings   *services.SettingsService
+	Candidates  ports.CandidateRepository
+	Onboarding  *services.OnboardingService
+	Profile     *services.ProfileService
+	Resume      *services.ResumeService
+	Discovery   *services.JobDiscoveryService
+	Matching    *services.MatchingService
+	Settings    *services.SettingsService
+	Application *services.ApplicationService
+	CoverLetter *services.CoverLetterService
+	Answers     *services.AnswerService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -54,6 +57,21 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/settings/llm", handleGetLLMSettings(svc.Settings))
 	mux.HandleFunc("PUT /v1/settings/llm", handleSaveLLMSettings(svc.Settings))
+
+	mux.HandleFunc("POST /v1/applications", handleCreateApplication(svc.Application))
+	mux.HandleFunc("GET /v1/applications", handleListApplications(svc.Application))
+	mux.HandleFunc("GET /v1/applications/{id}", handleGetApplication(svc.Application))
+	mux.HandleFunc("POST /v1/applications/{id}/transition", handleTransitionApplication(svc.Application))
+	mux.HandleFunc("GET /v1/applications/{id}/history", handleApplicationHistory(svc.Application))
+
+	mux.HandleFunc("POST /v1/applications/{id}/cover-letter", handleGenerateCoverLetter(svc.CoverLetter))
+	mux.HandleFunc("GET /v1/applications/{id}/cover-letters", handleListCoverLetterVersions(svc.CoverLetter))
+	mux.HandleFunc("PUT /v1/cover-letters/{id}", handleEditCoverLetter(svc.CoverLetter))
+
+	mux.HandleFunc("POST /v1/applications/{id}/questions", handleAddQuestion(svc.Answers))
+	mux.HandleFunc("GET /v1/applications/{id}/questions", handleListQuestions(svc.Answers))
+	mux.HandleFunc("POST /v1/questions/{id}/resolve", handleResolveQuestion(svc.Answers))
+	mux.HandleFunc("PUT /v1/questions/{id}/answer", handleSetQuestionAnswer(svc.Answers))
 
 	return mux
 }

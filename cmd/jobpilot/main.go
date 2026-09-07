@@ -114,6 +114,9 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	jobRepo := sqlite.NewJobRepository(db.Conn())
 	matchRepo := sqlite.NewMatchRepository(db.Conn())
 	settingsRepo := sqlite.NewSettingsRepository(db.Conn())
+	appRepo := sqlite.NewApplicationRepository(db.Conn())
+	coverLetterRepo := sqlite.NewCoverLetterRepository(db.Conn())
+	questionRepo := sqlite.NewApplicationQuestionRepository(db.Conn())
 	settingsSvc := services.NewSettingsService(settingsRepo)
 
 	llmSettings, err := settingsSvc.GetLLMSettings(context.Background())
@@ -133,14 +136,20 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	profileSvc := services.NewProfileService(candRepo)
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
+	applicationSvc := services.NewApplicationService(appRepo)
+	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 
 	return httpapi.Services{
-		Candidates: candRepo,
-		Onboarding: onboardingSvc,
-		Profile:    profileSvc,
-		Resume:     resumeSvc,
-		Discovery:  discoverySvc,
-		Matching:   matchingSvc,
-		Settings:   settingsSvc,
+		Candidates:  candRepo,
+		Onboarding:  onboardingSvc,
+		Profile:     profileSvc,
+		Resume:      resumeSvc,
+		Discovery:   discoverySvc,
+		Matching:    matchingSvc,
+		Settings:    settingsSvc,
+		Application: applicationSvc,
+		CoverLetter: coverLetterSvc,
+		Answers:     answerSvc,
 	}, nil
 }
