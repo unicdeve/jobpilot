@@ -1,6 +1,17 @@
 package sqlite
 
-import "encoding/json"
+import (
+	"database/sql"
+	"encoding/json"
+)
+
+// nullableString converts an empty Go string (the domain-layer zero value
+// for "not set") into a real SQL NULL, rather than storing an empty string
+// literal in a column that other rows may leave NULL (e.g. a nullable
+// foreign key like current_cover_letter_id).
+func nullableString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
+}
 
 // joinStrings encodes s as a JSON array for storage in a TEXT column.
 // Encoding a []string can never fail, so the error is safely ignored.
