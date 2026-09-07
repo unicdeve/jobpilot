@@ -1,5 +1,9 @@
 // Command jobpilot-cli is the JobPilot command-line interface: onboarding,
-// profile/resume management, job discovery, and match analysis.
+// profile/resume management, job discovery, and match analysis. It is a
+// thin client of the jobpilot daemon (see cmd/jobpilot), which owns the
+// database and every core service; this binary talks to it over the
+// loopback HTTP API in internal/adapters/primary/httpapi, starting it if
+// it isn't already running.
 package main
 
 import (
@@ -11,13 +15,9 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
+	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
 	"github.com/unicdev/jobpilot/internal/core/domain"
-	"github.com/unicdev/jobpilot/internal/core/ports"
-	"github.com/unicdev/jobpilot/internal/core/services"
 )
 
 func main() {
@@ -26,73 +26,36 @@ func main() {
 	// own error/usage printing so each error is reported exactly once.
 	var rootCmd = &cobra.Command{Use: "jobpilot-cli", SilenceUsage: true, SilenceErrors: true}
 
-	// Dependencies
-	dbPath, err := system.DefaultDBPath()
+	ctx := context.Background()
+
+	client, err := ensureDaemon(ctx)
 	if err != nil {
-		log.Fatalf("Error resolving database path: %v", err)
-	}
-	db, err := sqlite.NewDB(dbPath)
-	if err != nil {
-		log.Fatalf("Error opening database: %v", err)
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("error closing database: %v", err)
-		}
-	}()
-
-	// Migrations must run on every startup, not just during `onboard`:
-	// otherwise a database created before a schema change was added stays
-	// stale forever for any user who doesn't happen to re-run onboarding.
-	if err := db.InitializeSchema(context.Background()); err != nil {
-		log.Fatalf("Error initializing database schema: %v", err)
+		log.Fatalf("Error connecting to jobpilot daemon: %v", err)
 	}
 
-	candRepo := sqlite.NewCandidateRepository(db.Conn())
-	resRepo := sqlite.NewResumeRepository(db.Conn())
-	jobRepo := sqlite.NewJobRepository(db.Conn())
-	matchRepo := sqlite.NewMatchRepository(db.Conn())
-	settingsRepo := sqlite.NewSettingsRepository(db.Conn())
-	settingsSvc := services.NewSettingsService(settingsRepo)
-
-	llmSettings, err := settingsSvc.GetLLMSettings(context.Background())
+	llmSettings, err := client.GetLLMSettings(ctx)
 	if err != nil {
 		log.Fatalf("Error loading LLM settings: %v", err)
 	}
-	llmProv, err := llm.NewProvider(*llmSettings)
-	if err != nil {
-		log.Fatalf("Error configuring LLM provider: %v", err)
-	}
 	resolvedLLMSettings := llm.ResolveSettings(*llmSettings)
 
-	mockSource := discovery.NewMockJobSource()
-	sources := []ports.JobSource{mockSource}
-
-	resumeSvc := services.NewResumeService(resRepo, llmProv)
-	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, llmProv, db)
-	profileSvc := services.NewProfileService(candRepo)
-	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
-	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
-
-	rootCmd.AddCommand(newOnboardCmd(onboardingSvc, profileSvc, resolvedLLMSettings))
-	rootCmd.AddCommand(newProfileCmd(profileSvc, candRepo))
-	rootCmd.AddCommand(newResumeCmd(resumeSvc, candRepo, profileSvc))
-	rootCmd.AddCommand(newSearchCmd(discoverySvc))
-	rootCmd.AddCommand(newMatchCmd(matchingSvc, candRepo))
-	rootCmd.AddCommand(newSettingsCmd(settingsSvc))
+	rootCmd.AddCommand(newOnboardCmd(client, resolvedLLMSettings))
+	rootCmd.AddCommand(newProfileCmd(client))
+	rootCmd.AddCommand(newResumeCmd(client))
+	rootCmd.AddCommand(newSearchCmd(client))
+	rootCmd.AddCommand(newMatchCmd(client))
+	rootCmd.AddCommand(newSettingsCmd(client))
 
 	// This is the only place a command error is printed and turned into a
-	// non-zero exit code. Using RunE (rather than log.Fatalf/os.Exit inside
-	// a command's handler) means every error surfaces here, after this
-	// function's deferred db.Close() has already been registered and can
-	// still run on the way out.
+	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
+	// command's handler).
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.ProfileService, llmSettings domain.LLMSettings) *cobra.Command {
+func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "onboard",
 		Short: "Initialize a new JobPilot installation",
@@ -100,19 +63,15 @@ func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.Profile
 			ctx := context.Background()
 
 			fmt.Println("🚀 Starting onboarding...")
-			dir, err := system.EnsureDataDir()
+			dir, err := client.SetupEnvironment(ctx)
 			if err != nil {
-				return fmt.Errorf("initializing data directory: %w", err)
-			}
-			fmt.Printf("✅ Data directory initialized at: %s\n", dir)
-
-			if _, err := svc.SetupEnvironment(ctx); err != nil {
 				return fmt.Errorf("initializing schema: %w", err)
 			}
+			fmt.Printf("✅ Data directory initialized at: %s\n", dir)
 			fmt.Println("✅ Database schema initialized.")
 
 			fmt.Println("\n--- LLM Configuration ---")
-			if err := svc.ConfigureLLM(ctx); err != nil {
+			if err := client.ConfigureLLM(ctx); err != nil {
 				return fmt.Errorf("LLM connectivity check failed: %w (please ensure %s is running at %s, or run 'jobpilot-cli settings set-llm' to configure a different provider)",
 					err, llmSettings.Provider, llmSettings.BaseURL)
 			}
@@ -142,7 +101,7 @@ func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.Profile
 			}
 			profile.Location = location
 
-			if err := svc.InitializeProfile(ctx, &profile); err != nil {
+			if err := client.InitializeProfile(ctx, &profile); err != nil {
 				return fmt.Errorf("saving profile: %w", err)
 			}
 			fmt.Println("✅ Candidate profile created.")
@@ -155,12 +114,12 @@ func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.Profile
 			}
 
 			if resumePath != "" {
-				resume, err := svc.ProcessResume(ctx, profile.ID, resumePath)
+				resume, err := client.ImportResume(ctx, profile.ID, resumePath)
 				if err != nil {
 					fmt.Printf("❌ Error processing resume: %v\n", err)
 				} else {
 					fmt.Println("✅ Resume imported and converted successfully.")
-					suggestProfileFromResume(ctx, resume.MarkdownContent, &profile, svc.ProposeProfileDraft, profileSvc)
+					suggestProfileFromResume(ctx, client, resume.MarkdownContent, &profile)
 				}
 			}
 
@@ -170,20 +129,14 @@ func newOnboardCmd(svc *services.OnboardingService, profileSvc *services.Profile
 	}
 }
 
-// suggestProfileFromResume asks the LLM (via propose) to draft a Summary and
+// suggestProfileFromResume asks the daemon's LLM to draft a Summary and
 // Skills list from resumeMarkdown, shows the draft to the user for
-// review/edit, and persists whatever they accept via profileSvc. A resume
-// has already been imported successfully by the time this runs, so any
-// failure here (LLM unavailable, bad response, etc.) is reported as a
-// warning rather than an error — it must never undo or block the import.
-func suggestProfileFromResume(
-	ctx context.Context,
-	resumeMarkdown string,
-	profile *domain.Candidate,
-	propose func(context.Context, string) (*domain.ProfileDraft, error),
-	profileSvc *services.ProfileService,
-) {
-	draft, err := propose(ctx, resumeMarkdown)
+// review/edit, and persists whatever they accept. A resume has already been
+// imported successfully by the time this runs, so any failure here (LLM
+// unavailable, bad response, etc.) is reported as a warning rather than an
+// error — it must never undo or block the import.
+func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resumeMarkdown string, profile *domain.Candidate) {
+	draft, err := client.ProposeProfileDraft(ctx, resumeMarkdown)
 	if err != nil {
 		fmt.Printf("⚠️  Could not generate profile suggestions from resume: %v\n", err)
 		return
@@ -202,14 +155,14 @@ func suggestProfileFromResume(
 	updateField("Summary", draft.Summary, func(v string) { profile.Summary = v })
 	updateField("Skills", strings.Join(draft.Skills, ", "), func(v string) { profile.Skills = v })
 
-	if err := profileSvc.UpdateProfile(ctx, profile); err != nil {
+	if err := client.UpdateProfile(ctx, profile); err != nil {
 		fmt.Printf("⚠️  Could not save suggested profile updates: %v\n", err)
 		return
 	}
 	fmt.Println("✅ Profile updated with resume suggestions.")
 }
 
-func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository) *cobra.Command {
+func newProfileCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "profile", Short: "Manage candidate profile"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -217,7 +170,7 @@ func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository)
 		Short: "View current profile",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return err
 			}
@@ -232,7 +185,7 @@ func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository)
 		Short: "Update current profile",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return fmt.Errorf("no profile found, run 'onboard' first: %w", err)
 			}
@@ -259,7 +212,7 @@ func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository)
 			updateField("Work Authorization", profile.WorkAuthorization, func(v string) { profile.WorkAuthorization = v })
 			updateField("Application Preferences", profile.ApplicationPreferences, func(v string) { profile.ApplicationPreferences = v })
 
-			if err := svc.UpdateProfile(ctx, profile); err != nil {
+			if err := client.UpdateProfile(ctx, profile); err != nil {
 				return fmt.Errorf("updating profile: %w", err)
 			}
 			fmt.Println("✅ Profile updated successfully.")
@@ -270,7 +223,7 @@ func newProfileCmd(svc *services.ProfileService, repo ports.CandidateRepository)
 	return cmd
 }
 
-func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, profileSvc *services.ProfileService) *cobra.Command {
+func newResumeCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "resume", Short: "Manage resumes"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -281,18 +234,18 @@ func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, p
 			ctx := context.Background()
 			path := args[0]
 
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return fmt.Errorf("no candidate profile found, run 'onboard' first: %w", err)
 			}
 
-			resume, err := svc.ImportResume(ctx, profile.ID, path)
+			resume, err := client.ImportResume(ctx, profile.ID, path)
 			if err != nil {
 				return fmt.Errorf("importing resume: %w", err)
 			}
 			fmt.Printf("✅ Resume imported: %s (ID: %s)\n", resume.Name, resume.ID)
 
-			suggestProfileFromResume(ctx, resume.MarkdownContent, profile, svc.ProposeProfileDraft, profileSvc)
+			suggestProfileFromResume(ctx, client, resume.MarkdownContent, profile)
 			return nil
 		},
 	})
@@ -302,12 +255,12 @@ func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, p
 		Short: "List all imported resumes",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return fmt.Errorf("no candidate profile found: %w", err)
 			}
 
-			resumes, err := svc.GetResumesByCandidate(ctx, profile.ID)
+			resumes, err := client.ListResumes(ctx, profile.ID)
 			if err != nil {
 				return fmt.Errorf("listing resumes: %w", err)
 			}
@@ -333,7 +286,7 @@ func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, p
 			ctx := context.Background()
 			id := args[0]
 
-			if err := svc.DeleteResume(ctx, id); err != nil {
+			if err := client.DeleteResume(ctx, id); err != nil {
 				return fmt.Errorf("deleting resume: %w", err)
 			}
 			fmt.Println("✅ Resume deleted successfully.")
@@ -344,7 +297,7 @@ func newResumeCmd(svc *services.ResumeService, repo ports.CandidateRepository, p
 	return cmd
 }
 
-func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
+func newSearchCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "search", Short: "Discover jobs"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -359,7 +312,7 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 				Keywords: keywords,
 			}
 
-			jobs, err := svc.Search(ctx, criteria)
+			jobs, err := client.SearchJobs(ctx, criteria)
 			if err != nil {
 				return fmt.Errorf("searching for jobs: %w", err)
 			}
@@ -382,7 +335,7 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 		Short: "List all discovered jobs",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			jobs, err := svc.Search(ctx, domain.SearchCriteria{})
+			jobs, err := client.SearchJobs(ctx, domain.SearchCriteria{})
 			if err != nil {
 				return fmt.Errorf("listing jobs: %w", err)
 			}
@@ -408,7 +361,7 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 			ctx := context.Background()
 			url := args[0]
 
-			job, err := svc.ImportJob(ctx, url)
+			job, err := client.ImportJob(ctx, url)
 			if err != nil {
 				return fmt.Errorf("importing job: %w", err)
 			}
@@ -420,7 +373,7 @@ func newSearchCmd(svc *services.JobDiscoveryService) *cobra.Command {
 	return cmd
 }
 
-func newMatchCmd(svc *services.MatchingService, repo ports.CandidateRepository) *cobra.Command {
+func newMatchCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "match", Short: "Analyze job fit"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -431,12 +384,12 @@ func newMatchCmd(svc *services.MatchingService, repo ports.CandidateRepository) 
 			ctx := context.Background()
 			jobID := args[0]
 
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return fmt.Errorf("no candidate profile found, run 'onboard' first: %w", err)
 			}
 
-			match, err := svc.AnalyzeJobForCandidate(ctx, profile.ID, jobID)
+			match, err := client.AnalyzeMatch(ctx, profile.ID, jobID)
 			if err != nil {
 				return fmt.Errorf("analyzing job: %w", err)
 			}
@@ -460,12 +413,12 @@ func newMatchCmd(svc *services.MatchingService, repo ports.CandidateRepository) 
 		Short: "List all match analyses",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			profile, err := repo.GetFirstCandidate(ctx)
+			profile, err := client.GetProfile(ctx)
 			if err != nil {
 				return fmt.Errorf("no candidate profile found: %w", err)
 			}
 
-			matches, err := svc.ListMatches(ctx, profile.ID)
+			matches, err := client.ListMatches(ctx, profile.ID)
 			if err != nil {
 				return fmt.Errorf("listing matches: %w", err)
 			}
@@ -486,7 +439,7 @@ func newMatchCmd(svc *services.MatchingService, repo ports.CandidateRepository) 
 	return cmd
 }
 
-func newSettingsCmd(svc *services.SettingsService) *cobra.Command {
+func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "settings", Short: "Manage JobPilot settings"}
 
 	cmd.AddCommand(&cobra.Command{
@@ -494,7 +447,7 @@ func newSettingsCmd(svc *services.SettingsService) *cobra.Command {
 		Short: "Show the configured LLM provider and model",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			settings, err := svc.GetLLMSettings(ctx)
+			settings, err := client.GetLLMSettings(ctx)
 			if err != nil {
 				return fmt.Errorf("loading LLM settings: %w", err)
 			}
@@ -547,17 +500,12 @@ func newSettingsCmd(svc *services.SettingsService) *cobra.Command {
 			}
 
 			settings := domain.LLMSettings{Provider: preset.Key, BaseURL: baseURL, Model: model}
-			if err := svc.SaveLLMSettings(ctx, &settings); err != nil {
+			result, err := client.SaveLLMSettings(ctx, settings)
+			if err != nil {
 				return fmt.Errorf("saving LLM settings: %w", err)
 			}
-
-			provider, err := llm.NewProvider(settings)
-			if err != nil {
-				fmt.Printf("⚠️  Settings saved, but could not build provider: %v\n", err)
-				return nil
-			}
-			if err := provider.TestConnectivity(ctx); err != nil {
-				fmt.Printf("⚠️  Settings saved, but could not connect: %v\n", err)
+			if result.ConnectivityError != "" {
+				fmt.Printf("⚠️  Settings saved, but could not connect: %s\n", result.ConnectivityError)
 				return nil
 			}
 			fmt.Println("✅ Settings saved and verified.")
