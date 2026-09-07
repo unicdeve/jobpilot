@@ -1,0 +1,227 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/unicdev/jobpilot/internal/core/domain"
+)
+
+// Client is a thin HTTP client for the daemon's local API. It hides the
+// transport (loopback HTTP) behind method calls that mirror the core
+// services, so callers (currently cmd/jobpilot-cli) don't need to know
+// they're talking to a separate process.
+type Client struct {
+	baseURL    string
+	httpClient *http.Client
+}
+
+// NewClient constructs a Client targeting a daemon listening on port on
+// localhost.
+func NewClient(port int) *Client {
+	return &Client{
+		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		httpClient: &http.Client{Timeout: 60 * time.Second},
+	}
+}
+
+// Health reports whether the daemon is reachable and responding.
+func (c *Client) Health(ctx context.Context) error {
+	_, err := c.do(ctx, http.MethodGet, "/v1/health", nil, nil)
+	return err
+}
+
+// SetupEnvironment initializes the daemon's local storage and database.
+func (c *Client) SetupEnvironment(ctx context.Context) (string, error) {
+	var resp struct {
+		DataDir string `json:"data_dir"`
+	}
+	_, err := c.do(ctx, http.MethodPost, "/v1/onboarding/environment", nil, &resp)
+	return resp.DataDir, err
+}
+
+// ConfigureLLM checks connectivity to the daemon's configured LLM provider.
+func (c *Client) ConfigureLLM(ctx context.Context) error {
+	_, err := c.do(ctx, http.MethodPost, "/v1/onboarding/llm-check", nil, nil)
+	return err
+}
+
+// InitializeProfile creates the initial candidate profile. It mutates
+// profile in place with the server-assigned fields (e.g. ID), matching the
+// in-process OnboardingService.InitializeProfile behavior it replaces.
+func (c *Client) InitializeProfile(ctx context.Context, profile *domain.Candidate) error {
+	_, err := c.do(ctx, http.MethodPost, "/v1/onboarding/profile", profile, profile)
+	return err
+}
+
+// GetProfile returns the local candidate profile.
+func (c *Client) GetProfile(ctx context.Context) (*domain.Candidate, error) {
+	var profile domain.Candidate
+	_, err := c.do(ctx, http.MethodGet, "/v1/profile", nil, &profile)
+	if err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+// UpdateProfile persists changes to the candidate profile.
+func (c *Client) UpdateProfile(ctx context.Context, profile *domain.Candidate) error {
+	_, err := c.do(ctx, http.MethodPut, "/v1/profile", profile, profile)
+	return err
+}
+
+// ImportResume converts a local file at filePath to markdown and stores it
+// against candidateID.
+func (c *Client) ImportResume(ctx context.Context, candidateID, filePath string) (*domain.Resume, error) {
+	req := importResumeRequest{CandidateID: candidateID, FilePath: filePath}
+	var resume domain.Resume
+	_, err := c.do(ctx, http.MethodPost, "/v1/resumes", req, &resume)
+	if err != nil {
+		return nil, err
+	}
+	return &resume, nil
+}
+
+// ListResumes returns all resumes belonging to candidateID.
+func (c *Client) ListResumes(ctx context.Context, candidateID string) ([]*domain.Resume, error) {
+	var resumes []*domain.Resume
+	path := "/v1/resumes?" + url.Values{"candidate_id": {candidateID}}.Encode()
+	_, err := c.do(ctx, http.MethodGet, path, nil, &resumes)
+	return resumes, err
+}
+
+// DeleteResume removes a resume by ID.
+func (c *Client) DeleteResume(ctx context.Context, id string) error {
+	_, err := c.do(ctx, http.MethodDelete, "/v1/resumes/"+url.PathEscape(id), nil, nil)
+	return err
+}
+
+// ProposeProfileDraft asks the daemon's LLM to draft a Summary/Skills
+// suggestion from resumeMarkdown, for the caller to review before applying.
+func (c *Client) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
+	req := proposeDraftRequest{ResumeMarkdown: resumeMarkdown}
+	var draft domain.ProfileDraft
+	_, err := c.do(ctx, http.MethodPost, "/v1/resumes/propose-draft", req, &draft)
+	if err != nil {
+		return nil, err
+	}
+	return &draft, nil
+}
+
+// SearchJobs runs a job search against criteria.
+func (c *Client) SearchJobs(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
+	var jobs []*domain.Job
+	_, err := c.do(ctx, http.MethodPost, "/v1/jobs/search", criteria, &jobs)
+	return jobs, err
+}
+
+// ImportJob imports a specific job by URL.
+func (c *Client) ImportJob(ctx context.Context, jobURL string) (*domain.Job, error) {
+	req := importJobRequest{URL: jobURL}
+	var job domain.Job
+	_, err := c.do(ctx, http.MethodPost, "/v1/jobs/import", req, &job)
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// AnalyzeMatch runs a match analysis for candidateID against jobID.
+func (c *Client) AnalyzeMatch(ctx context.Context, candidateID, jobID string) (*domain.JobMatch, error) {
+	req := analyzeMatchRequest{CandidateID: candidateID, JobID: jobID}
+	var match domain.JobMatch
+	_, err := c.do(ctx, http.MethodPost, "/v1/matches/analyze", req, &match)
+	if err != nil {
+		return nil, err
+	}
+	return &match, nil
+}
+
+// ListMatches returns all match analyses for candidateID.
+func (c *Client) ListMatches(ctx context.Context, candidateID string) ([]*domain.JobMatch, error) {
+	var matches []*domain.JobMatch
+	path := "/v1/matches?" + url.Values{"candidate_id": {candidateID}}.Encode()
+	_, err := c.do(ctx, http.MethodGet, path, nil, &matches)
+	return matches, err
+}
+
+// GetLLMSettings returns the daemon's configured LLM backend.
+func (c *Client) GetLLMSettings(ctx context.Context) (*domain.LLMSettings, error) {
+	var settings domain.LLMSettings
+	_, err := c.do(ctx, http.MethodGet, "/v1/settings/llm", nil, &settings)
+	if err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
+// SaveLLMSettingsResult is the outcome of saving new LLM settings: the save
+// itself either succeeds or fails, but a subsequent connectivity check
+// against the new backend is reported separately and never fails the save.
+type SaveLLMSettingsResult struct {
+	Settings          domain.LLMSettings
+	ConnectivityError string
+}
+
+// SaveLLMSettings persists new LLM settings and reports whether the daemon
+// could connect to the newly configured backend.
+func (c *Client) SaveLLMSettings(ctx context.Context, settings domain.LLMSettings) (*SaveLLMSettingsResult, error) {
+	var resp saveLLMSettingsResponse
+	_, err := c.do(ctx, http.MethodPut, "/v1/settings/llm", settings, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &SaveLLMSettingsResult{Settings: resp.Settings, ConnectivityError: resp.ConnectivityError}, nil
+}
+
+// do sends an HTTP request to path with an optional JSON body, decodes a
+// JSON response into out (if non-nil), and turns a non-2xx response into a
+// Go error carrying the server's message.
+func (c *Client) do(ctx context.Context, method, path string, body, out any) (*http.Response, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode request: %w", err)
+		}
+		bodyReader = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach jobpilot daemon: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil && errBody.Error != "" {
+			return resp, fmt.Errorf("%s", errBody.Error)
+		}
+		return resp, fmt.Errorf("daemon returned status %d", resp.StatusCode)
+	}
+
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return resp, fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+
+	return resp, nil
+}
