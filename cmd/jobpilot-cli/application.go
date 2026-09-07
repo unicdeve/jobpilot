@@ -1,0 +1,306 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
+	"github.com/unicdev/jobpilot/internal/core/domain"
+)
+
+func newApplicationCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "application", Short: "Manage job applications"}
+
+	cmd.AddCommand(newApplicationCreateCmd(client))
+	cmd.AddCommand(newApplicationListCmd(client))
+	cmd.AddCommand(newApplicationShowCmd(client))
+	cmd.AddCommand(newApplicationTransitionCmd(client))
+	cmd.AddCommand(newCoverLetterCmd(client))
+	cmd.AddCommand(newQuestionCmd(client))
+
+	return cmd
+}
+
+func newApplicationCreateCmd(client *httpapi.Client) *cobra.Command {
+	var resumeID, mode string
+
+	cmd := &cobra.Command{
+		Use:   "create [job-id]",
+		Short: "Start tracking an application to a job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			jobID := args[0]
+
+			profile, err := client.GetProfile(ctx)
+			if err != nil {
+				return fmt.Errorf("no candidate profile found, run 'onboard' first: %w", err)
+			}
+
+			app, err := client.CreateApplication(ctx, jobID, profile.ID, resumeID, domain.ApplicationMode(mode))
+			if err != nil {
+				return fmt.Errorf("creating application: %w", err)
+			}
+			fmt.Printf("✅ Application created: %s (state: %s)\n", app.ID, app.State)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&resumeID, "resume", "", "resume ID to associate with this application")
+	cmd.Flags().StringVar(&mode, "mode", string(domain.ApplicationModeReview), "application mode (assist|review|autopilot)")
+	return cmd
+}
+
+func newApplicationListCmd(client *httpapi.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all applications",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			profile, err := client.GetProfile(ctx)
+			if err != nil {
+				return fmt.Errorf("no candidate profile found: %w", err)
+			}
+
+			apps, err := client.ListApplications(ctx, profile.ID)
+			if err != nil {
+				return fmt.Errorf("listing applications: %w", err)
+			}
+
+			if len(apps) == 0 {
+				fmt.Println("No applications yet.")
+				return nil
+			}
+
+			fmt.Println("Applications:")
+			for i, a := range apps {
+				fmt.Printf("%d. %s | job %s | state %s | mode %s\n", i+1, a.ID, a.JobID, a.State, a.Mode)
+			}
+			return nil
+		},
+	}
+}
+
+func newApplicationShowCmd(client *httpapi.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [application-id]",
+		Short: "Show an application's state, history, cover letter, and questions",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			id := args[0]
+
+			app, err := client.GetApplication(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching application: %w", err)
+			}
+			fmt.Printf("Application %s\nJob: %s\nState: %s\nMode: %s\n", app.ID, app.JobID, app.State, app.Mode)
+
+			history, err := client.ListApplicationHistory(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching history: %w", err)
+			}
+			if len(history) > 0 {
+				fmt.Println("\nHistory:")
+				for _, h := range history {
+					fmt.Printf("- %s -> %s (%s)\n", h.FromState, h.ToState, h.Reason)
+				}
+			}
+
+			versions, err := client.ListCoverLetterVersions(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching cover letters: %w", err)
+			}
+			if len(versions) > 0 {
+				fmt.Printf("\nCover letters (%d version(s)):\n", len(versions))
+				for _, v := range versions {
+					current := ""
+					if v.ID == app.CurrentCoverLetterID {
+						current = " (current)"
+					}
+					fmt.Printf("- %s%s\n", v.ID, current)
+				}
+			}
+
+			questions, err := client.ListQuestions(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching questions: %w", err)
+			}
+			if len(questions) > 0 {
+				fmt.Println("\nQuestions:")
+				for _, q := range questions {
+					fmt.Printf("- [%s] %s -> %q (category: %s)\n", q.ID, q.Label, q.Answer, q.Category)
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func newApplicationTransitionCmd(client *httpapi.Client) *cobra.Command {
+	var reason string
+
+	cmd := &cobra.Command{
+		Use:   "transition [application-id] [to-state]",
+		Short: "Move an application to a new state",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			id := args[0]
+			toState := domain.ApplicationState(strings.ToUpper(args[1]))
+
+			app, err := client.TransitionApplication(ctx, id, toState, reason)
+			if err != nil {
+				return fmt.Errorf("transitioning application: %w", err)
+			}
+			fmt.Printf("✅ Application %s is now %s\n", app.ID, app.State)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "reason for this transition")
+	return cmd
+}
+
+func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "cover-letter", Short: "Manage an application's cover letter"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "generate [application-id]",
+		Short: "Generate (or regenerate) a cover letter for an application",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			coverLetter, err := client.GenerateCoverLetter(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("generating cover letter: %w", err)
+			}
+			fmt.Printf("✅ Cover letter generated (ID: %s):\n\n%s\n", coverLetter.ID, coverLetter.Content)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list [application-id]",
+		Short: "List every cover letter version generated for an application",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			versions, err := client.ListCoverLetterVersions(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("listing cover letter versions: %w", err)
+			}
+			if len(versions) == 0 {
+				fmt.Println("No cover letters generated yet.")
+				return nil
+			}
+			for i, v := range versions {
+				edited := ""
+				if v.UserEdited {
+					edited = " (edited)"
+				}
+				fmt.Printf("%d. %s%s\n%s\n\n", i+1, v.ID, edited, v.Content)
+			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "edit [cover-letter-id] [content]",
+		Short: "Replace a cover letter version's content",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			coverLetter, err := client.EditCoverLetter(ctx, args[0], args[1])
+			if err != nil {
+				return fmt.Errorf("editing cover letter: %w", err)
+			}
+			fmt.Printf("✅ Cover letter %s updated.\n", coverLetter.ID)
+			return nil
+		},
+	})
+
+	return cmd
+}
+
+func newQuestionCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "question", Short: "Manage an application's questions and answers"}
+
+	var questionType string
+	var required bool
+	addCmd := &cobra.Command{
+		Use:   "add [application-id] [label]",
+		Short: "Add a question to an application",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			question, err := client.AddQuestion(ctx, args[0], args[1], domain.QuestionType(questionType), required)
+			if err != nil {
+				return fmt.Errorf("adding question: %w", err)
+			}
+			fmt.Printf("✅ Question added: %s\n", question.ID)
+			return nil
+		},
+	}
+	addCmd.Flags().StringVar(&questionType, "type", string(domain.QuestionTypeFactual), "question type (factual|narrative)")
+	addCmd.Flags().BoolVar(&required, "required", false, "whether this question is required")
+	cmd.AddCommand(addCmd)
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "resolve [question-id]",
+		Short: "Attempt to resolve a question's answer automatically",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			question, err := client.ResolveQuestion(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("resolving question: %w", err)
+			}
+			if question.Category == domain.AnswerCategoryNeedsUserInput {
+				fmt.Printf("⚠️  Could not resolve automatically: %s\nRun 'application question answer %s <answer>' to supply one.\n", question.Label, question.ID)
+				return nil
+			}
+			fmt.Printf("✅ Resolved (%s): %s\n", question.Category, question.Answer)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "answer [question-id] [answer]",
+		Short: "Manually set (or override) a question's answer",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			question, err := client.SetQuestionAnswer(ctx, args[0], args[1])
+			if err != nil {
+				return fmt.Errorf("setting answer: %w", err)
+			}
+			fmt.Printf("✅ Answer saved for question %s\n", question.ID)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list [application-id]",
+		Short: "List every question on an application",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			questions, err := client.ListQuestions(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("listing questions: %w", err)
+			}
+			if len(questions) == 0 {
+				fmt.Println("No questions added yet.")
+				return nil
+			}
+			for i, q := range questions {
+				fmt.Printf("%d. [%s] %s -> %q (category: %s, status: %s)\n", i+1, q.ID, q.Label, q.Answer, q.Category, q.Status)
+			}
+			return nil
+		},
+	})
+
+	return cmd
+}
