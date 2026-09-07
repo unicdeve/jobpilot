@@ -19,12 +19,16 @@ The daemon is not required to run permanently.
 
 Supported lifecycle patterns:
 
-1. CLI command starts a short-lived process when appropriate.
+1. CLI command starts a short-lived process when appropriate. Implemented:
+   `cmd/jobpilot-cli` auto-starts `cmd/jobpilot` as a detached process if none
+   is reachable (see `docs/09_decisions/0012-loopback-http-ipc.md`).
 2. Desktop application starts/communicates with a local daemon when needed.
 3. OS scheduler starts the daemon for scheduled discovery.
 4. Optional user-configured startup integration can launch the daemon/UI on login.
 
-The daemon should exit cleanly when there is no work and no reason to remain alive.
+The daemon should exit cleanly when there is no work and no reason to remain
+alive. Auto-exit on idle is not yet implemented — today the daemon only
+stops on an explicit signal (`SIGINT`/`SIGTERM`).
 
 ## Concurrency
 

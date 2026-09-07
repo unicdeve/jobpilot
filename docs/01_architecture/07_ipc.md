@@ -8,13 +8,14 @@
 - Does not require a cloud service.
 - Supports structured requests and events.
 
-## Initial direction
+## Decision
 
-Use a local API/IPC boundary between UI/CLI and daemon. The exact transport should be chosen during Phase 0 based on Tauri integration, cross-platform behavior, and simplicity.
+Local HTTP over loopback (`127.0.0.1`, OS-assigned ephemeral port), with the
+daemon publishing its port via a discovery file in the application data
+directory. See `docs/09_decisions/0012-loopback-http-ipc.md` for the
+rationale (chosen over Unix domain sockets/named pipes for cross-platform
+simplicity with no new dependency) and consequences.
 
-Candidates include:
-- local HTTP over loopback
-- Unix domain sockets where supported
-- named pipes on Windows
-
-The implementation should hide the transport behind a client interface.
+The transport is hidden behind a client interface:
+`internal/adapters/primary/httpapi.Client`. The daemon's handler lives in the
+same package.
