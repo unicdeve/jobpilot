@@ -43,11 +43,14 @@ started.
   custom OpenAI-compatible endpoint, with a manually-entered model name;
   persisted in SQLite's `user_settings` table. A single active provider
   configuration is supported, per `docs/01_architecture/05_llm.md`.
+- Automated test suite (Phase 0 "Test infrastructure"): unit tests for
+  `internal/core/services` (fakes, no I/O) and pure-logic helpers, plus
+  integration tests (`-tags=integration`) for the SQLite repositories
+  (against a real temp-file database) and the LLM provider adapters
+  (against a fake HTTP server), per `docs/08_development/testing.md`.
 
 ## Known gaps within Phases 0–3
 
-- No automated test suite anywhere in the repo (Phase 0 "Test
-  infrastructure" not started).
 - No settings/configuration system beyond LLM provider/model
   (`docs/02_features/13_settings.md` — other categories like prompt
   customization, search preferences, and notifications are unimplemented).
@@ -60,10 +63,8 @@ started.
 
 ## Next
 
-1. Add core test coverage (services and repository adapters) to close the
-   Phase 0 gap before building further.
-2. Begin Phase 4 (application generation): application schema, cover letter
+1. Begin Phase 4 (application generation): application schema, cover letter
    generation, application answers.
-3. Longer-term: real job-board connectors (Phase 2 completion), remaining
+2. Longer-term: real job-board connectors (Phase 2 completion), remaining
    Settings categories (prompt customization, search preferences,
    notifications, data retention), Desktop app (Phase 5).

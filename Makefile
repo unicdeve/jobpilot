@@ -9,7 +9,8 @@ CLI_BINARY_NAME=jobpilot-cli
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build clean run fmt fmt-check vet lint tidy test check \
+.PHONY: all build clean run fmt fmt-check vet vet-integration lint lint-integration \
+	tidy test test-integration check \
 	migrate-up migrate-down migrate-create migrate-status
 
 all: build
@@ -54,14 +55,30 @@ fmt-check:
 vet:
 	go vet ./...
 
+vet-integration:
+	go vet -tags=integration ./...
+
 lint:
 	golangci-lint run ./...
+
+# Integration-tagged test files (see docs/08_development/testing.md) are
+# invisible to golangci-lint without this flag.
+lint-integration:
+	golangci-lint run --build-tags=integration ./...
 
 tidy:
 	go mod tidy
 
+# Fast unit tests only (internal/core/services, plus pure-logic files like
+# sqlite/utils.go and llm/presets.go). No real DB or network I/O.
 test:
-	go test ./...
+	go test -v ./...
+
+# Integration tests: SQLite repositories against a real temp-file database,
+# LLM provider adapters against a fake HTTP server. See
+# docs/08_development/testing.md.
+test-integration:
+	go test -race -tags=integration ./...
 
 # Formatting/linting/static checks + tests passing, per docs/08_development/definition_of_done.md.
-check: fmt-check vet lint test
+check: fmt-check vet vet-integration lint lint-integration test test-integration
