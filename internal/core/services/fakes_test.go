@@ -297,6 +297,174 @@ func (f *fakeLLMProvider) Provider() string {
 	return f.providerName
 }
 
+// fakeApplicationRepository is an in-memory ports.ApplicationRepository for
+// tests.
+type fakeApplicationRepository struct {
+	applications  map[string]*domain.Application
+	transitions   map[string][]*domain.ApplicationStateTransition
+	saveErr       error
+	transitionErr error
+}
+
+func newFakeApplicationRepository() *fakeApplicationRepository {
+	return &fakeApplicationRepository{
+		applications: map[string]*domain.Application{},
+		transitions:  map[string][]*domain.ApplicationStateTransition{},
+	}
+}
+
+func (f *fakeApplicationRepository) Save(_ context.Context, a *domain.Application) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if a.ID == "" {
+		a.ID = fmt.Sprintf("app-%d", len(f.applications)+1)
+	}
+	f.applications[a.ID] = a
+	return nil
+}
+
+func (f *fakeApplicationRepository) GetByID(_ context.Context, id string) (*domain.Application, error) {
+	a, ok := f.applications[id]
+	if !ok {
+		return nil, fmt.Errorf("application not found: %s", id)
+	}
+	return a, nil
+}
+
+func (f *fakeApplicationRepository) Update(_ context.Context, a *domain.Application) error {
+	f.applications[a.ID] = a
+	return nil
+}
+
+func (f *fakeApplicationRepository) ListByCandidate(_ context.Context, candidateID string) ([]*domain.Application, error) {
+	var out []*domain.Application
+	for _, a := range f.applications {
+		if a.CandidateID == candidateID {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeApplicationRepository) Delete(_ context.Context, id string) error {
+	delete(f.applications, id)
+	return nil
+}
+
+func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicationID string, from, to domain.ApplicationState, reason string) error {
+	if f.transitionErr != nil {
+		return f.transitionErr
+	}
+	a, ok := f.applications[applicationID]
+	if !ok {
+		return fmt.Errorf("application not found: %s", applicationID)
+	}
+	if a.State != from {
+		return fmt.Errorf("application %s is not currently in state %s", applicationID, from)
+	}
+	a.State = to
+	f.transitions[applicationID] = append(f.transitions[applicationID], &domain.ApplicationStateTransition{
+		ApplicationID: applicationID, FromState: from, ToState: to, Reason: reason,
+	})
+	return nil
+}
+
+func (f *fakeApplicationRepository) ListStateTransitions(_ context.Context, applicationID string) ([]*domain.ApplicationStateTransition, error) {
+	return f.transitions[applicationID], nil
+}
+
+// fakeCoverLetterRepository is an in-memory ports.CoverLetterRepository for
+// tests.
+type fakeCoverLetterRepository struct {
+	letters map[string]*domain.CoverLetter
+	saveErr error
+}
+
+func newFakeCoverLetterRepository() *fakeCoverLetterRepository {
+	return &fakeCoverLetterRepository{letters: map[string]*domain.CoverLetter{}}
+}
+
+func (f *fakeCoverLetterRepository) Save(_ context.Context, c *domain.CoverLetter) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if c.ID == "" {
+		c.ID = fmt.Sprintf("cl-%d", len(f.letters)+1)
+	}
+	f.letters[c.ID] = c
+	return nil
+}
+
+func (f *fakeCoverLetterRepository) GetByID(_ context.Context, id string) (*domain.CoverLetter, error) {
+	c, ok := f.letters[id]
+	if !ok {
+		return nil, fmt.Errorf("cover letter not found: %s", id)
+	}
+	return c, nil
+}
+
+func (f *fakeCoverLetterRepository) Update(_ context.Context, c *domain.CoverLetter) error {
+	f.letters[c.ID] = c
+	return nil
+}
+
+func (f *fakeCoverLetterRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.CoverLetter, error) {
+	var out []*domain.CoverLetter
+	for _, c := range f.letters {
+		if c.ApplicationID == applicationID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// fakeApplicationQuestionRepository is an in-memory
+// ports.ApplicationQuestionRepository for tests.
+type fakeApplicationQuestionRepository struct {
+	questions map[string]*domain.ApplicationQuestion
+}
+
+func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
+	return &fakeApplicationQuestionRepository{questions: map[string]*domain.ApplicationQuestion{}}
+}
+
+func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.ApplicationQuestion) error {
+	if q.ID == "" {
+		q.ID = fmt.Sprintf("q-%d", len(f.questions)+1)
+	}
+	f.questions[q.ID] = q
+	return nil
+}
+
+func (f *fakeApplicationQuestionRepository) GetByID(_ context.Context, id string) (*domain.ApplicationQuestion, error) {
+	q, ok := f.questions[id]
+	if !ok {
+		return nil, fmt.Errorf("application question not found: %s", id)
+	}
+	return q, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Update(_ context.Context, q *domain.ApplicationQuestion) error {
+	f.questions[q.ID] = q
+	return nil
+}
+
+func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.ApplicationQuestion, error) {
+	var out []*domain.ApplicationQuestion
+	for _, q := range f.questions {
+		if q.ApplicationID == applicationID {
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
+	delete(f.questions, id)
+	return nil
+}
+
 // fakeJobSource is a ports.JobSource test double.
 type fakeJobSource struct {
 	id           string

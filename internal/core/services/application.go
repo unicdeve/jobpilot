@@ -1,0 +1,115 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"slices"
+
+	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
+)
+
+// allowedTransitions is the application state machine
+// (docs/02_features/08_applications.md): an explicit, deterministic rule
+// table, never delegated to the LLM (AGENTS.md: "deterministic business
+// rules must not be delegated to an LLM"). SUBMITTED is reachable only from
+// APPROVED, and only through TransitionState below, so an application can
+// never be marked submitted as a side effect of anything else.
+var allowedTransitions = map[domain.ApplicationState][]domain.ApplicationState{
+	domain.ApplicationStateDiscovered:     {domain.ApplicationStateMatched, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
+	domain.ApplicationStateMatched:        {domain.ApplicationStatePreparing, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
+	domain.ApplicationStatePreparing:      {domain.ApplicationStateReadyForReview, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
+	domain.ApplicationStateReadyForReview: {domain.ApplicationStateApproved, domain.ApplicationStateRejected, domain.ApplicationStateWithdrawn},
+	domain.ApplicationStateApproved:       {domain.ApplicationStateSubmitted, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
+	domain.ApplicationStateSubmitted:      {domain.ApplicationStateRejected},
+	domain.ApplicationStateRejected:       {},
+	domain.ApplicationStateWithdrawn:      {},
+	domain.ApplicationStateFailed:         {domain.ApplicationStatePreparing},
+}
+
+// ApplicationService manages an application's lifecycle: creation and
+// validated state transitions.
+type ApplicationService struct {
+	repo ports.ApplicationRepository
+}
+
+// NewApplicationService constructs an ApplicationService backed by the
+// given application repository.
+func NewApplicationService(repo ports.ApplicationRepository) *ApplicationService {
+	return &ApplicationService{repo: repo}
+}
+
+// CreateApplication starts tracking a candidate's application to a job, in
+// the initial DISCOVERED state. resumeID may be empty if no resume has been
+// chosen yet.
+func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
+	if mode == "" {
+		mode = domain.ApplicationModeReview
+	}
+
+	application := &domain.Application{
+		JobID:       jobID,
+		CandidateID: candidateID,
+		ResumeID:    resumeID,
+		Mode:        mode,
+		State:       domain.ApplicationStateDiscovered,
+	}
+
+	if err := s.repo.Save(ctx, application); err != nil {
+		return nil, fmt.Errorf("failed to create application: %w", err)
+	}
+
+	return application, nil
+}
+
+// GetApplication retrieves an application by ID.
+func (s *ApplicationService) GetApplication(ctx context.Context, id string) (*domain.Application, error) {
+	application, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get application: %w", err)
+	}
+	return application, nil
+}
+
+// ListApplications retrieves all applications for a candidate.
+func (s *ApplicationService) ListApplications(ctx context.Context, candidateID string) ([]*domain.Application, error) {
+	applications, err := s.repo.ListByCandidate(ctx, candidateID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list applications: %w", err)
+	}
+	return applications, nil
+}
+
+// ListHistory retrieves the durable state-transition history for an
+// application (docs/02_features/08_applications.md AC-003).
+func (s *ApplicationService) ListHistory(ctx context.Context, applicationID string) ([]*domain.ApplicationStateTransition, error) {
+	history, err := s.repo.ListStateTransitions(ctx, applicationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list application history: %w", err)
+	}
+	return history, nil
+}
+
+// TransitionState moves an application to a new state, after validating
+// that the transition is allowed from its current state (AC-001/AC-002).
+func (s *ApplicationService) TransitionState(ctx context.Context, applicationID string, to domain.ApplicationState, reason string) (*domain.Application, error) {
+	application, err := s.repo.GetByID(ctx, applicationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get application: %w", err)
+	}
+
+	if !isTransitionAllowed(application.State, to) {
+		return nil, fmt.Errorf("cannot transition application from %s to %s", application.State, to)
+	}
+
+	if err := s.repo.TransitionState(ctx, applicationID, application.State, to, reason); err != nil {
+		return nil, fmt.Errorf("failed to transition application state: %w", err)
+	}
+
+	application.State = to
+	return application, nil
+}
+
+func isTransitionAllowed(from, to domain.ApplicationState) bool {
+	return slices.Contains(allowedTransitions[from], to)
+}
