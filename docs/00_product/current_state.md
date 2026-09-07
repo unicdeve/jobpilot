@@ -2,10 +2,10 @@
 
 ## Phase
 
-Roadmap Phases 0–3 (`docs/00_product/roadmap.md`) are substantially
-implemented — foundation, candidate profile, job discovery, and matching —
-with explicit gaps noted below. Phase 4 (application generation) has not
-started.
+Roadmap Phases 0–4 (`docs/00_product/roadmap.md`) are substantially
+implemented — foundation, candidate profile, job discovery, matching, and
+application generation — with explicit gaps noted below. Phase 5 (Desktop)
+has not started.
 
 ## Implemented
 
@@ -58,15 +58,27 @@ started.
   through Phase 3 and the client/daemon architecture described in
   `docs/01_architecture/00_overview.md` and `07_ipc.md`.
 - Application schema (`internal/adapters/secondary/sqlite/migrations/00002_application_schema.sql`):
-  revises the Phase-0-era `applications`/`application_questions` tables
-  ahead of Phase 4 feature work — versioned `cover_letters` (replacing a
-  single mutable column, so regeneration keeps history), a durable
-  `application_state_transitions` table, and an answer `category` column
-  matching the four-category resolver in
-  `docs/02_features/07_application_answers.md`. No domain/service/repository
-  code uses these tables yet; that is the actual Phase 4 feature work.
+  revised the Phase-0-era `applications`/`application_questions` tables —
+  versioned `cover_letters` (replacing a single mutable column, so
+  regeneration keeps history), a durable `application_state_transitions`
+  table, and an answer `category` column matching the four-category
+  resolver in `docs/02_features/07_application_answers.md`.
+- Application generation (Phase 4, `jobpilot-cli application ...`):
+  `ApplicationService` enforces a validated state machine
+  (`docs/02_features/08_applications.md`) as an explicit Go rule table, with
+  `SUBMITTED` reachable only from `APPROVED` through one explicit call.
+  `CoverLetterService` generates cover letters grounded in the candidate
+  profile and (if chosen) resume, with the job description wrapped as
+  untrusted content the same way job matching already does; each
+  generate/regenerate call creates a new version rather than overwriting the
+  previous one, and versions are user-editable. `AnswerService` resolves
+  application questions through an explicit four-step chain (exact profile
+  fact → one deterministic derivation rule → LLM generation for narrative
+  questions only → left for the user) — an unresolved factual question
+  structurally never reaches the LLM, per
+  `docs/02_features/07_application_answers.md` AC-003.
 
-## Known gaps within Phases 0–3
+## Known gaps within Phases 0–4
 
 - No settings/configuration system beyond LLM provider/model
   (`docs/02_features/13_settings.md` — other categories like prompt
@@ -85,17 +97,28 @@ started.
   yet for prompt customization or notifications. This deviation from the
   architecture doc is undocumented in an ADR and unaddressed so far.
 - The LLM provider abstraction (`internal/core/ports/llm.go`) has no
-  schema-constrained structured output support: matching and profile-draft
-  generation rely on prompt instructions plus post-hoc JSON parsing, not
-  provider-level schema constraints, despite `docs/01_architecture/05_llm.md`
-  preferring the latter where supported.
+  schema-constrained structured output support: matching, profile-draft, and
+  cover-letter/answer generation all rely on prompt instructions plus
+  post-hoc parsing, not provider-level schema constraints, despite
+  `docs/01_architecture/05_llm.md` preferring the latter where supported.
+- Application questions have no source but manual CLI entry
+  (`application question add`): there is no form-extraction yet (Phase 6,
+  browser automation, is post-MVP), so `docs/02_features/07_application_answers.md`
+  can only be exercised against hand-entered questions for now.
+- `AnswerService`'s deterministic-derivation step is intentionally a single
+  rule (remote-work preference) rather than a general capability — e.g.
+  computed years of experience isn't derivable because `Candidate.Experiences`
+  is an unstructured text blob, not structured dates (the same normalization
+  gap noted above).
+- No browser automation (Phase 6) or policy engine (Phase 8) integration for
+  applications yet — state transitions are user/CLI-driven, not
+  autopilot-evaluated.
 
 ## Next
 
-1. Begin Phase 4 (application generation): application domain
-   types/repository/service, cover letter generation, application answers —
-   building on the revised schema above.
-2. Longer-term: real job-board connectors (Phase 2 completion), remaining
-   Settings categories (prompt customization, search preferences,
-   notifications, data retention), Desktop app (Phase 5), and the two
-   undocumented gaps above (entity normalization, structured LLM output).
+1. Real job-board connectors (Phase 2 completion), remaining Settings
+   categories (prompt customization, search preferences, notifications,
+   data retention), Desktop app (Phase 5).
+2. The undocumented gaps above (entity normalization, structured LLM
+   output) and the application-generation gaps just noted (question
+   sourcing, richer derivation) once their preconditions land.
