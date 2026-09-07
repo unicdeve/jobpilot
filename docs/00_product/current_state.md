@@ -48,6 +48,23 @@ started.
   integration tests (`-tags=integration`) for the SQLite repositories
   (against a real temp-file database) and the LLM provider adapters
   (against a fake HTTP server), per `docs/08_development/testing.md`.
+- Daemon/IPC boundary (`docs/09_decisions/0012-loopback-http-ipc.md`):
+  `cmd/jobpilot` is a real process that owns the database and every core
+  service, exposed as JSON over loopback HTTP
+  (`internal/adapters/primary/httpapi`). `cmd/jobpilot-cli` no longer opens
+  SQLite or wires services directly — it is a thin client that auto-starts
+  the daemon (via a discovery file in the data directory) if none is
+  reachable. This closes the gap between the CLI-direct wiring that existed
+  through Phase 3 and the client/daemon architecture described in
+  `docs/01_architecture/00_overview.md` and `07_ipc.md`.
+- Application schema (`internal/adapters/secondary/sqlite/migrations/00002_application_schema.sql`):
+  revises the Phase-0-era `applications`/`application_questions` tables
+  ahead of Phase 4 feature work — versioned `cover_letters` (replacing a
+  single mutable column, so regeneration keeps history), a durable
+  `application_state_transitions` table, and an answer `category` column
+  matching the four-category resolver in
+  `docs/02_features/07_application_answers.md`. No domain/service/repository
+  code uses these tables yet; that is the actual Phase 4 feature work.
 
 ## Known gaps within Phases 0–3
 
@@ -58,13 +75,27 @@ started.
   for development.
 - No persisted search-history feature (Phase 2).
 - No user-configurable prompt customization for matching (Phase 3).
-- `cmd/jobpilot` (the daemon) is still a stub, and the Desktop app (Phase 5)
-  hasn't started — everything above is CLI-only.
+- The Desktop app (Phase 5) hasn't started; the daemon/IPC layer it depends
+  on is now implemented (see above), but only the CLI uses it so far.
+- Some core entities from `docs/01_architecture/04_database.md`
+  (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
+  `Prompt`, `Notification`) are not separate tables — candidate
+  skills/experience/education are JSON-blob columns on `candidates`, jobs
+  reference their source only by free-text ID, and there is no schema home
+  yet for prompt customization or notifications. This deviation from the
+  architecture doc is undocumented in an ADR and unaddressed so far.
+- The LLM provider abstraction (`internal/core/ports/llm.go`) has no
+  schema-constrained structured output support: matching and profile-draft
+  generation rely on prompt instructions plus post-hoc JSON parsing, not
+  provider-level schema constraints, despite `docs/01_architecture/05_llm.md`
+  preferring the latter where supported.
 
 ## Next
 
-1. Begin Phase 4 (application generation): application schema, cover letter
-   generation, application answers.
+1. Begin Phase 4 (application generation): application domain
+   types/repository/service, cover letter generation, application answers —
+   building on the revised schema above.
 2. Longer-term: real job-board connectors (Phase 2 completion), remaining
    Settings categories (prompt customization, search preferences,
-   notifications, data retention), Desktop app (Phase 5).
+   notifications, data retention), Desktop app (Phase 5), and the two
+   undocumented gaps above (entity normalization, structured LLM output).

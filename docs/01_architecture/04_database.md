@@ -29,6 +29,8 @@ SQLite.
 - Application
 - ApplicationQuestion
 - ApplicationAnswer
+- CoverLetter (versioned; an Application references its current one)
+- ApplicationStateTransition (durable history of Application state changes)
 - AgentRun
 - AgentEvent
 - Prompt
