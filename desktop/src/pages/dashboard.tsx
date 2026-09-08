@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardTitle } from "../components/ui/card";
 import { useApi } from "../lib/daemon";
 import type { Application, ApplicationState } from "../lib/types";
 
@@ -54,28 +54,36 @@ export function Dashboard() {
       <h1 className="mb-4 text-xl font-semibold">Dashboard</h1>
       <div className="grid grid-cols-3 gap-4">
         <Card>
-          <CardTitle>Jobs discovered</CardTitle>
-          <p className="mt-2 text-3xl font-semibold">{counts.jobs}</p>
+          <CardContent>
+            <CardTitle>Jobs discovered</CardTitle>
+            <p className="mt-2 text-3xl font-semibold">{counts.jobs}</p>
+          </CardContent>
         </Card>
         <Card>
-          <CardTitle>Matches analyzed</CardTitle>
-          <p className="mt-2 text-3xl font-semibold">{counts.matches}</p>
+          <CardContent>
+            <CardTitle>Matches analyzed</CardTitle>
+            <p className="mt-2 text-3xl font-semibold">{counts.matches}</p>
+          </CardContent>
         </Card>
         <Card>
-          <CardTitle>Applications</CardTitle>
-          <p className="mt-2 text-3xl font-semibold">{counts.applications}</p>
+          <CardContent>
+            <CardTitle>Applications</CardTitle>
+            <p className="mt-2 text-3xl font-semibold">{counts.applications}</p>
+          </CardContent>
         </Card>
       </div>
       {Object.keys(counts.byState).length > 0 && (
         <Card className="mt-4">
-          <CardTitle>Applications by state</CardTitle>
-          <div className="mt-2 flex flex-wrap gap-3 text-sm">
-            {Object.entries(counts.byState).map(([state, count]) => (
-              <span key={state}>
-                {state}: <strong>{count}</strong>
-              </span>
-            ))}
-          </div>
+          <CardContent>
+            <CardTitle>Applications by state</CardTitle>
+            <div className="mt-2 flex flex-wrap gap-3 text-sm">
+              {Object.entries(counts.byState).map(([state, count]) => (
+                <span key={state}>
+                  {state}: <strong>{count}</strong>
+                </span>
+              ))}
+            </div>
+          </CardContent>
         </Card>
       )}
     </div>

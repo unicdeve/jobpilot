@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
+import { FormField } from "../components/form-field";
 import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
-import { FormField, Input } from "../components/ui/field";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type { LLMSettings } from "../lib/types";
@@ -49,34 +57,40 @@ export function Settings() {
   return (
     <div className="max-w-lg">
       <h1 className="mb-4 text-xl font-semibold">Settings</h1>
-      <Card className="space-y-4">
-        <FormField label="LLM provider" htmlFor="provider">
-          <select
-            id="provider"
-            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-            value={settings.provider || "ollama"}
-            onChange={(e) => {
-              const preset = presets.find((p) => p.key === e.target.value);
-              set("provider", e.target.value);
-              if (preset && !settings.base_url) set("base_url", preset.defaultBaseUrl);
-            }}
-          >
-            {presets.map((p) => (
-              <option key={p.key} value={p.key}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="Base URL" htmlFor="base_url">
-          <Input id="base_url" value={settings.base_url} onChange={(e) => set("base_url", e.target.value)} />
-        </FormField>
-        <FormField label="Model" htmlFor="model">
-          <Input id="model" value={settings.model} onChange={(e) => set("model", e.target.value)} />
-        </FormField>
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
+      <Card>
+        <CardContent className="space-y-4">
+          <FormField label="LLM provider" htmlFor="provider">
+            <Select
+              value={settings.provider || "ollama"}
+              onValueChange={(value) => {
+                if (value === null) return;
+                const preset = presets.find((p) => p.key === value);
+                set("provider", value);
+                if (preset && !settings.base_url) set("base_url", preset.defaultBaseUrl);
+              }}
+            >
+              <SelectTrigger id="provider" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Base URL" htmlFor="base_url">
+            <Input id="base_url" value={settings.base_url} onChange={(e) => set("base_url", e.target.value)} />
+          </FormField>
+          <FormField label="Model" htmlFor="model">
+            <Input id="model" value={settings.model} onChange={(e) => set("model", e.target.value)} />
+          </FormField>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </CardContent>
       </Card>
     </div>
   );

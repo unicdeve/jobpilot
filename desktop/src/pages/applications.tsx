@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge } from "../components/ui/badge";
+import { FormField } from "../components/form-field";
+import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
-import { FormField, Input } from "../components/ui/field";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type { Application, ApplicationMode } from "../lib/types";
@@ -55,34 +63,36 @@ export function Applications() {
     <div>
       <h1 className="mb-4 text-xl font-semibold">Applications</h1>
 
-      <Card className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="min-w-40 flex-1">
-          <FormField label="Job ID" htmlFor="job-id">
-            <Input id="job-id" value={jobId} onChange={(e) => setJobId(e.target.value)} />
-          </FormField>
-        </div>
-        <div className="min-w-40 flex-1">
-          <FormField label="Resume ID (optional)" htmlFor="resume-id">
-            <Input id="resume-id" value={resumeId} onChange={(e) => setResumeId(e.target.value)} />
-          </FormField>
-        </div>
-        <div className="min-w-32">
-          <FormField label="Mode" htmlFor="mode">
-            <select
-              id="mode"
-              className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-              value={mode}
-              onChange={(e) => setMode(e.target.value as ApplicationMode)}
-            >
-              <option value="assist">Assist</option>
-              <option value="review">Review</option>
-              <option value="autopilot">Autopilot</option>
-            </select>
-          </FormField>
-        </div>
-        <Button onClick={create} disabled={creating}>
-          {creating ? "Creating…" : "Create"}
-        </Button>
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="min-w-40 flex-1">
+            <FormField label="Job ID" htmlFor="job-id">
+              <Input id="job-id" value={jobId} onChange={(e) => setJobId(e.target.value)} />
+            </FormField>
+          </div>
+          <div className="min-w-40 flex-1">
+            <FormField label="Resume ID (optional)" htmlFor="resume-id">
+              <Input id="resume-id" value={resumeId} onChange={(e) => setResumeId(e.target.value)} />
+            </FormField>
+          </div>
+          <div className="min-w-32">
+            <FormField label="Mode" htmlFor="mode">
+              <Select value={mode} onValueChange={(value) => setMode(value as ApplicationMode)}>
+                <SelectTrigger id="mode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="assist">Assist</SelectItem>
+                  <SelectItem value="review">Review</SelectItem>
+                  <SelectItem value="autopilot">Autopilot</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+          <Button onClick={create} disabled={creating}>
+            {creating ? "Creating…" : "Create"}
+          </Button>
+        </CardContent>
       </Card>
 
       {applications.length === 0 ? (
@@ -91,12 +101,14 @@ export function Applications() {
         <div className="space-y-2">
           {applications.map((app) => (
             <Link key={app.id} to={`/applications/${app.id}`}>
-              <Card className="flex items-center justify-between hover:border-slate-400">
-                <div>
-                  <p className="font-medium">Job {app.job_id}</p>
-                  <p className="text-xs text-slate-500">Mode: {app.mode}</p>
-                </div>
-                <Badge value={app.state} />
+              <Card className="hover:ring-foreground/20">
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Job {app.job_id}</p>
+                    <p className="text-xs text-slate-500">Mode: {app.mode}</p>
+                  </div>
+                  <StatusBadge value={app.state} />
+                </CardContent>
               </Card>
             </Link>
           ))}

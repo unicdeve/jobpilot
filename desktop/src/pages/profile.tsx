@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
-import { FormField, Input, Textarea } from "../components/ui/field";
+import { FormField } from "../components/form-field";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type { Candidate } from "../lib/types";
@@ -76,52 +78,54 @@ export function Profile() {
           No candidate profile yet — fill this in to create one.
         </p>
       )}
-      <Card className="space-y-4">
-        <FormField label="Name" htmlFor="name">
-          <Input id="name" value={profile.name} onChange={(e) => set("name", e.target.value)} />
-        </FormField>
-        <FormField label="Contact (email/phone)" htmlFor="contact">
-          <Input id="contact" value={profile.contact} onChange={(e) => set("contact", e.target.value)} />
-        </FormField>
-        <FormField label="Location" htmlFor="location">
-          <Input id="location" value={profile.location} onChange={(e) => set("location", e.target.value)} />
-        </FormField>
-        <FormField label="Summary" htmlFor="summary">
-          <Textarea
-            id="summary"
-            rows={3}
-            value={profile.summary}
-            onChange={(e) => set("summary", e.target.value)}
-          />
-        </FormField>
-        <FormField label="Skills" htmlFor="skills">
-          <Input id="skills" value={profile.skills} onChange={(e) => set("skills", e.target.value)} />
-        </FormField>
-        <FormField label="Salary preferences" htmlFor="salary_preferences">
-          <Input
-            id="salary_preferences"
-            value={profile.salary_preferences}
-            onChange={(e) => set("salary_preferences", e.target.value)}
-          />
-        </FormField>
-        <FormField label="Work authorization" htmlFor="work_authorization">
-          <Input
-            id="work_authorization"
-            value={profile.work_authorization}
-            onChange={(e) => set("work_authorization", e.target.value)}
-          />
-        </FormField>
-        <FormField label="Application preferences (tone/length for generated content)" htmlFor="application_preferences">
-          <Textarea
-            id="application_preferences"
-            rows={2}
-            value={profile.application_preferences}
-            onChange={(e) => set("application_preferences", e.target.value)}
-          />
-        </FormField>
-        <Button onClick={save} disabled={saving}>
-          {exists ? "Save" : "Create profile"}
-        </Button>
+      <Card>
+        <CardContent className="space-y-4">
+          <FormField label="Name" htmlFor="name">
+            <Input id="name" value={profile.name} onChange={(e) => set("name", e.target.value)} />
+          </FormField>
+          <FormField label="Contact (email/phone)" htmlFor="contact">
+            <Input id="contact" value={profile.contact} onChange={(e) => set("contact", e.target.value)} />
+          </FormField>
+          <FormField label="Location" htmlFor="location">
+            <Input id="location" value={profile.location} onChange={(e) => set("location", e.target.value)} />
+          </FormField>
+          <FormField label="Summary" htmlFor="summary">
+            <Textarea
+              id="summary"
+              rows={3}
+              value={profile.summary}
+              onChange={(e) => set("summary", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Skills" htmlFor="skills">
+            <Input id="skills" value={profile.skills} onChange={(e) => set("skills", e.target.value)} />
+          </FormField>
+          <FormField label="Salary preferences" htmlFor="salary_preferences">
+            <Input
+              id="salary_preferences"
+              value={profile.salary_preferences}
+              onChange={(e) => set("salary_preferences", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Work authorization" htmlFor="work_authorization">
+            <Input
+              id="work_authorization"
+              value={profile.work_authorization}
+              onChange={(e) => set("work_authorization", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Application preferences (tone/length for generated content)" htmlFor="application_preferences">
+            <Textarea
+              id="application_preferences"
+              rows={2}
+              value={profile.application_preferences}
+              onChange={(e) => set("application_preferences", e.target.value)}
+            />
+          </FormField>
+          <Button onClick={save} disabled={saving}>
+            {exists ? "Save" : "Create profile"}
+          </Button>
+        </CardContent>
       </Card>
     </div>
   );

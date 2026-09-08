@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type { Resume } from "../lib/types";
@@ -72,14 +72,16 @@ export function Resumes() {
       ) : (
         <div className="space-y-2">
           {resumes.map((r) => (
-            <Card key={r.id} className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">{r.name}</p>
-                <p className="text-xs text-slate-500">{r.original_file_path}</p>
-              </div>
-              <Button variant="danger" onClick={() => remove(r.id)}>
-                Delete
-              </Button>
+            <Card key={r.id}>
+              <CardContent className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{r.name}</p>
+                  <p className="text-xs text-slate-500">{r.original_file_path}</p>
+                </div>
+                <Button variant="destructive" onClick={() => remove(r.id)}>
+                  Delete
+                </Button>
+              </CardContent>
             </Card>
           ))}
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
-import { Card, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/field";
+import { Card, CardContent, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type { JobMatch } from "../lib/types";
@@ -49,18 +49,20 @@ export function Matches() {
     <div>
       <h1 className="mb-4 text-xl font-semibold">Matches</h1>
 
-      <Card className="mb-4 flex items-end gap-3">
-        <div className="flex-1">
-          <Input
-            placeholder="Job ID to analyze (see Jobs page)…"
-            value={jobId}
-            onChange={(e) => setJobId(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && analyze()}
-          />
-        </div>
-        <Button onClick={analyze} disabled={analyzing}>
-          {analyzing ? "Analyzing…" : "Analyze"}
-        </Button>
+      <Card className="mb-4">
+        <CardContent className="flex items-end gap-3">
+          <div className="flex-1">
+            <Input
+              placeholder="Job ID to analyze (see Jobs page)…"
+              value={jobId}
+              onChange={(e) => setJobId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && analyze()}
+            />
+          </div>
+          <Button onClick={analyze} disabled={analyzing}>
+            {analyzing ? "Analyzing…" : "Analyze"}
+          </Button>
+        </CardContent>
       </Card>
 
       {matches.length === 0 ? (
@@ -69,25 +71,27 @@ export function Matches() {
         <div className="space-y-3">
           {matches.map((m) => (
             <Card key={m.id}>
-              <CardTitle>
-                Score {m.score}/100 <span className="font-normal text-slate-500">(confidence {m.confidence.toFixed(2)})</span>
-              </CardTitle>
-              <p className="mt-1 text-sm text-slate-700">{m.rationale}</p>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <p className="font-medium text-slate-600">Strengths</p>
-                  <ul className="list-inside list-disc text-slate-600">
-                    {m.strengths?.map((s, i) => <li key={i}>{s}</li>)}
-                  </ul>
+              <CardContent>
+                <CardTitle>
+                  Score {m.score}/100 <span className="font-normal text-slate-500">(confidence {m.confidence.toFixed(2)})</span>
+                </CardTitle>
+                <p className="mt-1 text-sm text-slate-700">{m.rationale}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="font-medium text-slate-600">Strengths</p>
+                    <ul className="list-inside list-disc text-slate-600">
+                      {m.strengths?.map((s, i) => <li key={i}>{s}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-600">Gaps</p>
+                    <ul className="list-inside list-disc text-slate-600">
+                      {m.gaps?.map((g, i) => <li key={i}>{g}</li>)}
+                    </ul>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-slate-600">Gaps</p>
-                  <ul className="list-inside list-disc text-slate-600">
-                    {m.gaps?.map((g, i) => <li key={i}>{g}</li>)}
-                  </ul>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Job: {m.job_id}</p>
+                <p className="mt-2 text-xs text-slate-400">Job: {m.job_id}</p>
+              </CardContent>
             </Card>
           ))}
         </div>
