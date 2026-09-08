@@ -33,6 +33,15 @@ const (
 	QuestionStatusAnswered QuestionStatus = "answered"
 )
 
+// QuestionSource says how an ApplicationQuestion entered the system.
+type QuestionSource string
+
+// Question sources.
+const (
+	QuestionSourceManual        QuestionSource = "manual"
+	QuestionSourceFormExtracted QuestionSource = "form_extracted"
+)
+
 // ApplicationQuestion is a single question on an application (e.g. a form
 // field) along with its resolved (or pending) answer.
 type ApplicationQuestion struct {
@@ -47,4 +56,6 @@ type ApplicationQuestion struct {
 	Confidence    float64        `json:"confidence"`
 	UserEdited    bool           `json:"user_edited"`
 	Status        QuestionStatus `json:"status"`
+	Source        QuestionSource `json:"source"`
+	FieldRef      string         `json:"field_ref,omitempty"`
 }

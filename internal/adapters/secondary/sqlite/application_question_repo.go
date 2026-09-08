@@ -27,16 +27,19 @@ func (r *ApplicationQuestionRepository) Save(ctx context.Context, question *doma
 	if question.ID == "" {
 		question.ID = uuid.NewString()
 	}
+	if question.Source == "" {
+		question.Source = domain.QuestionSourceManual
+	}
 
 	query := `INSERT INTO application_questions (
 		id, application_id, label, type, required, answer,
-		answer_source, category, confidence, user_edited, status
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		answer_source, category, confidence, user_edited, status, source, field_ref
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := r.db.ExecContext(ctx, query,
 		question.ID, question.ApplicationID, question.Label, question.Type, question.Required,
 		question.Answer, question.AnswerSource, nullableString(string(question.Category)),
-		question.Confidence, question.UserEdited, question.Status,
+		question.Confidence, question.UserEdited, question.Status, question.Source, nullableString(question.FieldRef),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save application question: %w", err)
@@ -47,19 +50,20 @@ func (r *ApplicationQuestionRepository) Save(ctx context.Context, question *doma
 
 const applicationQuestionColumns = `
 	id, application_id, label, type, required, answer,
-	answer_source, category, confidence, user_edited, status`
+	answer_source, category, confidence, user_edited, status, source, field_ref`
 
 func scanApplicationQuestion(scanner interface{ Scan(...any) error }) (*domain.ApplicationQuestion, error) {
 	var q domain.ApplicationQuestion
-	var category sql.NullString
+	var category, fieldRef sql.NullString
 	err := scanner.Scan(
 		&q.ID, &q.ApplicationID, &q.Label, &q.Type, &q.Required, &q.Answer,
-		&q.AnswerSource, &category, &q.Confidence, &q.UserEdited, &q.Status,
+		&q.AnswerSource, &category, &q.Confidence, &q.UserEdited, &q.Status, &q.Source, &fieldRef,
 	)
 	if err != nil {
 		return nil, err
 	}
 	q.Category = domain.AnswerCategory(category.String)
+	q.FieldRef = fieldRef.String
 	return &q, nil
 }
 

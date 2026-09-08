@@ -56,4 +56,9 @@ func TestListQueries_ReturnEmptySliceNotNil_WhenNoRowsMatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, questions)
 	assert.Empty(t, questions)
+
+	runs, err := NewAgentRunRepository(db.Conn()).ListByApplication(ctx, "nonexistent-app")
+	require.NoError(t, err)
+	assert.NotNil(t, runs)
+	assert.Empty(t, runs)
 }
