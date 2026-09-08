@@ -71,24 +71,36 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 	return finalJobs, nil
 }
 
-// ImportJob imports a specific job by its URL.
+// ImportJob imports a specific job by its URL, trying every source capable
+// of URL lookup in turn: one source not recognizing this URL shouldn't stop
+// another from resolving it (the same failure-isolation principle Search
+// already applies across sources).
 func (s *JobDiscoveryService) ImportJob(ctx context.Context, url string) (*domain.Job, error) {
-	// Find a source that can handle this URL
-	var source ports.JobSource
+	var job *domain.Job
+	var lastErr error
+	attempted := false
+
 	for _, src := range s.sources {
-		if src.Capabilities().CanGetJob {
-			source = src
-			break
+		if !src.Capabilities().CanGetJob {
+			continue
 		}
+		attempted = true
+
+		var err error
+		job, err = src.GetJob(ctx, url)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to import job from source %s: %w", src.ID(), err)
+			continue
+		}
+		lastErr = nil
+		break
 	}
 
-	if source == nil {
+	if !attempted {
 		return nil, fmt.Errorf("no available source supports importing jobs by URL")
 	}
-
-	job, err := source.GetJob(ctx, url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to import job from source %s: %w", source.ID(), err)
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	// Deduplicate and save

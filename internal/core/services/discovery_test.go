@@ -158,4 +158,25 @@ func TestJobDiscoveryService_ImportJob(t *testing.T) {
 
 		assert.ErrorContains(t, err, "failed to import job from source")
 	})
+
+	t.Run("a failing capable source doesn't block a later capable source from resolving the URL", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		failing := &fakeJobSource{
+			id:           "arbeitnow",
+			capabilities: ports.SourceCapabilities{CanGetJob: true},
+			getJobErr:    errors.New("not this source's job"),
+		}
+		working := &fakeJobSource{
+			id:           "remotive",
+			capabilities: ports.SourceCapabilities{CanGetJob: true},
+			getJobResult: &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"},
+		}
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{failing, working})
+
+		job, err := svc.ImportJob(context.Background(), "https://acme.example/job-1")
+
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer", job.Title)
+	})
 }
