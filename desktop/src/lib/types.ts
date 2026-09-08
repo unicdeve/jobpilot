@@ -161,6 +161,8 @@ export type AnswerCategory =
 
 export type QuestionStatus = "pending" | "answered";
 
+export type QuestionSource = "manual" | "form_extracted";
+
 export interface ApplicationQuestion {
   id: string;
   application_id: string;
@@ -173,4 +175,36 @@ export interface ApplicationQuestion {
   confidence: number;
   user_edited: boolean;
   status: QuestionStatus;
+  source: QuestionSource;
+  field_ref?: string;
+}
+
+export type AgentRunStatus = "running" | "completed" | "blocked" | "failed";
+
+export interface AgentRun {
+  id: string;
+  application_id: string;
+  task_type: string;
+  status: AgentRunStatus;
+  started_at: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface AgentEvent {
+  id: string;
+  run_id: string;
+  action: string;
+  tool: string;
+  status: string;
+  input_summary?: string;
+  output_summary?: string;
+  policy_result?: string;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface AgentRunWithEvents {
+  run: AgentRun;
+  events: AgentEvent[];
 }

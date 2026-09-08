@@ -3,6 +3,7 @@
 // docs/09_decisions/0012-loopback-http-ipc.md.
 
 import type {
+  AgentRunWithEvents,
   Application,
   ApplicationMode,
   ApplicationQuestion,
@@ -72,6 +73,9 @@ export interface ApiClient {
     questionId: string,
     answer: string,
   ): Promise<ApplicationQuestion>;
+
+  prepareInBrowser(applicationId: string): Promise<Application>;
+  listAgentRuns(applicationId: string): Promise<AgentRunWithEvents[]>;
 }
 
 async function request<T>(
@@ -198,5 +202,18 @@ export function createApiClient(port: number): ApiClient {
       request<ApplicationQuestion>(baseUrl, "PUT", `/v1/questions/${encodeURIComponent(questionId)}/answer`, {
         answer,
       }),
+
+    prepareInBrowser: (applicationId) =>
+      request<Application>(
+        baseUrl,
+        "POST",
+        `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`,
+      ),
+    listAgentRuns: (applicationId) =>
+      request<AgentRunWithEvents[]>(
+        baseUrl,
+        "GET",
+        `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`,
+      ),
   };
 }

@@ -16,6 +16,7 @@ import { Textarea } from "../components/ui/textarea";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
 import type {
+  AgentRunWithEvents,
   Application,
   ApplicationQuestion,
   ApplicationState,
@@ -45,19 +46,22 @@ export function ApplicationDetail() {
   const [history, setHistory] = useState<ApplicationStateTransition[]>([]);
   const [coverLetters, setCoverLetters] = useState<CoverLetter[]>([]);
   const [questions, setQuestions] = useState<ApplicationQuestion[]>([]);
+  const [agentRuns, setAgentRuns] = useState<AgentRunWithEvents[]>([]);
 
   const load = async () => {
     if (!id) return;
-    const [app, hist, letters, qs] = await Promise.all([
+    const [app, hist, letters, qs, runs] = await Promise.all([
       api.getApplication(id),
       api.listApplicationHistory(id),
       api.listCoverLetterVersions(id),
       api.listQuestions(id),
+      api.listAgentRuns(id),
     ]);
     setApplication(app);
     setHistory(hist);
     setCoverLetters(letters);
     setQuestions(qs);
+    setAgentRuns(runs);
   };
 
   useEffect(() => {
@@ -97,6 +101,12 @@ export function ApplicationDetail() {
           </CardContent>
         </Card>
       )}
+
+      <BrowserAutomationPanel
+        applicationId={id}
+        runs={agentRuns}
+        onChanged={() => load().catch((err) => notify(String(err)))}
+      />
 
       <CoverLetterPanel
         applicationId={id}
@@ -156,6 +166,76 @@ function TransitionPanel({
         <div className="mt-2">
           <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BrowserAutomationPanel({
+  applicationId,
+  runs,
+  onChanged,
+}: {
+  applicationId: string;
+  runs: AgentRunWithEvents[];
+  onChanged: () => void;
+}) {
+  const api = useApi();
+  const { notify } = useToast();
+  const [preparing, setPreparing] = useState(false);
+
+  const prepare = async () => {
+    setPreparing(true);
+    try {
+      await api.prepareInBrowser(applicationId);
+      notify("Browser window opened — review it there before submitting.", "success");
+    } catch (err) {
+      // A blocked/failed run is expected, structured output (a CAPTCHA, an
+      // unreadable form, ...), not just a transport error — the reason is
+      // already visible below once the run list refreshes.
+      notify(String(err));
+    } finally {
+      setPreparing(false);
+      onChanged();
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent>
+        <CardTitle>Browser automation</CardTitle>
+        <p className="mt-1 text-sm text-slate-500">
+          Opens the job posting in a real Chrome window, fills in known answers, and leaves it open for you to
+          review and submit yourself — it never submits on its own.
+        </p>
+        <div className="mt-2">
+          <Button onClick={prepare} disabled={preparing}>
+            {preparing ? "Preparing…" : "Prepare in browser"}
+          </Button>
+        </div>
+
+        {runs.length > 0 && (
+          <div className="mt-3 space-y-3">
+            {runs.map(({ run, events }) => (
+              <div key={run.id} className="rounded-md border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{run.task_type}</span>
+                  <StatusBadge value={run.status} />
+                </div>
+                {run.error && <p className="mt-1 text-sm text-red-700">{run.error}</p>}
+                {events.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                    {events.map((e) => (
+                      <li key={e.id}>
+                        {e.action} ({e.status}){e.output_summary && <> — {e.output_summary}</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
