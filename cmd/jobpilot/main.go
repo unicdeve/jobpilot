@@ -128,8 +128,10 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		return httpapi.Services{}, fmt.Errorf("configuring LLM provider: %w", err)
 	}
 
-	mockSource := discovery.NewMockJobSource()
-	sources := []ports.JobSource{mockSource}
+	sources := []ports.JobSource{
+		discovery.NewArbeitnowSource(discovery.DefaultArbeitnowBaseURL),
+		discovery.NewRemotiveSource(discovery.DefaultRemotiveBaseURL),
+	}
 
 	resumeSvc := services.NewResumeService(resRepo, llmProv)
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, llmProv, db)
