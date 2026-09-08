@@ -134,7 +134,7 @@ func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID strin
 	}
 	defer func() { _ = rows.Close() }()
 
-	var matches []*domain.JobMatch
+	matches := make([]*domain.JobMatch, 0)
 	for rows.Next() {
 		var m domain.JobMatch
 		var strengths, gaps, concerns, matchedSkills, missingSkills string

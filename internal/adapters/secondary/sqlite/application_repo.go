@@ -122,7 +122,7 @@ func (r *ApplicationRepository) ListByCandidate(ctx context.Context, candidateID
 	}
 	defer func() { _ = rows.Close() }()
 
-	var apps []*domain.Application
+	apps := make([]*domain.Application, 0)
 	for rows.Next() {
 		app, err := scanApplication(rows)
 		if err != nil {
@@ -210,7 +210,7 @@ func (r *ApplicationRepository) ListStateTransitions(ctx context.Context, applic
 	}
 	defer func() { _ = rows.Close() }()
 
-	var transitions []*domain.ApplicationStateTransition
+	transitions := make([]*domain.ApplicationStateTransition, 0)
 	for rows.Next() {
 		var t domain.ApplicationStateTransition
 		var fromState sql.NullString

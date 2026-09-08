@@ -143,7 +143,7 @@ func (r *JobRepository) List(ctx context.Context, limit, offset int) ([]*domain.
 	}
 	defer func() { _ = rows.Close() }()
 
-	var jobs []*domain.Job
+	jobs := make([]*domain.Job, 0)
 	for rows.Next() {
 		var j domain.Job
 		var locations, skills string

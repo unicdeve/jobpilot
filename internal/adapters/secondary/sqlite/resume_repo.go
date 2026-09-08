@@ -94,7 +94,7 @@ func (r *ResumeRepository) GetByCandidateID(ctx context.Context, candidateID str
 	}
 	defer func() { _ = rows.Close() }()
 
-	var resumes []*domain.Resume
+	resumes := make([]*domain.Resume, 0)
 	for rows.Next() {
 		var res domain.Resume
 		err := rows.Scan(

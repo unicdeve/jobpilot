@@ -97,7 +97,7 @@ func (r *CoverLetterRepository) ListByApplication(ctx context.Context, applicati
 	}
 	defer func() { _ = rows.Close() }()
 
-	var letters []*domain.CoverLetter
+	letters := make([]*domain.CoverLetter, 0)
 	for rows.Next() {
 		c, err := scanCoverLetter(rows)
 		if err != nil {

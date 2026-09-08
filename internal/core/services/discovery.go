@@ -29,7 +29,7 @@ func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource)
 
 // Search executes a search across all registered sources and deduplicates results.
 func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
-	var allJobs []domain.Job
+	allJobs := make([]domain.Job, 0)
 
 	// In a production app, these would run in parallel.
 	for _, source := range s.sources {
@@ -47,7 +47,7 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 		allJobs = append(allJobs, jobs...)
 	}
 
-	var finalJobs []*domain.Job
+	finalJobs := make([]*domain.Job, 0, len(allJobs))
 	for _, job := range allJobs {
 		// Deduplicate by canonical URL
 		existing, err := s.repo.GetByCanonicalURL(ctx, job.CanonicalURL)

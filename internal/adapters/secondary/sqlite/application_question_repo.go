@@ -109,7 +109,7 @@ func (r *ApplicationQuestionRepository) ListByApplication(ctx context.Context, a
 	}
 	defer func() { _ = rows.Close() }()
 
-	var questions []*domain.ApplicationQuestion
+	questions := make([]*domain.ApplicationQuestion, 0)
 	for rows.Next() {
 		q, err := scanApplicationQuestion(rows)
 		if err != nil {
