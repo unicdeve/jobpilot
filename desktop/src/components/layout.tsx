@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDaemon } from "../lib/daemon";
+import { ErrorBoundary } from "./error-boundary";
 import { Button } from "./ui/button";
 
 const navItems = [
@@ -36,7 +37,9 @@ export function Layout() {
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
         <RequireDaemon>
-          <Outlet />
+          <RouteErrorBoundary>
+            <Outlet />
+          </RouteErrorBoundary>
         </RequireDaemon>
       </main>
     </div>
@@ -63,4 +66,9 @@ function RequireDaemon({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary key={pathname}>{children}</ErrorBoundary>;
 }
