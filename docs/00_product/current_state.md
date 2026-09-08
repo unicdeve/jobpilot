@@ -32,8 +32,20 @@ Phase 6 (browser automation) has not started.
 - Resume management: import (via Go MarkItDown), list, delete, with an
   optional review-gated LLM suggestion step (Summary/Skills draft) applied
   to the candidate profile after import.
-- Job discovery: search, list, import-by-URL, with canonical-URL
-  deduplication — currently against a deterministic `MockJobSource` only.
+- Job discovery: search and list against two real, no-auth public job-board
+  APIs (`internal/adapters/secondary/discovery/arbeitnow.go`, `remotive.go`),
+  with canonical-URL deduplication. Each connector caches its fetched
+  listing in memory (15 min for Arbeitnow, 4 hours for Remotive) matching
+  that API's own stated update cadence, so repeated searches don't poll
+  faster than their data actually changes; job descriptions (HTML) are
+  converted via the same MarkItDown engine resume import uses. Keyword
+  filtering happens client-side (neither API's own search parameter proved
+  reliable) via the same naive substring match the old mock used — precise
+  for specific terms ("golang") but noisy for short/common ones ("go"),
+  a known limitation carried over rather than newly introduced.
+  `MockJobSource` remains in the codebase for tests/dev but is no longer in
+  the daemon's production source list, so real searches are never mixed
+  with fake jobs.
 - Job matching via Ollama: structured JSON output (score, confidence,
   strengths, gaps, missing skills, rationale), persisted per candidate/job.
 - SQLite persistence for candidates, resumes, jobs, and matches, with
@@ -102,8 +114,14 @@ Phase 6 (browser automation) has not started.
 - No settings/configuration system beyond LLM provider/model
   (`docs/02_features/13_settings.md` — other categories like prompt
   customization, search preferences, and notifications are unimplemented).
-- Job discovery has no real public connectors yet, only the mock source used
-  for development.
+- Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007) is
+  currently unsupported: neither Arbeitnow nor Remotive's public API can
+  fetch an arbitrary job by URL (only search/listing), so
+  `JobDiscoveryService.ImportJob` returns a clear "no available source
+  supports importing jobs by URL" error instead of the old mock's
+  fake-success behavior for two hardcoded demo URLs. Real support needs
+  either a connector whose API does support single-job lookup, or the
+  generic page-scraping Phase 6 (browser automation) is expected to add.
 - No persisted search-history feature (Phase 2).
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no onboarding wizard equivalent to the CLI's
@@ -138,9 +156,10 @@ Phase 6 (browser automation) has not started.
 
 ## Next
 
-1. Real job-board connectors (Phase 2 completion), remaining Settings
-   categories (prompt customization, search preferences, notifications,
-   data retention), and browser automation (Phase 6).
+1. Remaining Settings categories (prompt customization, search preferences,
+   notifications, data retention), and browser automation (Phase 6) — which
+   would also unblock real custom-URL job import (see gap above) and
+   application question sourcing.
 2. The undocumented gaps above (entity normalization, structured LLM
    output) and the application-generation gaps just noted (question
    sourcing, richer derivation) once their preconditions land.
