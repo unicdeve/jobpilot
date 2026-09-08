@@ -494,3 +494,116 @@ func (f *fakeJobSource) GetJob(_ context.Context, _ string) (*domain.Job, error)
 	}
 	return f.getJobResult, nil
 }
+
+// fakeAgentRunRepository is an in-memory ports.AgentRunRepository for tests.
+type fakeAgentRunRepository struct {
+	runs    map[string]*domain.AgentRun
+	saveErr error
+}
+
+func newFakeAgentRunRepository() *fakeAgentRunRepository {
+	return &fakeAgentRunRepository{runs: map[string]*domain.AgentRun{}}
+}
+
+func (f *fakeAgentRunRepository) Save(_ context.Context, run *domain.AgentRun) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if run.ID == "" {
+		run.ID = fmt.Sprintf("run-%d", len(f.runs)+1)
+	}
+	f.runs[run.ID] = run
+	return nil
+}
+
+func (f *fakeAgentRunRepository) Update(_ context.Context, run *domain.AgentRun) error {
+	f.runs[run.ID] = run
+	return nil
+}
+
+func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.AgentRun, error) {
+	run, ok := f.runs[id]
+	if !ok {
+		return nil, fmt.Errorf("agent run not found: %s", id)
+	}
+	return run, nil
+}
+
+func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.AgentRun, error) {
+	var out []*domain.AgentRun
+	for _, r := range f.runs {
+		if r.ApplicationID == applicationID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// fakeAgentEventRepository is an in-memory ports.AgentEventRepository for
+// tests.
+type fakeAgentEventRepository struct {
+	events []*domain.AgentEvent
+}
+
+func newFakeAgentEventRepository() *fakeAgentEventRepository {
+	return &fakeAgentEventRepository{}
+}
+
+func (f *fakeAgentEventRepository) Save(_ context.Context, event *domain.AgentEvent) error {
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("event-%d", len(f.events)+1)
+	}
+	f.events = append(f.events, event)
+	return nil
+}
+
+func (f *fakeAgentEventRepository) ListByRun(_ context.Context, runID string) ([]*domain.AgentEvent, error) {
+	var out []*domain.AgentEvent
+	for _, e := range f.events {
+		if e.RunID == runID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// fakeBrowserWorker is a scriptable ports.BrowserWorker test double.
+type fakeBrowserWorker struct {
+	navigateErr   error
+	blockedReason string
+	blocked       bool
+	fields        []ports.FormField
+	extractErr    error
+	fillErr       map[string]error
+	filled        map[string]string
+	closed        bool
+}
+
+func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return f.navigateErr }
+
+func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) {
+	return f.blockedReason, f.blocked
+}
+
+func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
+	if f.extractErr != nil {
+		return nil, f.extractErr
+	}
+	return f.fields, nil
+}
+
+func (f *fakeBrowserWorker) Fill(_ context.Context, fieldRef, value string) error {
+	if f.filled == nil {
+		f.filled = map[string]string{}
+	}
+	if err, ok := f.fillErr[fieldRef]; ok {
+		return err
+	}
+	f.filled[fieldRef] = value
+	return nil
+}
+
+func (f *fakeBrowserWorker) Close(_ context.Context) error {
+	f.closed = true
+	return nil
+}

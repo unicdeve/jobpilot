@@ -43,17 +43,29 @@ func NewAnswerService(
 	}
 }
 
-// AddQuestion registers a new question on an application, unresolved
-// (Status pending, no Category yet). There is no form-extraction yet
-// (post-MVP, Phase 6 browser automation), so this is currently the only
-// way a question enters the system.
+// AddQuestion registers a new, manually entered question on an
+// application, unresolved (Status pending, no Category yet).
 func (s *AnswerService) AddQuestion(ctx context.Context, applicationID, label string, questionType domain.QuestionType, required bool) (*domain.ApplicationQuestion, error) {
+	return s.addQuestion(ctx, applicationID, label, questionType, required, domain.QuestionSourceManual, "")
+}
+
+// AddExtractedQuestion registers a question the browser worker extracted
+// from a real application form (Phase 6, docs/01_architecture/03_browser_worker.md),
+// tagging it as such and recording fieldRef so a later step can fill its
+// resolved answer back into the page without re-extracting the form.
+func (s *AnswerService) AddExtractedQuestion(ctx context.Context, applicationID, label string, questionType domain.QuestionType, required bool, fieldRef string) (*domain.ApplicationQuestion, error) {
+	return s.addQuestion(ctx, applicationID, label, questionType, required, domain.QuestionSourceFormExtracted, fieldRef)
+}
+
+func (s *AnswerService) addQuestion(ctx context.Context, applicationID, label string, questionType domain.QuestionType, required bool, source domain.QuestionSource, fieldRef string) (*domain.ApplicationQuestion, error) {
 	question := &domain.ApplicationQuestion{
 		ApplicationID: applicationID,
 		Label:         label,
 		Type:          questionType,
 		Required:      required,
 		Status:        domain.QuestionStatusPending,
+		Source:        source,
+		FieldRef:      fieldRef,
 	}
 
 	if err := s.questionRepo.Save(ctx, question); err != nil {
