@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -429,6 +430,53 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 func TestClient_Health(t *testing.T) {
 	client, _, _ := testServer(t)
 	require.NoError(t, client.Health(context.Background()))
+}
+
+func TestCORS_AllowsKnownDesktopOrigin(t *testing.T) {
+	ts := httptest.NewServer(NewHandler(Services{}))
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/v1/health", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "http://localhost:1420")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, "http://localhost:1420", resp.Header.Get("Access-Control-Allow-Origin"))
+}
+
+func TestCORS_RejectsUnknownOrigin(t *testing.T) {
+	ts := httptest.NewServer(NewHandler(Services{}))
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/v1/health", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.example")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
+}
+
+func TestCORS_HandlesPreflight(t *testing.T) {
+	ts := httptest.NewServer(NewHandler(Services{}))
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/v1/profile", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "tauri://localhost")
+	req.Header.Set("Access-Control-Request-Method", "PUT")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.Equal(t, "tauri://localhost", resp.Header.Get("Access-Control-Allow-Origin"))
 }
 
 func TestClient_ProfileRoundTrip(t *testing.T) {

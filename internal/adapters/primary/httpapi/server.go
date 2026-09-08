@@ -73,7 +73,41 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("POST /v1/questions/{id}/resolve", handleResolveQuestion(svc.Answers))
 	mux.HandleFunc("PUT /v1/questions/{id}/answer", handleSetQuestionAnswer(svc.Answers))
 
-	return mux
+	return withCORS(mux)
+}
+
+// desktopOrigins are the origins the Tauri desktop app's webview can load
+// from: the Vite dev server in `tauri dev`, and the packaged app's custom
+// protocol on each platform. Browsers only send an Origin header for
+// cross-origin requests, so plain HTTP clients (the CLI, curl) are
+// unaffected either way; this allowlist exists so an arbitrary website
+// open in the user's regular browser can't read local candidate data from
+// this loopback daemon via CORS while it happens to be running.
+var desktopOrigins = map[string]bool{
+	"http://localhost:1420":  true,
+	"tauri://localhost":      true,
+	"http://tauri.localhost": true,
+}
+
+// withCORS lets the desktop webview's fetch calls reach this loopback
+// server: WKWebView (and Chromium, on other platforms) treats the webview
+// origin and 127.0.0.1 as cross-origin and enforces CORS even for local
+// requests, so without these headers every fetch from the desktop app
+// fails despite the daemon being reachable.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); desktopOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
