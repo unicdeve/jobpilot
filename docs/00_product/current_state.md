@@ -88,11 +88,14 @@ Phase 6 (browser automation) has not started.
   (`desktop/src/lib/api.ts`) mirroring `internal/adapters/primary/httpapi/client.go`.
   Screens: Dashboard, Profile, Resumes, Jobs, Matches, Applications (the
   review/approval UI — state transitions, cover letter versions,
-  question resolution), Settings. Accessible components are hand-rolled
-  Tailwind primitives rather than shadcn/ui (`02_desktop.md` allows an
-  "equivalent" system). Not built: Agent Activity (no service populates
-  `AgentRun`/`AgentEvent` yet) and any settings category beyond LLM
-  provider/model (same reason — unimplemented backend).
+  question resolution), Settings. Accessible components are generated via
+  the shadcn/ui CLI (Button, Card, Badge, Input, Textarea, Label, Select,
+  Checkbox), per `02_desktop.md`; a small `StatusBadge`/`FormField` wrapper
+  in `desktop/src/components/` layers the app's per-state colors and
+  label+control pairing on top of those primitives. Not built: Agent
+  Activity (no service populates `AgentRun`/`AgentEvent` yet) and any
+  settings category beyond LLM provider/model (same reason — unimplemented
+  backend).
 
 ## Known gaps within Phases 0–5
 
