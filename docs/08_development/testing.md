@@ -30,7 +30,15 @@ Add selectively for:
 
 ## Browser tests
 
-Post-MVP and focused on critical automation behavior.
+`internal/adapters/secondary/browser/playwright_worker_test.go` (tagged
+`integration`) runs a real headless Chrome against a local `httptest`-served
+fixture form — no live internet site or visible window needed, so it's
+deterministic and safe for CI/local pre-push. `internal/core/services/browserworker_test.go`
+covers the orchestration logic (extraction → question → resolve → fill,
+blocker/failure handling, state transitions) with a fake `ports.BrowserWorker`
+and needs no browser at all. The first run of the browser-adapter test
+downloads the Playwright driver (~50MB, cached afterward) — expect that run
+to take longer.
 
 ## Running tests
 

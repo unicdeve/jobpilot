@@ -2,10 +2,11 @@
 
 ## Phase
 
-Roadmap Phases 0–5 (`docs/00_product/roadmap.md`) are substantially
+Roadmap Phases 0–6 (`docs/00_product/roadmap.md`) are substantially
 implemented — foundation, candidate profile, job discovery, matching,
-application generation, and a desktop app — with explicit gaps noted below.
-Phase 6 (browser automation) has not started.
+application generation, a desktop app, and a browser automation worker —
+with explicit gaps noted below. Phase 7 (review mode's "browser handoff"/
+submission tracking) and Phase 8 (autopilot policy engine) have not started.
 
 ## Implemented
 
@@ -105,11 +106,41 @@ Phase 6 (browser automation) has not started.
   Checkbox), per `02_desktop.md`; a small `StatusBadge`/`FormField` wrapper
   in `desktop/src/components/` layers the app's per-state colors and
   label+control pairing on top of those primitives. Not built: Agent
-  Activity (no service populates `AgentRun`/`AgentEvent` yet) and any
-  settings category beyond LLM provider/model (same reason — unimplemented
-  backend).
+  Activity nav screen (see below — a per-application activity panel exists
+  instead) and any settings category beyond LLM provider/model (same
+  reason — unimplemented backend).
 
-## Known gaps within Phases 0–5
+- Browser automation (Phase 6, `internal/adapters/secondary/browser`,
+  `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
+  (`github.com/mxschmitt/playwright-go`) worker that opens the user's actual
+  installed Chrome — never Playwright's bundled browser — in a dedicated,
+  JobPilot-owned profile (never the user's daily-driver Chrome profile, so
+  it can't conflict with it and never needs their real passwords; the user
+  logs into any job board once inside this profile). `application prepare-
+  in-browser <id>` / the desktop's "Prepare in browser" button navigates to
+  the job posting, extracts the form (label association follows the same
+  chain browsers use: `<label for>` → wrapping `<label>` → `aria-label` →
+  `placeholder` → name, with radio buttons sharing a name grouped into one
+  question), turns each field into an `ApplicationQuestion` via
+  `AnswerService.AddExtractedQuestion` (unchanged resolver chain reused as-
+  is), and fills in whatever resolved — leaving `needs_user_input` fields
+  blank in the still-open browser, exactly like a manually entered
+  unresolved question today. On success the application moves
+  `PREPARING → READY_FOR_REVIEW`; on a CAPTCHA, an unreadable form, or a
+  fill failure it moves to `FAILED` with the reason. **It never clicks the
+  target site's own submit button** — the browser window is always left
+  open (on every path, including failure) for the human to review and
+  submit themselves, which is what actually satisfies Review Mode's
+  explicit-approval requirement here; see the "Submission boundary" section
+  added to `03_browser_worker.md`. `AgentRun`/`AgentEvent`
+  (`internal/core/domain/agent_run.go`) get their first real implementation
+  here (schema existed since migration 00001, unused until now), each run
+  scoped to one application (migration `00003_agent_runs_application_link.sql`,
+  which also adds `source`/`field_ref` to `application_questions`) and
+  surfaced via `GET /v1/applications/{id}/agent-runs` and a panel on the
+  desktop's Applications detail screen.
+
+## Known gaps within Phases 0–6
 
 - No settings/configuration system beyond LLM provider/model
   (`docs/02_features/13_settings.md` — other categories like prompt
@@ -119,9 +150,9 @@ Phase 6 (browser automation) has not started.
   fetch an arbitrary job by URL (only search/listing), so
   `JobDiscoveryService.ImportJob` returns a clear "no available source
   supports importing jobs by URL" error instead of the old mock's
-  fake-success behavior for two hardcoded demo URLs. Real support needs
-  either a connector whose API does support single-job lookup, or the
-  generic page-scraping Phase 6 (browser automation) is expected to add.
+  fake-success behavior for two hardcoded demo URLs. The browser worker
+  (Phase 6) navigates and extracts forms but isn't wired into `ImportJob` —
+  doing so is a plausible, currently unimplemented follow-up.
 - No persisted search-history feature (Phase 2).
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no onboarding wizard equivalent to the CLI's
@@ -141,25 +172,50 @@ Phase 6 (browser automation) has not started.
   cover-letter/answer generation all rely on prompt instructions plus
   post-hoc parsing, not provider-level schema constraints, despite
   `docs/01_architecture/05_llm.md` preferring the latter where supported.
-- Application questions have no source but manual CLI entry
-  (`application question add`): there is no form-extraction yet (Phase 6,
-  browser automation, is post-MVP), so `docs/02_features/07_application_answers.md`
-  can only be exercised against hand-entered questions for now.
 - `AnswerService`'s deterministic-derivation step is intentionally a single
   rule (remote-work preference) rather than a general capability — e.g.
   computed years of experience isn't derivable because `Candidate.Experiences`
   is an unstructured text blob, not structured dates (the same normalization
   gap noted above).
-- No browser automation (Phase 6) or policy engine (Phase 8) integration for
-  applications yet — state transitions are user/CLI-driven, not
-  autopilot-evaluated.
+- `profileFactAnswer`'s "name" keyword match doesn't distinguish "first
+  name" from "last name" (both contain "name"), so a real split-name form
+  field gets the candidate's full name in both — confirmed live against
+  Arbeitnow's own "Quick Apply" form during Phase 6 verification.
+  `Candidate.Name` isn't structured into given/family parts, so this needs
+  either that split or smarter label matching to fix properly.
+- No policy engine (Phase 8) integration — state transitions, including
+  ones the browser worker makes, are user/CLI/desktop-driven, not
+  autopilot-evaluated; `ApplicationMode` "autopilot" exists as a value but
+  nothing branches on it yet.
+- The browser worker's CAPTCHA/anti-bot detection
+  (`internal/adapters/secondary/browser/playwright_worker.go`) is a
+  best-effort heuristic (known CAPTCHA iframe hosts, common "verify you're
+  human" phrases), not a real detector — it can miss novel challenges (which
+  then likely surfaces as an extraction/fill failure instead, the same safe
+  stop) or rarely false-positive on ordinary pages containing similar text.
+- Radio button groups are extracted as one question with the group's
+  `<fieldset><legend>` text as its label, falling back to a humanized
+  `name` attribute when there's no fieldset/legend — real-world forms
+  without either markup pattern will show a rough, not fully human-authored
+  label.
+- Salary fields on extracted forms aren't filled: `ApplicationQuestion` has
+  no structured salary type, so a form's salary field becomes an ordinary
+  text question resolved (or not) like any other, rather than something
+  purpose-built for numeric/range salary inputs.
+- The browser worker requires the user to log into any job board once
+  inside its dedicated, JobPilot-owned Chrome profile (never their real
+  daily-driver profile) before "prepare in browser" can get past an
+  authentication wall on that board — there is no guided first-use flow
+  for this yet.
 
 ## Next
 
-1. Remaining Settings categories (prompt customization, search preferences,
-   notifications, data retention), and browser automation (Phase 6) — which
-   would also unblock real custom-URL job import (see gap above) and
-   application question sourcing.
+1. Phase 7 (review mode's "browser handoff" polish, submission tracking)
+   and Phase 8 (autopilot policy engine) — the natural next steps now that
+   Phase 6 gives the browser worker something to hand off from. Remaining
+   Settings categories (prompt customization, search preferences,
+   notifications, data retention) are also still open.
 2. The undocumented gaps above (entity normalization, structured LLM
-   output) and the application-generation gaps just noted (question
-   sourcing, richer derivation) once their preconditions land.
+   output, richer answer derivation) once their preconditions land, plus
+   the browser-worker-specific gaps just noted (CAPTCHA heuristic, radio
+   grouping fallback, salary fields, custom-URL import).
