@@ -29,6 +29,7 @@ type Services struct {
 	Application *services.ApplicationService
 	CoverLetter *services.CoverLetterService
 	Answers     *services.AnswerService
+	Browser     *services.BrowserWorkerService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -72,6 +73,9 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/applications/{id}/questions", handleListQuestions(svc.Answers))
 	mux.HandleFunc("POST /v1/questions/{id}/resolve", handleResolveQuestion(svc.Answers))
 	mux.HandleFunc("PUT /v1/questions/{id}/answer", handleSetQuestionAnswer(svc.Answers))
+
+	mux.HandleFunc("POST /v1/applications/{id}/prepare-in-browser", handlePrepareInBrowser(svc.Browser, svc.Application))
+	mux.HandleFunc("GET /v1/applications/{id}/agent-runs", handleListAgentRuns(svc.Browser))
 
 	return withCORS(mux)
 }

@@ -17,7 +17,10 @@ import (
 	"syscall"
 	"time"
 
+	"path/filepath"
+
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
@@ -25,6 +28,13 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
+
+// browserProfileDirName is a JobPilot-owned Chrome profile, never the
+// user's own daily-driver profile — so "prepare in browser" never
+// conflicts with their regular browser and never needs their real
+// passwords. The user logs into any job board once inside this profile,
+// per docs/01_architecture/03_browser_worker.md.
+const browserProfileDirName = "browser-profile"
 
 // shutdownTimeout bounds how long the daemon waits for in-flight requests to
 // finish once asked to stop, per docs/01_architecture/01_daemon.md's
@@ -117,7 +127,15 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	appRepo := sqlite.NewApplicationRepository(db.Conn())
 	coverLetterRepo := sqlite.NewCoverLetterRepository(db.Conn())
 	questionRepo := sqlite.NewApplicationQuestionRepository(db.Conn())
+	agentRunRepo := sqlite.NewAgentRunRepository(db.Conn())
+	agentEventRepo := sqlite.NewAgentEventRepository(db.Conn())
 	settingsSvc := services.NewSettingsService(settingsRepo)
+
+	dataDir, err := system.GetDataDir()
+	if err != nil {
+		return httpapi.Services{}, fmt.Errorf("resolving data directory: %w", err)
+	}
+	browserProfileDir := filepath.Join(dataDir, browserProfileDirName)
 
 	llmSettings, err := settingsSvc.GetLLMSettings(context.Background())
 	if err != nil {
@@ -142,6 +160,13 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 
+	// headless: false — real use always shows a visible window so the user
+	// can review and submit themselves; see docs/01_architecture/03_browser_worker.md.
+	newBrowserWorker := func() (ports.BrowserWorker, error) {
+		return browser.NewPlaywrightWorker(browserProfileDir, false)
+	}
+	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker)
+
 	return httpapi.Services{
 		Candidates:  candRepo,
 		Onboarding:  onboardingSvc,
@@ -153,5 +178,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Application: applicationSvc,
 		CoverLetter: coverLetterSvc,
 		Answers:     answerSvc,
+		Browser:     browserSvc,
 	}, nil
 }

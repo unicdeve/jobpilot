@@ -385,6 +385,92 @@ func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string)
 	return nil
 }
 
+// fakeAgentRunRepository is an in-memory ports.AgentRunRepository for
+// tests.
+type fakeAgentRunRepository struct {
+	runs map[string]*domain.AgentRun
+}
+
+func newFakeAgentRunRepository() *fakeAgentRunRepository {
+	return &fakeAgentRunRepository{runs: map[string]*domain.AgentRun{}}
+}
+
+func (f *fakeAgentRunRepository) Save(_ context.Context, run *domain.AgentRun) error {
+	if run.ID == "" {
+		run.ID = fmt.Sprintf("run-%d", len(f.runs)+1)
+	}
+	f.runs[run.ID] = run
+	return nil
+}
+
+func (f *fakeAgentRunRepository) Update(_ context.Context, run *domain.AgentRun) error {
+	f.runs[run.ID] = run
+	return nil
+}
+
+func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.AgentRun, error) {
+	run, ok := f.runs[id]
+	if !ok {
+		return nil, fmt.Errorf("agent run not found: %s", id)
+	}
+	return run, nil
+}
+
+func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.AgentRun, error) {
+	var out []*domain.AgentRun
+	for _, r := range f.runs {
+		if r.ApplicationID == applicationID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// fakeAgentEventRepository is an in-memory ports.AgentEventRepository for
+// tests.
+type fakeAgentEventRepository struct {
+	events []*domain.AgentEvent
+}
+
+func newFakeAgentEventRepository() *fakeAgentEventRepository {
+	return &fakeAgentEventRepository{}
+}
+
+func (f *fakeAgentEventRepository) Save(_ context.Context, event *domain.AgentEvent) error {
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("event-%d", len(f.events)+1)
+	}
+	f.events = append(f.events, event)
+	return nil
+}
+
+func (f *fakeAgentEventRepository) ListByRun(_ context.Context, runID string) ([]*domain.AgentEvent, error) {
+	var out []*domain.AgentEvent
+	for _, e := range f.events {
+		if e.RunID == runID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// fakeBrowserWorker is a scriptable ports.BrowserWorker test double.
+type fakeBrowserWorker struct {
+	fields []ports.FormField
+}
+
+func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return nil }
+
+func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) { return "", false }
+
+func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
+	return f.fields, nil
+}
+
+func (f *fakeBrowserWorker) Fill(_ context.Context, _, _ string) error { return nil }
+
+func (f *fakeBrowserWorker) Close(_ context.Context) error { return nil }
+
 // testServer wires a full set of real services over fake ports/adapters,
 // serves them via NewHandler on a real loopback listener, and returns a
 // Client pointed at it — exercising the client and server together, the
@@ -403,6 +489,9 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	llmProv := &fakeLLMProvider{response: ports.Response{Content: `{"score":80,"confidence":0.9,"rationale":"good fit"}`, Model: "fake-model"}}
 	source := &fakeJobSource{}
 
+	appSvc := services.NewApplicationService(appRepo)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
+
 	svc := Services{
 		Candidates:  candRepo,
 		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), llmProv, nil),
@@ -411,9 +500,12 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}),
 		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
 		Settings:    services.NewSettingsService(settingsRepo),
-		Application: services.NewApplicationService(appRepo),
+		Application: appSvc,
 		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
-		Answers:     services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
+		Answers:     answerSvc,
+		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, newFakeAgentRunRepository(), newFakeAgentEventRepository(), answerSvc, func() (ports.BrowserWorker, error) {
+			return &fakeBrowserWorker{}, nil
+		}),
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))
@@ -680,4 +772,40 @@ func TestClient_QuestionResolution(t *testing.T) {
 	questions, err := client.ListQuestions(ctx, app.ID)
 	require.NoError(t, err)
 	require.Len(t, questions, 2)
+}
+
+func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{Name: "Katherine Johnson"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-4", Title: "Mathematician"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-4")
+	require.NoError(t, err)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+
+	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStateMatched, "matched")
+	require.NoError(t, err)
+	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStatePreparing, "preparing")
+	require.NoError(t, err)
+
+	// testServer's fake browser worker extracts no fields by default, which
+	// PrepareApplication treats as a blocker — this still exercises the
+	// endpoint/JSON contract end to end; the resolver/fill orchestration
+	// itself is already covered by internal/core/services/browserworker_test.go.
+	_, err = client.PrepareInBrowser(ctx, app.ID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no recognizable application form fields")
+
+	got, err := client.GetApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.ApplicationStateFailed, got.State)
+
+	runs, err := client.ListAgentRuns(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, domain.AgentRunStatusBlocked, runs[0].Run.Status)
+	require.NotEmpty(t, runs[0].Events)
 }

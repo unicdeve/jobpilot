@@ -298,6 +298,28 @@ func (c *Client) SetQuestionAnswer(ctx context.Context, questionID, answer strin
 	return &question, nil
 }
 
+// PrepareInBrowser navigates to the application's job posting in a real,
+// visible browser window, extracts and fills its form, and returns the
+// application's state afterward (READY_FOR_REVIEW on success, FAILED with a
+// reason recorded in its history/agent runs if blocked). The browser window
+// is left open either way for the user to review and submit themselves.
+func (c *Client) PrepareInBrowser(ctx context.Context, applicationID string) (*domain.Application, error) {
+	var app domain.Application
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/prepare-in-browser", nil, &app)
+	if err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
+// ListAgentRuns returns every agent run (with its events) recorded for an
+// application, most recent first.
+func (c *Client) ListAgentRuns(ctx context.Context, applicationID string) ([]AgentRunWithEvents, error) {
+	var runs []AgentRunWithEvents
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(applicationID)+"/agent-runs", nil, &runs)
+	return runs, err
+}
+
 // do sends an HTTP request to path with an optional JSON body, decodes a
 // JSON response into out (if non-nil), and turns a non-2xx response into a
 // Go error carrying the server's message.

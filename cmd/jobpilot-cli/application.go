@@ -19,6 +19,8 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(newApplicationTransitionCmd(client))
 	cmd.AddCommand(newCoverLetterCmd(client))
 	cmd.AddCommand(newQuestionCmd(client))
+	cmd.AddCommand(newApplicationPrepareInBrowserCmd(client))
+	cmd.AddCommand(newApplicationAgentRunsCmd(client))
 
 	return cmd
 }
@@ -161,6 +163,54 @@ func newApplicationTransitionCmd(client *httpapi.Client) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&reason, "reason", "", "reason for this transition")
 	return cmd
+}
+
+func newApplicationPrepareInBrowserCmd(client *httpapi.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "prepare-in-browser [application-id]",
+		Short: "Open the job posting in a real browser, extract its form, and fill in known answers",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			app, err := client.PrepareInBrowser(ctx, args[0])
+			if err != nil {
+				fmt.Printf("⚠️  %v\nRun 'application agent-runs %s' to see what happened, or 'application show %s' for details.\n", err, args[0], args[0])
+				return nil
+			}
+			fmt.Printf("✅ Application %s is now %s. The browser window was left open for you to review and submit.\n", app.ID, app.State)
+			return nil
+		},
+	}
+}
+
+func newApplicationAgentRunsCmd(client *httpapi.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "agent-runs [application-id]",
+		Short: "Show the browser automation activity recorded for an application",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			runs, err := client.ListAgentRuns(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("listing agent runs: %w", err)
+			}
+			if len(runs) == 0 {
+				fmt.Println("No agent runs yet.")
+				return nil
+			}
+			for _, r := range runs {
+				fmt.Printf("Run %s | %s | status: %s", r.Run.ID, r.Run.TaskType, r.Run.Status)
+				if r.Run.Error != "" {
+					fmt.Printf(" | %s", r.Run.Error)
+				}
+				fmt.Println()
+				for _, e := range r.Events {
+					fmt.Printf("  - %s (%s): %s\n", e.Action, e.Status, e.OutputSummary)
+				}
+			}
+			return nil
+		},
+	}
 }
 
 func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
