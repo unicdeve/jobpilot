@@ -36,7 +36,8 @@ Job
 ```text
 Candidate
 - id
-- name
+- first_name
+- last_name
 - contact
 - location
 - summary

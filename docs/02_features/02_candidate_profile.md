@@ -6,7 +6,8 @@ Maintain structured candidate facts used by matching and application generation.
 
 ## Core data
 
-- Name
+- First name
+- Last name
 - Contact information
 - Location
 - Work preferences

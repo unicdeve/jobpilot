@@ -29,7 +29,14 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
 
 - Onboarding flow: data directory + schema init, LLM connectivity check,
   initial candidate profile, optional resume import.
-- Candidate profile management: get, update, delete.
+- Candidate profile management: get, update, delete. Name is stored as
+  separate `first_name`/`last_name` columns (migration
+  `00004_candidate_name_split.sql`), not one combined field — this fixed a
+  real bug found live during Phase 6 verification, where `profileFactAnswer`
+  matched any question label containing "name" and put the candidate's
+  full name into both a form's "first name" and "last name" fields;
+  `Candidate.FullName()` is used wherever a single display string is
+  wanted (cover letters, CLI summaries).
 - Resume management: import (via Go MarkItDown), list, delete, with an
   optional review-gated LLM suggestion step (Summary/Skills draft) applied
   to the candidate profile after import.
@@ -177,12 +184,6 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   computed years of experience isn't derivable because `Candidate.Experiences`
   is an unstructured text blob, not structured dates (the same normalization
   gap noted above).
-- `profileFactAnswer`'s "name" keyword match doesn't distinguish "first
-  name" from "last name" (both contain "name"), so a real split-name form
-  field gets the candidate's full name in both — confirmed live against
-  Arbeitnow's own "Quick Apply" form during Phase 6 verification.
-  `Candidate.Name` isn't structured into given/family parts, so this needs
-  either that split or smarter label matching to fix properly.
 - No policy engine (Phase 8) integration — state transitions, including
   ones the browser worker makes, are user/CLI/desktop-driven, not
   autopilot-evaluated; `ApplicationMode` "autopilot" exists as a value but
