@@ -14,7 +14,7 @@ import (
 
 func saveTestCandidate(t *testing.T, db *DB) *domain.Candidate {
 	t.Helper()
-	candidate := &domain.Candidate{Name: "Taiwo"}
+	candidate := &domain.Candidate{FirstName: "Taiwo"}
 	require.NoError(t, NewCandidateRepository(db.Conn()).Save(context.Background(), candidate))
 	return candidate
 }

@@ -36,13 +36,13 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 	}
 
 	query := `INSERT INTO candidates (
-		id, name, contact, location, summary, work_preferences,
+		id, first_name, last_name, contact, location, summary, work_preferences,
 		salary_preferences, work_authorization, application_preferences, skills, experiences,
 		education, certifications, links, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := r.db.ExecContext(ctx, query,
-		candidate.ID, candidate.Name, candidate.Contact, candidate.Location, candidate.Summary,
+		candidate.ID, candidate.FirstName, candidate.LastName, candidate.Contact, candidate.Location, candidate.Summary,
 		candidate.WorkPreferences, candidate.SalaryPreferences, candidate.WorkAuthorization,
 		candidate.ApplicationPreferences, candidate.Skills, candidate.Experiences, candidate.Education,
 		candidate.Certifications, candidate.Links, candidate.CreatedAt, candidate.UpdatedAt,
@@ -57,7 +57,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 // GetByID retrieves a candidate by ID.
 func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.Candidate, error) {
 	query := `SELECT
-		id, name, contact, location, summary, work_preferences,
+		id, first_name, last_name, contact, location, summary, work_preferences,
 		salary_preferences, work_authorization, application_preferences, skills, experiences,
 		education, certifications, links, created_at, updated_at
 	FROM candidates WHERE id = ?`
@@ -66,7 +66,7 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 
 	var c domain.Candidate
 	err := row.Scan(
-		&c.ID, &c.Name, &c.Contact, &c.Location, &c.Summary,
+		&c.ID, &c.FirstName, &c.LastName, &c.Contact, &c.Location, &c.Summary,
 		&c.WorkPreferences, &c.SalaryPreferences, &c.WorkAuthorization,
 		&c.ApplicationPreferences, &c.Skills, &c.Experiences, &c.Education,
 		&c.Certifications, &c.Links, &c.CreatedAt, &c.UpdatedAt,
@@ -86,13 +86,13 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 	candidate.UpdatedAt = time.Now()
 
 	query := `UPDATE candidates SET
-		name = ?, contact = ?, location = ?, summary = ?, work_preferences = ?,
+		first_name = ?, last_name = ?, contact = ?, location = ?, summary = ?, work_preferences = ?,
 		salary_preferences = ?, work_authorization = ?, application_preferences = ?, skills = ?, experiences = ?,
 		education = ?, certifications = ?, links = ?, updated_at = ?
 	WHERE id = ?`
 
 	_, err := r.db.ExecContext(ctx, query,
-		candidate.Name, candidate.Contact, candidate.Location, candidate.Summary,
+		candidate.FirstName, candidate.LastName, candidate.Contact, candidate.Location, candidate.Summary,
 		candidate.WorkPreferences, candidate.SalaryPreferences, candidate.WorkAuthorization,
 		candidate.ApplicationPreferences, candidate.Skills, candidate.Experiences, candidate.Education,
 		candidate.Certifications, candidate.Links, candidate.UpdatedAt, candidate.ID,
@@ -120,7 +120,7 @@ func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
 // installation, so this is the standard way to fetch "the" profile.
 func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Candidate, error) {
 	query := `SELECT
-		id, name, contact, location, summary, work_preferences,
+		id, first_name, last_name, contact, location, summary, work_preferences,
 		salary_preferences, work_authorization, application_preferences, skills, experiences,
 		education, certifications, links, created_at, updated_at
 	FROM candidates LIMIT 1`
@@ -129,7 +129,7 @@ func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Ca
 
 	var c domain.Candidate
 	err := row.Scan(
-		&c.ID, &c.Name, &c.Contact, &c.Location, &c.Summary,
+		&c.ID, &c.FirstName, &c.LastName, &c.Contact, &c.Location, &c.Summary,
 		&c.WorkPreferences, &c.SalaryPreferences, &c.WorkAuthorization,
 		&c.ApplicationPreferences, &c.Skills, &c.Experiences, &c.Education,
 		&c.Certifications, &c.Links, &c.CreatedAt, &c.UpdatedAt,

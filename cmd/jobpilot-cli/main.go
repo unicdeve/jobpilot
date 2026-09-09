@@ -81,12 +81,19 @@ func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobr
 			fmt.Println("\n--- Candidate Profile ---")
 			profile := domain.Candidate{}
 
-			namePrompt := promptui.Prompt{Label: "Full Name"}
-			name, err := namePrompt.Run()
+			firstNamePrompt := promptui.Prompt{Label: "First Name"}
+			firstName, err := firstNamePrompt.Run()
 			if err != nil {
-				return fmt.Errorf("prompting for name: %w", err)
+				return fmt.Errorf("prompting for first name: %w", err)
 			}
-			profile.Name = name
+			profile.FirstName = firstName
+
+			lastNamePrompt := promptui.Prompt{Label: "Last Name"}
+			lastName, err := lastNamePrompt.Run()
+			if err != nil {
+				return fmt.Errorf("prompting for last name: %w", err)
+			}
+			profile.LastName = lastName
 
 			contactPrompt := promptui.Prompt{Label: "Contact (Email/Phone)"}
 			contact, err := contactPrompt.Run()
@@ -175,8 +182,8 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Name: %s\nContact: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
-				profile.Name, profile.Contact, profile.Location, profile.Summary, profile.Skills)
+			fmt.Printf("First Name: %s\nLast Name: %s\nContact: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
+				profile.FirstName, profile.LastName, profile.Contact, profile.Location, profile.Summary, profile.Skills)
 			return nil
 		},
 	})
@@ -204,7 +211,8 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 				}
 			}
 
-			updateField("Name", profile.Name, func(v string) { profile.Name = v })
+			updateField("First Name", profile.FirstName, func(v string) { profile.FirstName = v })
+			updateField("Last Name", profile.LastName, func(v string) { profile.LastName = v })
 			updateField("Contact", profile.Contact, func(v string) { profile.Contact = v })
 			updateField("Location", profile.Location, func(v string) { profile.Location = v })
 			updateField("Summary", profile.Summary, func(v string) { profile.Summary = v })

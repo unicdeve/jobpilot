@@ -65,7 +65,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		t.Parallel()
 		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
 
-		candidate := &domain.Candidate{Name: "Ada Lovelace"}
+		candidate := &domain.Candidate{FirstName: "Ada", LastName: "Lovelace"}
 		job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
 		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
 

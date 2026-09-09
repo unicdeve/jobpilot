@@ -17,7 +17,7 @@ func TestProfileService_GetProfile(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeCandidateRepository()
-		want := &domain.Candidate{ID: "cand-1", Name: "Taiwo"}
+		want := &domain.Candidate{ID: "cand-1", FirstName: "Taiwo"}
 		require.NoError(t, repo.Save(context.Background(), want))
 
 		svc := NewProfileService(repo)

@@ -575,13 +575,14 @@ func TestClient_ProfileRoundTrip(t *testing.T) {
 	client, candRepo, _ := testServer(t)
 	ctx := context.Background()
 
-	profile := domain.Candidate{Name: "Ada Lovelace"}
+	profile := domain.Candidate{FirstName: "Ada", LastName: "Lovelace"}
 	require.NoError(t, client.InitializeProfile(ctx, &profile))
 	require.NotEmpty(t, profile.ID)
 
 	got, err := client.GetProfile(ctx)
 	require.NoError(t, err)
-	require.Equal(t, "Ada Lovelace", got.Name)
+	require.Equal(t, "Ada", got.FirstName)
+	require.Equal(t, "Lovelace", got.LastName)
 
 	got.Summary = "Pioneering computer programmer"
 	require.NoError(t, client.UpdateProfile(ctx, got))
@@ -629,7 +630,7 @@ func TestClient_MatchAnalyzeAndList(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	profile := domain.Candidate{Name: "Grace Hopper"}
+	profile := domain.Candidate{FirstName: "Grace", LastName: "Hopper"}
 	require.NoError(t, candRepo.Save(ctx, &profile))
 
 	source.getJobResult = &domain.Job{CanonicalURL: "https://example.com/job/3", Title: "Compiler Engineer"}
@@ -677,7 +678,7 @@ func TestClient_ApplicationLifecycle(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{Name: "Ada Lovelace", Contact: "ada@example.com"}
+	candidate := domain.Candidate{FirstName: "Ada", LastName: "Lovelace", Contact: "ada@example.com"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Engineer"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-1")
@@ -712,7 +713,7 @@ func TestClient_CoverLetterLifecycle(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{Name: "Grace Hopper"}
+	candidate := domain.Candidate{FirstName: "Grace", LastName: "Hopper"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-2", Title: "Compiler Engineer"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-2")
@@ -742,7 +743,7 @@ func TestClient_QuestionResolution(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{Name: "Alan Turing", Contact: "alan@example.com"}
+	candidate := domain.Candidate{FirstName: "Alan", LastName: "Turing", Contact: "alan@example.com"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-3", Title: "Cryptanalyst"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-3")
@@ -778,7 +779,7 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{Name: "Katherine Johnson"}
+	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-4", Title: "Mathematician"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-4")

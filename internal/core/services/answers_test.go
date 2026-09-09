@@ -25,7 +25,8 @@ func TestProfileFactAnswer(t *testing.T) {
 	t.Parallel()
 
 	candidate := &domain.Candidate{
-		Name:              "Ada Lovelace",
+		FirstName:         "Ada",
+		LastName:          "Lovelace",
 		Contact:           "ada@example.com",
 		Location:          "London, UK",
 		WorkAuthorization: "UK citizen",
@@ -39,6 +40,8 @@ func TestProfileFactAnswer(t *testing.T) {
 		wantAnswer string
 	}{
 		{"What is your full name?", "candidate.name", "Ada Lovelace"},
+		{"First name", "candidate.first_name", "Ada"},
+		{"Last name", "candidate.last_name", "Lovelace"},
 		{"Email address", "candidate.contact", "ada@example.com"},
 		{"Where are you based?", "candidate.location", "London, UK"},
 		{"Do you require visa sponsorship?", "candidate.work_authorization", "UK citizen"},

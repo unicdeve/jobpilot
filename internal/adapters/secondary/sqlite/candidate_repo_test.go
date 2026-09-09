@@ -17,7 +17,7 @@ func TestCandidateRepository_SaveAndGetByID(t *testing.T) {
 
 	db := newTestDB(t)
 	repo := NewCandidateRepository(db.Conn())
-	candidate := &domain.Candidate{Name: "Taiwo", Contact: "taiwo@example.com", Summary: "Go engineer"}
+	candidate := &domain.Candidate{FirstName: "Taiwo", Contact: "taiwo@example.com", Summary: "Go engineer"}
 
 	require.NoError(t, repo.Save(context.Background(), candidate))
 	assert.NotEmpty(t, candidate.ID, "Save should generate an ID")
@@ -25,7 +25,7 @@ func TestCandidateRepository_SaveAndGetByID(t *testing.T) {
 
 	got, err := repo.GetByID(context.Background(), candidate.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "Taiwo", got.Name)
+	assert.Equal(t, "Taiwo", got.FirstName)
 	assert.Equal(t, "Go engineer", got.Summary)
 }
 
@@ -45,7 +45,7 @@ func TestCandidateRepository_Update(t *testing.T) {
 
 	db := newTestDB(t)
 	repo := NewCandidateRepository(db.Conn())
-	candidate := &domain.Candidate{Name: "Taiwo"}
+	candidate := &domain.Candidate{FirstName: "Taiwo"}
 	require.NoError(t, repo.Save(context.Background(), candidate))
 
 	candidate.Summary = "Updated summary"
@@ -61,7 +61,7 @@ func TestCandidateRepository_Delete(t *testing.T) {
 
 	db := newTestDB(t)
 	repo := NewCandidateRepository(db.Conn())
-	candidate := &domain.Candidate{Name: "Taiwo"}
+	candidate := &domain.Candidate{FirstName: "Taiwo"}
 	require.NoError(t, repo.Save(context.Background(), candidate))
 
 	require.NoError(t, repo.Delete(context.Background(), candidate.ID))
@@ -77,7 +77,7 @@ func TestCandidateRepository_GetFirstCandidate(t *testing.T) {
 		t.Parallel()
 		db := newTestDB(t)
 		repo := NewCandidateRepository(db.Conn())
-		candidate := &domain.Candidate{Name: "Taiwo"}
+		candidate := &domain.Candidate{FirstName: "Taiwo"}
 		require.NoError(t, repo.Save(context.Background(), candidate))
 
 		got, err := repo.GetFirstCandidate(context.Background())

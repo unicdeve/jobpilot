@@ -174,8 +174,12 @@ func profileFactAnswer(c *domain.Candidate, label string) (source, answer string
 	l := strings.ToLower(label)
 
 	switch {
+	case strings.Contains(l, "first name"), strings.Contains(l, "given name"):
+		source, answer = "candidate.first_name", c.FirstName
+	case strings.Contains(l, "last name"), strings.Contains(l, "surname"), strings.Contains(l, "family name"):
+		source, answer = "candidate.last_name", c.LastName
 	case strings.Contains(l, "name"):
-		source, answer = "candidate.name", c.Name
+		source, answer = "candidate.name", c.FullName()
 	case strings.Contains(l, "email"), strings.Contains(l, "phone"), strings.Contains(l, "contact"):
 		source, answer = "candidate.contact", c.Contact
 	case strings.Contains(l, "location"), strings.Contains(l, "based"):

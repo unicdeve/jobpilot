@@ -48,7 +48,7 @@ func TestOnboardingService_InitializeProfile(t *testing.T) {
 		t.Parallel()
 		candRepo := newFakeCandidateRepository()
 		svc := newTestOnboardingService(candRepo, &fakeLLMProvider{})
-		profile := &domain.Candidate{Name: "Taiwo"}
+		profile := &domain.Candidate{FirstName: "Taiwo"}
 
 		err := svc.InitializeProfile(context.Background(), profile)
 
@@ -62,7 +62,7 @@ func TestOnboardingService_InitializeProfile(t *testing.T) {
 		candRepo.saveErr = errors.New("disk full")
 		svc := newTestOnboardingService(candRepo, &fakeLLMProvider{})
 
-		err := svc.InitializeProfile(context.Background(), &domain.Candidate{Name: "Taiwo"})
+		err := svc.InitializeProfile(context.Background(), &domain.Candidate{FirstName: "Taiwo"})
 
 		assert.ErrorContains(t, err, "failed to save initial profile")
 	})

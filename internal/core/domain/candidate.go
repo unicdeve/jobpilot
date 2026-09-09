@@ -2,13 +2,17 @@
 // independent of any storage, transport, or LLM implementation detail.
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Candidate represents a job seeker's profile: identity, preferences, and
 // career history used to evaluate and apply to jobs.
 type Candidate struct {
 	ID                     string    `json:"id"`
-	Name                   string    `json:"name"`
+	FirstName              string    `json:"first_name"`
+	LastName               string    `json:"last_name"`
 	Contact                string    `json:"contact"`
 	Location               string    `json:"location"`
 	Summary                string    `json:"summary"`
@@ -23,4 +27,11 @@ type Candidate struct {
 	Links                  string    `json:"links"`
 	CreatedAt              time.Time `json:"created_at"`
 	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+// FullName joins the candidate's first and last name for display and
+// generated-text contexts (cover letters, CLI summaries) that want a
+// single name string.
+func (c Candidate) FullName() string {
+	return strings.TrimSpace(c.FirstName + " " + c.LastName)
 }
