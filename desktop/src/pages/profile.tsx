@@ -59,7 +59,10 @@ export function Profile() {
         setProfile(updated);
         notify("Profile saved.", "success");
       } else {
-        const created = await api.initializeProfile(profile);
+        // created_at/updated_at are server-assigned; sending them as "" fails
+        // Go's time.Time JSON parsing, so a brand-new profile omits them.
+        const { created_at, updated_at, ...rest } = profile;
+        const created = await api.initializeProfile(rest);
         setProfile(created);
         setExists(true);
         notify("Profile created.", "success");
