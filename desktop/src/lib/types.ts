@@ -5,7 +5,8 @@
 
 export interface Candidate {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   contact: string;
   location: string;
   summary: string;

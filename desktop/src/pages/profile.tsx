@@ -10,7 +10,8 @@ import type { Candidate } from "../lib/types";
 
 const emptyProfile: Candidate = {
   id: "",
-  name: "",
+  first_name: "",
+  last_name: "",
   contact: "",
   location: "",
   summary: "",
@@ -80,8 +81,19 @@ export function Profile() {
       )}
       <Card>
         <CardContent className="space-y-4">
-          <FormField label="Name" htmlFor="name">
-            <Input id="name" value={profile.name} onChange={(e) => set("name", e.target.value)} />
+          <FormField label="First Name" htmlFor="first_name">
+            <Input
+              id="first_name"
+              value={profile.first_name}
+              onChange={(e) => set("first_name", e.target.value)}
+            />
+          </FormField>
+          <FormField label="Last Name" htmlFor="last_name">
+            <Input
+              id="last_name"
+              value={profile.last_name}
+              onChange={(e) => set("last_name", e.target.value)}
+            />
           </FormField>
           <FormField label="Contact (email/phone)" htmlFor="contact">
             <Input id="contact" value={profile.contact} onChange={(e) => set("contact", e.target.value)} />
