@@ -20,6 +20,7 @@ build:
 	go build -o bin/$(CLI_BINARY_NAME) ./cmd/jobpilot-cli
 
 run:
+	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
 	go run ./cmd/jobpilot
 
 clean:
