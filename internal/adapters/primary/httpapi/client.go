@@ -102,8 +102,8 @@ func (c *Client) DeleteResume(ctx context.Context, id string) error {
 	return err
 }
 
-// ProposeProfileDraft asks the daemon's LLM to draft a Summary/Skills
-// suggestion from resumeMarkdown, for the caller to review before applying.
+// ProposeProfileDraft asks the daemon's LLM to draft profile fields from
+// resumeMarkdown, for the caller to review before applying.
 func (c *Client) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
 	req := proposeDraftRequest{ResumeMarkdown: resumeMarkdown}
 	var draft domain.ProfileDraft
