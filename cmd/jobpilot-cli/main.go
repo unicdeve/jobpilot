@@ -137,12 +137,13 @@ func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobr
 	}
 }
 
-// suggestProfileFromResume asks the daemon's LLM to draft a Summary and
-// Skills list from resumeMarkdown, shows the draft to the user for
-// review/edit, and persists whatever they accept. A resume has already been
-// imported successfully by the time this runs, so any failure here (LLM
-// unavailable, bad response, etc.) is reported as a warning rather than an
-// error — it must never undo or block the import.
+// suggestProfileFromResume asks the daemon's LLM to draft profile fields
+// (first/last name, contact, location, Summary, Skills) from resumeMarkdown,
+// shows the draft to the user for review/edit, and persists whatever they
+// accept. A resume has already been imported successfully by the time this
+// runs, so any failure here (LLM unavailable, bad response, etc.) is
+// reported as a warning rather than an error — it must never undo or block
+// the import.
 func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resumeMarkdown string, profile *domain.Candidate) {
 	draft, err := client.ProposeProfileDraft(ctx, resumeMarkdown)
 	if err != nil {
@@ -152,6 +153,16 @@ func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resum
 
 	fmt.Println("\n📝 Suggested profile details from resume (edit or accept):")
 
+	// A field the LLM didn't find in the resume comes back empty; fall back
+	// to whatever's already on the profile so an unrelated blank suggestion
+	// never clobbers real data.
+	orCurrent := func(draftVal, current string) string {
+		if draftVal != "" {
+			return draftVal
+		}
+		return current
+	}
+
 	updateField := func(label string, current string, setter func(string)) {
 		prompt := promptui.Prompt{Label: label, Default: current}
 		val, err := prompt.Run()
@@ -160,8 +171,12 @@ func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resum
 		}
 	}
 
-	updateField("Summary", draft.Summary, func(v string) { profile.Summary = v })
-	updateField("Skills", strings.Join(draft.Skills, ", "), func(v string) { profile.Skills = v })
+	updateField("First Name", orCurrent(draft.FirstName, profile.FirstName), func(v string) { profile.FirstName = v })
+	updateField("Last Name", orCurrent(draft.LastName, profile.LastName), func(v string) { profile.LastName = v })
+	updateField("Contact", orCurrent(draft.Contact, profile.Contact), func(v string) { profile.Contact = v })
+	updateField("Location", orCurrent(draft.Location, profile.Location), func(v string) { profile.Location = v })
+	updateField("Summary", orCurrent(draft.Summary, profile.Summary), func(v string) { profile.Summary = v })
+	updateField("Skills", orCurrent(strings.Join(draft.Skills, ", "), profile.Skills), func(v string) { profile.Skills = v })
 
 	if err := client.UpdateProfile(ctx, profile); err != nil {
 		fmt.Printf("⚠️  Could not save suggested profile updates: %v\n", err)
