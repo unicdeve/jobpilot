@@ -24,10 +24,12 @@ Maintain structured candidate facts used by matching and application generation.
 
 Candidate profile data is factual source material. The LLM must not invent missing values.
 
-Summary and Skills may be populated from an LLM-generated draft after resume
-import (see `03_resume_management.md`), but only through the same explicit
-review/edit step as manual entry — the LLM never writes to the profile
-directly.
+First name, last name, contact, location, Summary, and Skills may be
+populated from an LLM-generated draft after resume import (see
+`03_resume_management.md`), but only through the same explicit review/edit
+step as manual entry — the LLM never writes to the profile directly. Fields
+a resume wouldn't plausibly contain (work preferences, work authorization,
+salary preferences, application preferences) are never drafted this way.
 
 ## Acceptance Criteria
 

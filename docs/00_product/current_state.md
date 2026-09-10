@@ -38,8 +38,16 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   `Candidate.FullName()` is used wherever a single display string is
   wanted (cover letters, CLI summaries).
 - Resume management: import (via Go MarkItDown), list, delete, with an
-  optional review-gated LLM suggestion step (Summary/Skills draft) applied
-  to the candidate profile after import.
+  optional review-gated LLM suggestion step (first/last name, contact,
+  location, Summary, Skills draft — `ResumeService.ProposeProfileDraft`)
+  applied to the candidate profile after import. Two entry points share
+  this same mechanism: the CLI onboarding flow (prompt-per-field with the
+  suggestion as the default, applied via an explicit `UpdateProfile` call)
+  and the desktop Profile screen's "Import resume to prefill" button (fills
+  the in-progress form; nothing reaches the daemon until the user hits
+  Save/Create profile). A draft field the LLM didn't find in the resume is
+  left blank rather than guessed, and never overwrites a value already
+  entered.
 - Job discovery: search and list against two real, no-auth public job-board
   APIs (`internal/adapters/secondary/discovery/arbeitnow.go`, `remotive.go`),
   with canonical-URL deduplication. Each connector caches its fetched
