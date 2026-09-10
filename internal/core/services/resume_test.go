@@ -30,12 +30,16 @@ func TestResumeService_ProposeProfileDraft(t *testing.T) {
 
 	t.Run("happy path", func(t *testing.T) {
 		t.Parallel()
-		llm := &fakeLLMProvider{response: ports.Response{Content: `{"summary":"Go engineer","skills":["go","sql"]}`}}
+		llm := &fakeLLMProvider{response: ports.Response{Content: `{"first_name":"Ada","last_name":"Lovelace","contact":"ada@example.com","location":"London, UK","summary":"Go engineer","skills":["go","sql"]}`}}
 		svc := NewResumeService(newFakeResumeRepository(), llm)
 
 		draft, err := svc.ProposeProfileDraft(context.Background(), "resume content")
 
 		require.NoError(t, err)
+		assert.Equal(t, "Ada", draft.FirstName)
+		assert.Equal(t, "Lovelace", draft.LastName)
+		assert.Equal(t, "ada@example.com", draft.Contact)
+		assert.Equal(t, "London, UK", draft.Location)
 		assert.Equal(t, "Go engineer", draft.Summary)
 		assert.Equal(t, []string{"go", "sql"}, draft.Skills)
 	})

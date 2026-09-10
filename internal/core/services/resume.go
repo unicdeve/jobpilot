@@ -48,17 +48,22 @@ func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, fi
 	return resume, nil
 }
 
-// ProposeProfileDraft asks the LLM to suggest a candidate Summary and Skills
-// list from resume content. The result is a draft for the user to review and
-// edit — it is never written to the candidate profile directly.
+// ProposeProfileDraft asks the LLM to extract candidate profile fields
+// (name, contact, location, a professional summary, and skills) from resume
+// content. The result is a draft for the user to review and edit — it is
+// never written to the candidate profile directly.
 func (s *ResumeService) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
 	wrapped, err := wrapUntrusted("resume", resumeMarkdown)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prompt: %w", err)
 	}
 
-	prompt := "Analyze the following resume and propose a professional summary and a list of skills for the candidate. " +
-		"Output the result in JSON format with these keys: summary (string), skills (list of strings).\n\n" + wrapped
+	prompt := "Analyze the following resume and extract the candidate's profile details, plus propose a " +
+		"professional summary and a list of skills. Output the result in JSON format with these keys: " +
+		"first_name (string), last_name (string), contact (string - email and/or phone number as found in " +
+		"the resume), location (string), summary (string), skills (list of strings). " +
+		"Only extract facts actually present in the resume text below; if a field isn't present, use an " +
+		"empty string (or empty list for skills) rather than guessing.\n\n" + wrapped
 
 	req := ports.Request{
 		SystemPrompt: "You are an expert resume reviewer helping draft candidate profile fields. " +
