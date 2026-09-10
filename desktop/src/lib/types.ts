@@ -23,6 +23,15 @@ export interface Candidate {
   updated_at: string;
 }
 
+export interface ProfileDraft {
+  first_name: string;
+  last_name: string;
+  contact: string;
+  location: string;
+  summary: string;
+  skills: string[];
+}
+
 export interface Resume {
   id: string;
   candidate_id: string;

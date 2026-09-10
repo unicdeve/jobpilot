@@ -14,6 +14,7 @@ import type {
   Job,
   JobMatch,
   LLMSettings,
+  ProfileDraft,
   QuestionType,
   Resume,
   SaveLLMSettingsResult,
@@ -32,6 +33,7 @@ export interface ApiClient {
   importResume(candidateId: string, filePath: string): Promise<Resume>;
   listResumes(candidateId: string): Promise<Resume[]>;
   deleteResume(id: string): Promise<void>;
+  proposeProfileDraft(resumeMarkdown: string): Promise<ProfileDraft>;
 
   searchJobs(criteria: SearchCriteria): Promise<Job[]>;
   importJob(url: string): Promise<Job>;
@@ -127,6 +129,10 @@ export function createApiClient(port: number): ApiClient {
     listResumes: (candidateId) =>
       request<Resume[]>(baseUrl, "GET", "/v1/resumes" + q({ candidate_id: candidateId })),
     deleteResume: (id) => request<void>(baseUrl, "DELETE", `/v1/resumes/${encodeURIComponent(id)}`),
+    proposeProfileDraft: (resumeMarkdown) =>
+      request<ProfileDraft>(baseUrl, "POST", "/v1/resumes/propose-draft", {
+        resume_markdown: resumeMarkdown,
+      }),
 
     searchJobs: (criteria) => request<Job[]>(baseUrl, "POST", "/v1/jobs/search", criteria),
     importJob: (url) => request<Job>(baseUrl, "POST", "/v1/jobs/import", { url }),
