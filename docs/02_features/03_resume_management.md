@@ -45,7 +45,20 @@ last name, contact, location, Summary, Skills) derived from the resume and
 can accept, edit, or reject each field before it is written to the
 candidate profile. Nothing is written to the profile without this review
 step. A field the LLM can't find in the resume is left blank/empty rather
-than guessed, and never overwrites a value the user already entered.
+than guessed.
+
+In the CLI, each field is prompted individually, defaulting to the
+existing profile value (or the draft value if the field was previously
+empty) so pressing Enter never blanks out an existing value.
+
+In the desktop app, imported draft fields are merged into the in-progress
+form state, which the user still reviews and edits before saving. An
+"Overwrite existing fields with resume data" toggle (default off)
+controls the merge: with the toggle off, a draft field is only applied
+when the corresponding form field is currently empty, so it never
+overwrites a value already typed or loaded from a saved profile; with the
+toggle on, a non-empty draft field always overwrites the current value. In
+both modes, an empty draft field never changes the current field.
 
 ### AC-007
 If suggestion generation fails (e.g. the LLM is unavailable), the resume
