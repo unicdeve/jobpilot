@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
 import { FormField } from "../components/form-field";
@@ -6,7 +7,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
-import type { Candidate } from "../lib/types";
+import type { Candidate, ProfileDraft } from "../lib/types";
 
 const emptyProfile: Candidate = {
   id: "",
@@ -34,6 +35,7 @@ export function Profile() {
   const [profile, setProfile] = useState<Candidate | null>(null);
   const [exists, setExists] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     api
@@ -74,12 +76,72 @@ export function Profile() {
     }
   };
 
+  // Only overwrite a field with the resume's suggestion when the LLM
+  // actually found something for it, so a blank draft field never clobbers
+  // whatever the user already typed in.
+  const applyDraft = (draft: ProfileDraft) => {
+    setProfile((p) =>
+      p
+        ? {
+            ...p,
+            first_name: draft.first_name || p.first_name,
+            last_name: draft.last_name || p.last_name,
+            contact: draft.contact || p.contact,
+            location: draft.location || p.location,
+            summary: draft.summary || p.summary,
+            skills: draft.skills.length > 0 ? draft.skills.join(", ") : p.skills,
+          }
+        : p,
+    );
+  };
+
+  const importResumeToPrefill = async () => {
+    if (!profile) return;
+    const path = await open({ multiple: false, title: "Select a resume file" });
+    if (!path || Array.isArray(path)) return;
+
+    setImporting(true);
+    try {
+      // A resume can only be associated with a candidate that already has an
+      // ID, so a brand-new profile is created (with whatever's typed so far)
+      // before the resume is imported against it.
+      let candidateId = profile.id;
+      if (!exists) {
+        const { created_at, updated_at, ...rest } = profile;
+        const created = await api.initializeProfile(rest);
+        candidateId = created.id;
+        setProfile(created);
+        setExists(true);
+      }
+
+      const resume = await api.importResume(candidateId, path);
+      notify("Resume imported.", "success");
+
+      try {
+        const draft = await api.proposeProfileDraft(resume.markdown_content);
+        applyDraft(draft);
+        notify("Profile prefilled from resume — review before saving.", "success");
+      } catch (err) {
+        notify(`Resume imported, but couldn't generate suggestions: ${err}`);
+      }
+    } catch (err) {
+      notify(String(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-4 text-xl font-semibold">Profile</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Profile</h1>
+        <Button variant="outline" onClick={importResumeToPrefill} disabled={importing}>
+          {importing ? "Importing…" : "Import resume to prefill"}
+        </Button>
+      </div>
       {!exists && (
         <p className="mb-4 text-sm text-slate-500">
-          No candidate profile yet — fill this in to create one.
+          No candidate profile yet — fill this in to create one, or import a resume to prefill it.
         </p>
       )}
       <Card>
