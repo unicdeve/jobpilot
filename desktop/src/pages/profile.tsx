@@ -1,9 +1,11 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { FormField } from "../components/form-field";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { useApi } from "../lib/daemon";
 import { useToast } from "../lib/toast";
@@ -36,6 +38,7 @@ export function Profile() {
   const [exists, setExists] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
 
   useEffect(() => {
     api
@@ -76,20 +79,26 @@ export function Profile() {
     }
   };
 
-  // Only overwrite a field with the resume's suggestion when the LLM
-  // actually found something for it, so a blank draft field never clobbers
-  // whatever the user already typed in.
+  // A blank draft field (the LLM found nothing) never changes the current
+  // field. When overwriteExisting is off, a draft field is only applied if
+  // the current field is empty, so it never clobbers a value the user
+  // already typed or a previously saved profile value.
   const applyDraft = (draft: ProfileDraft) => {
+    const pick = (draftValue: string, currentValue: string) => {
+      if (!draftValue) return currentValue;
+      if (overwriteExisting) return draftValue;
+      return currentValue || draftValue;
+    };
     setProfile((p) =>
       p
         ? {
             ...p,
-            first_name: draft.first_name || p.first_name,
-            last_name: draft.last_name || p.last_name,
-            contact: draft.contact || p.contact,
-            location: draft.location || p.location,
-            summary: draft.summary || p.summary,
-            skills: draft.skills.length > 0 ? draft.skills.join(", ") : p.skills,
+            first_name: pick(draft.first_name, p.first_name),
+            last_name: pick(draft.last_name, p.last_name),
+            contact: pick(draft.contact, p.contact),
+            location: pick(draft.location, p.location),
+            summary: pick(draft.summary, p.summary),
+            skills: pick(draft.skills.join(", "), p.skills),
           }
         : p,
     );
@@ -135,9 +144,19 @@ export function Profile() {
     <div className="max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Profile</h1>
-        <Button variant="outline" onClick={importResumeToPrefill} disabled={importing}>
-          {importing ? "Importing…" : "Import resume to prefill"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Label htmlFor="overwrite_existing">
+            <Checkbox
+              id="overwrite_existing"
+              checked={overwriteExisting}
+              onCheckedChange={(checked) => setOverwriteExisting(checked === true)}
+            />
+            Overwrite existing fields with resume data
+          </Label>
+          <Button variant="outline" onClick={importResumeToPrefill} disabled={importing}>
+            {importing ? "Importing…" : "Import resume to prefill"}
+          </Button>
+        </div>
       </div>
       {!exists && (
         <p className="mb-4 text-sm text-slate-500">

@@ -45,9 +45,10 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   suggestion as the default, applied via an explicit `UpdateProfile` call)
   and the desktop Profile screen's "Import resume to prefill" button (fills
   the in-progress form; nothing reaches the daemon until the user hits
-  Save/Create profile). A draft field the LLM didn't find in the resume is
-  left blank rather than guessed, and never overwrites a value already
-  entered.
+  Save/Create profile, via an "Overwrite existing fields with resume data"
+  toggle, default off, that only fills currently-empty fields unless
+  checked). A draft field the LLM didn't find in the resume is left blank
+  rather than guessed.
 - Job discovery: search and list against two real, no-auth public job-board
   APIs (`internal/adapters/secondary/discovery/arbeitnow.go`, `remotive.go`),
   with canonical-URL deduplication. Each connector caches its fetched
