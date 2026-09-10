@@ -70,8 +70,7 @@ func (s *OnboardingService) ProcessResume(ctx context.Context, candidateID strin
 	return s.resumeSvc.ImportResume(ctx, candidateID, filePath)
 }
 
-// ProposeProfileDraft asks the LLM to suggest a candidate Summary and Skills
-// list from resume content, for the user to review before it is applied.
+// ProposeProfileDraft delegates to ResumeService.ProposeProfileDraft.
 func (s *OnboardingService) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
 	return s.resumeSvc.ProposeProfileDraft(ctx, resumeMarkdown)
 }
