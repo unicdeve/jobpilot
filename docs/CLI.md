@@ -7,7 +7,7 @@ This document lists the currently implemented CLI commands for the JobPilot.
 
 ## Candidate Profile
 - `jobpilot-cli profile get`: Displays the current candidate profile information.
-- `jobpilot-cli profile update`: Interactively update the current candidate profile. Allows updating Name, Contact, Location, Summary, Skills, Salary Preferences, Work Authorization, and Application Preferences.
+- `jobpilot-cli profile update`: Interactively update the current candidate profile. Allows updating First Name, Last Name, Contact, Location, Summary, Skills, Salary Preferences, Work Authorization, and Application Preferences.
 
 ## Resume Management
 - `jobpilot-cli resume import [path]`: Imports a resume file from the specified path, converts it to Markdown, and associates it with the current candidate profile. Afterward, the LLM proposes a draft of First Name, Last Name, Contact, Location, Summary, and Skills from the resume; you can review and edit each field (defaulting to your current profile value if the draft left it blank) before it's applied to your profile. This same review step also runs during `onboard` when a resume is imported there. If suggestion generation fails, the resume import itself still succeeds.
