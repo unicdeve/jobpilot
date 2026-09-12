@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { FormField } from "../components/form-field";
@@ -7,7 +7,13 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { useApi } from "../lib/daemon";
+import {
+  useImportResume,
+  useInitializeProfile,
+  useProfile,
+  useProposeProfileDraft,
+  useUpdateProfile,
+} from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { Candidate, ProfileDraft } from "../lib/types";
 
@@ -32,111 +38,107 @@ const emptyProfile: Candidate = {
 };
 
 export function Profile() {
-  const api = useApi();
   const { notify } = useToast();
-  const [profile, setProfile] = useState<Candidate | null>(null);
-  const [exists, setExists] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
+  // A daemon with no candidate yet answers getProfile with an error, so an
+  // errored query means "first run", not a failure to show the user.
+  const { data: saved, isPending, isError: noProfileYet } = useProfile();
+  const exists = !noProfileYet;
+
+  // The form is an editable draft over whatever is saved. Keeping edits
+  // separate from the cached profile means a background refetch can never
+  // overwrite something half-typed.
+  const [draft, setDraft] = useState<Candidate | null>(null);
   const [overwriteExisting, setOverwriteExisting] = useState(false);
 
-  useEffect(() => {
-    api
-      .getProfile()
-      .then(setProfile)
-      .catch(() => {
-        setExists(false);
-        setProfile(emptyProfile);
-      });
-  }, [api]);
+  const updateProfile = useUpdateProfile({
+    onSuccess: () => {
+      setDraft(null);
+      notify("Profile saved.", "success");
+    },
+    onError: (err) => notify(String(err)),
+  });
+  const initializeProfile = useInitializeProfile({
+    onSuccess: () => {
+      setDraft(null);
+      notify("Profile created.", "success");
+    },
+    onError: (err) => notify(String(err)),
+  });
+  const importResume = useImportResume();
+  const proposeDraft = useProposeProfileDraft();
 
-  if (!profile) return <p className="text-sm text-slate-500">Loading…</p>;
+  const saving = updateProfile.isPending || initializeProfile.isPending;
+  const importing = importResume.isPending || proposeDraft.isPending;
+
+  if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
+
+  const profile = draft ?? saved ?? emptyProfile;
 
   const set = <K extends keyof Candidate>(key: K, value: Candidate[K]) =>
-    setProfile((p) => (p ? { ...p, [key]: value } : p));
+    setDraft({ ...profile, [key]: value });
 
-  const save = async () => {
-    if (!profile) return;
-    setSaving(true);
-    try {
-      if (exists) {
-        const updated = await api.updateProfile(profile);
-        setProfile(updated);
-        notify("Profile saved.", "success");
-      } else {
-        // created_at/updated_at are server-assigned; sending them as "" fails
-        // Go's time.Time JSON parsing, so a brand-new profile omits them.
-        const { created_at, updated_at, ...rest } = profile;
-        const created = await api.initializeProfile(rest);
-        setProfile(created);
-        setExists(true);
-        notify("Profile created.", "success");
-      }
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setSaving(false);
+  const save = () => {
+    if (exists) {
+      updateProfile.mutate(profile);
+      return;
     }
+    // created_at/updated_at are server-assigned; sending them as "" fails
+    // Go's time.Time JSON parsing, so a brand-new profile omits them.
+    const { created_at, updated_at, ...rest } = profile;
+    initializeProfile.mutate(rest);
   };
 
-  // A blank draft field (the LLM found nothing) never changes the current
-  // field. When overwriteExisting is off, a draft field is only applied if
-  // the current field is empty, so it never clobbers a value the user
-  // already typed or a previously saved profile value.
-  const applyDraft = (draft: ProfileDraft) => {
-    const pick = (draftValue: string, currentValue: string) => {
-      if (!draftValue) return currentValue;
-      if (overwriteExisting) return draftValue;
-      return currentValue || draftValue;
+  // A blank suggestion field (the LLM found nothing) never changes the
+  // current field. When overwriteExisting is off, a suggested field is only
+  // applied if the current field is empty, so it never clobbers a value the
+  // user already typed or a previously saved profile value.
+  const applySuggestion = (current: Candidate, suggestion: ProfileDraft): Candidate => {
+    const pick = (suggested: string, currentValue: string) => {
+      if (!suggested) return currentValue;
+      if (overwriteExisting) return suggested;
+      return currentValue || suggested;
     };
-    setProfile((p) =>
-      p
-        ? {
-            ...p,
-            first_name: pick(draft.first_name, p.first_name),
-            last_name: pick(draft.last_name, p.last_name),
-            contact: pick(draft.contact, p.contact),
-            location: pick(draft.location, p.location),
-            summary: pick(draft.summary, p.summary),
-            skills: pick(draft.skills.join(", "), p.skills),
-          }
-        : p,
-    );
+    return {
+      ...current,
+      first_name: pick(suggestion.first_name, current.first_name),
+      last_name: pick(suggestion.last_name, current.last_name),
+      contact: pick(suggestion.contact, current.contact),
+      location: pick(suggestion.location, current.location),
+      summary: pick(suggestion.summary, current.summary),
+      skills: pick(suggestion.skills.join(", "), current.skills),
+    };
   };
 
   const importResumeToPrefill = async () => {
-    if (!profile) return;
     const path = await open({ multiple: false, title: "Select a resume file" });
     if (!path || Array.isArray(path)) return;
 
-    setImporting(true);
     try {
       // A resume can only be associated with a candidate that already has an
       // ID, so a brand-new profile is created (with whatever's typed so far)
       // before the resume is imported against it.
-      let candidateId = profile.id;
+      let current = profile;
       if (!exists) {
-        const { created_at, updated_at, ...rest } = profile;
-        const created = await api.initializeProfile(rest);
-        candidateId = created.id;
-        setProfile(created);
-        setExists(true);
+        const { created_at, updated_at, ...rest } = current;
+        current = await initializeProfile.mutateAsync(rest);
+        setDraft(current);
       }
 
-      const resume = await api.importResume(candidateId, path);
+      const resume = await importResume.mutateAsync({
+        candidateId: current.id,
+        filePath: path,
+      });
       notify("Resume imported.", "success");
 
       try {
-        const draft = await api.proposeProfileDraft(resume.markdown_content);
-        applyDraft(draft);
+        const suggestion = await proposeDraft.mutateAsync(resume.markdown_content);
+        setDraft(applySuggestion(current, suggestion));
         notify("Profile prefilled from resume — review before saving.", "success");
       } catch (err) {
         notify(`Resume imported, but couldn't generate suggestions: ${err}`);
       }
     } catch (err) {
       notify(String(err));
-    } finally {
-      setImporting(false);
     }
   };
 

@@ -1,52 +1,40 @@
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
-import { useApi } from "../lib/daemon";
-import type { Application, ApplicationState } from "../lib/types";
+import { useApplications, useCandidateId, useJobs, useMatches } from "../lib/queries";
+import type { ApplicationState } from "../lib/types";
 
 export function Dashboard() {
-  const api = useApi();
-  const [counts, setCounts] = useState<{
-    jobs: number;
-    matches: number;
-    applications: number;
-    byState: Partial<Record<ApplicationState, number>>;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { candidateId, isPending: profilePending, isError: noProfile } = useCandidateId();
 
-  useEffect(() => {
-    let cancelled = false;
+  // Only the total is rendered, so ask for the smallest page that still
+  // carries one. This reads stored history; it deliberately does not run a
+  // live source search, which would put a network round trip and a database
+  // write in the path of simply opening the app.
+  const jobs = useJobs("", 1, 0);
+  const matches = useMatches(candidateId);
+  const applications = useApplications(candidateId);
 
-    (async () => {
-      try {
-        const profile = await api.getProfile();
-        const [jobs, matches, applications] = await Promise.all([
-          api.searchJobs({}),
-          api.listMatches(profile.id),
-          api.listApplications(profile.id),
-        ]);
-        if (cancelled) return;
-
-        const byState: Partial<Record<ApplicationState, number>> = {};
-        for (const app of applications as Application[]) {
-          byState[app.state] = (byState[app.state] ?? 0) + 1;
-        }
-        setCounts({ jobs: jobs.length, matches: matches.length, applications: applications.length, byState });
-      } catch (err) {
-        if (!cancelled) setError(String(err));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
-
-  if (error) {
-    return <p className="text-sm text-red-600">{error} — has a candidate profile been created yet?</p>;
+  if (noProfile) {
+    return (
+      <p className="text-sm text-slate-500">
+        No candidate profile yet — create one on the Profile page to get started.
+      </p>
+    );
   }
 
-  if (!counts) {
+  const error = jobs.error ?? matches.error ?? applications.error;
+  if (error) {
+    return <p className="text-sm text-red-600">{String(error.message)}</p>;
+  }
+
+  // The match and application queries stay idle until the profile resolves
+  // a candidate ID, so waiting on their data covers the profile load too.
+  if (profilePending || !jobs.data || !matches.data || !applications.data) {
     return <p className="text-sm text-slate-500">Loading…</p>;
+  }
+
+  const byState: Partial<Record<ApplicationState, number>> = {};
+  for (const app of applications.data) {
+    byState[app.state] = (byState[app.state] ?? 0) + 1;
   }
 
   return (
@@ -56,28 +44,28 @@ export function Dashboard() {
         <Card>
           <CardContent>
             <CardTitle>Jobs discovered</CardTitle>
-            <p className="mt-2 text-3xl font-semibold">{counts.jobs}</p>
+            <p className="mt-2 text-3xl font-semibold">{jobs.data.total}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
             <CardTitle>Matches analyzed</CardTitle>
-            <p className="mt-2 text-3xl font-semibold">{counts.matches}</p>
+            <p className="mt-2 text-3xl font-semibold">{matches.data.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
             <CardTitle>Applications</CardTitle>
-            <p className="mt-2 text-3xl font-semibold">{counts.applications}</p>
+            <p className="mt-2 text-3xl font-semibold">{applications.data.length}</p>
           </CardContent>
         </Card>
       </div>
-      {Object.keys(counts.byState).length > 0 && (
+      {Object.keys(byState).length > 0 && (
         <Card className="mt-4">
           <CardContent>
             <CardTitle>Applications by state</CardTitle>
             <div className="mt-2 flex flex-wrap gap-3 text-sm">
-              {Object.entries(counts.byState).map(([state, count]) => (
+              {Object.entries(byState).map(([state, count]) => (
                 <span key={state}>
                   {state}: <strong>{count}</strong>
                 </span>

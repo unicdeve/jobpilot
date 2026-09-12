@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
@@ -13,14 +13,26 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { useApi } from "../lib/daemon";
+import {
+  useAddQuestion,
+  useAgentRuns,
+  useApplication,
+  useApplicationHistory,
+  useCoverLetters,
+  useEditCoverLetter,
+  useGenerateCoverLetter,
+  usePrepareInBrowser,
+  useQuestions,
+  useResolveQuestion,
+  useSetQuestionAnswer,
+  useTransitionApplication,
+} from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type {
   AgentRunWithEvents,
   Application,
   ApplicationQuestion,
   ApplicationState,
-  ApplicationStateTransition,
   CoverLetter,
   QuestionType,
 } from "../lib/types";
@@ -39,36 +51,16 @@ const ALL_STATES: ApplicationState[] = [
 
 export function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
-  const api = useApi();
-  const { notify } = useToast();
 
-  const [application, setApplication] = useState<Application | null>(null);
-  const [history, setHistory] = useState<ApplicationStateTransition[]>([]);
-  const [coverLetters, setCoverLetters] = useState<CoverLetter[]>([]);
-  const [questions, setQuestions] = useState<ApplicationQuestion[]>([]);
-  const [agentRuns, setAgentRuns] = useState<AgentRunWithEvents[]>([]);
+  // Each panel's mutations invalidate exactly the queries they affect, so
+  // there is no whole-screen reload after every action.
+  const { data: application, error } = useApplication(id);
+  const { data: history } = useApplicationHistory(id);
+  const { data: coverLetters } = useCoverLetters(id);
+  const { data: questions } = useQuestions(id);
+  const { data: agentRuns } = useAgentRuns(id);
 
-  const load = async () => {
-    if (!id) return;
-    const [app, hist, letters, qs, runs] = await Promise.all([
-      api.getApplication(id),
-      api.listApplicationHistory(id),
-      api.listCoverLetterVersions(id),
-      api.listQuestions(id),
-      api.listAgentRuns(id),
-    ]);
-    setApplication(app);
-    setHistory(hist);
-    setCoverLetters(letters);
-    setQuestions(qs);
-    setAgentRuns(runs);
-  };
-
-  useEffect(() => {
-    load().catch((err) => notify(String(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, api]);
-
+  if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
   if (!application || !id) return <p className="text-sm text-slate-500">Loading…</p>;
 
   return (
@@ -78,15 +70,9 @@ export function ApplicationDetail() {
         <StatusBadge value={application.state} />
       </div>
 
-      <TransitionPanel
-        application={application}
-        onTransitioned={(updated) => {
-          setApplication(updated);
-          load().catch((err) => notify(String(err)));
-        }}
-      />
+      <TransitionPanel application={application} />
 
-      {history.length > 0 && (
+      {history && history.length > 0 && (
         <Card>
           <CardContent>
             <CardTitle>History</CardTitle>
@@ -102,55 +88,36 @@ export function ApplicationDetail() {
         </Card>
       )}
 
-      <BrowserAutomationPanel
-        applicationId={id}
-        runs={agentRuns}
-        onChanged={() => load().catch((err) => notify(String(err)))}
-      />
+      <BrowserAutomationPanel applicationId={id} runs={agentRuns ?? []} />
 
       <CoverLetterPanel
         applicationId={id}
         application={application}
-        versions={coverLetters}
-        onChanged={() => load().catch((err) => notify(String(err)))}
+        versions={coverLetters ?? []}
       />
 
-      <QuestionsPanel
-        applicationId={id}
-        questions={questions}
-        onChanged={() => load().catch((err) => notify(String(err)))}
-      />
+      <QuestionsPanel applicationId={id} questions={questions ?? []} />
     </div>
   );
 }
 
-function TransitionPanel({
-  application,
-  onTransitioned,
-}: {
-  application: Application;
-  onTransitioned: (updated: Application) => void;
-}) {
-  const api = useApi();
+function TransitionPanel({ application }: { application: Application }) {
   const { notify } = useToast();
   const [reason, setReason] = useState("");
-  const [pending, setPending] = useState<ApplicationState | null>(null);
 
-  const transition = async (toState: ApplicationState) => {
-    setPending(toState);
-    try {
-      const updated = await api.transitionApplication(application.id, toState, reason);
-      setReason("");
-      onTransitioned(updated);
-    } catch (err) {
-      // The server's allowedTransitions map is the single source of truth
-      // for which transitions are valid; the UI never duplicates that rule
-      // table, it just surfaces the rejection here.
-      notify(String(err));
-    } finally {
-      setPending(null);
-    }
-  };
+  const transitionApplication = useTransitionApplication({
+    onSuccess: () => setReason(""),
+    // The server's allowedTransitions map is the single source of truth for
+    // which transitions are valid; the UI never duplicates that rule table,
+    // it just surfaces the rejection here.
+    onError: (err) => notify(String(err)),
+  });
+  const pending = transitionApplication.isPending
+    ? transitionApplication.variables?.toState
+    : null;
+
+  const transition = (toState: ApplicationState) =>
+    transitionApplication.mutate({ id: application.id, toState, reason });
 
   return (
     <Card>
@@ -158,7 +125,12 @@ function TransitionPanel({
         <CardTitle>Transition state</CardTitle>
         <div className="mt-2 flex flex-wrap gap-2">
           {ALL_STATES.filter((s) => s !== application.state).map((s) => (
-            <Button key={s} variant="secondary" disabled={pending !== null} onClick={() => transition(s)}>
+            <Button
+              key={s}
+              variant="secondary"
+              disabled={transitionApplication.isPending}
+              onClick={() => transition(s)}
+            >
               {pending === s ? "…" : s}
             </Button>
           ))}
@@ -174,31 +146,22 @@ function TransitionPanel({
 function BrowserAutomationPanel({
   applicationId,
   runs,
-  onChanged,
 }: {
   applicationId: string;
   runs: AgentRunWithEvents[];
-  onChanged: () => void;
 }) {
-  const api = useApi();
   const { notify } = useToast();
-  const [preparing, setPreparing] = useState(false);
 
-  const prepare = async () => {
-    setPreparing(true);
-    try {
-      await api.prepareInBrowser(applicationId);
-      notify("Browser window opened — review it there before submitting.", "success");
-    } catch (err) {
-      // A blocked/failed run is expected, structured output (a CAPTCHA, an
-      // unreadable form, ...), not just a transport error — the reason is
-      // already visible below once the run list refreshes.
-      notify(String(err));
-    } finally {
-      setPreparing(false);
-      onChanged();
-    }
-  };
+  const prepareInBrowser = usePrepareInBrowser({
+    onSuccess: () => notify("Browser window opened — review it there before submitting.", "success"),
+    // A blocked/failed run is expected, structured output (a CAPTCHA, an
+    // unreadable form, ...), not just a transport error — the reason is
+    // also visible below once the run list refreshes, which it does on
+    // failure too.
+    onError: (err) => notify(String(err)),
+  });
+
+  const prepare = () => prepareInBrowser.mutate(applicationId);
 
   return (
     <Card>
@@ -209,8 +172,8 @@ function BrowserAutomationPanel({
           review and submit yourself — it never submits on its own.
         </p>
         <div className="mt-2">
-          <Button onClick={prepare} disabled={preparing}>
-            {preparing ? "Preparing…" : "Prepare in browser"}
+          <Button onClick={prepare} disabled={prepareInBrowser.isPending}>
+            {prepareInBrowser.isPending ? "Preparing…" : "Prepare in browser"}
           </Button>
         </div>
 
@@ -245,48 +208,39 @@ function CoverLetterPanel({
   applicationId,
   application,
   versions,
-  onChanged,
 }: {
   applicationId: string;
   application: Application;
   versions: CoverLetter[];
-  onChanged: () => void;
 }) {
-  const api = useApi();
   const { notify } = useToast();
-  const [generating, setGenerating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
-  const generate = async () => {
-    setGenerating(true);
-    try {
-      await api.generateCoverLetter(applicationId);
-      onChanged();
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setGenerating(false);
-    }
-  };
+  const generateCoverLetter = useGenerateCoverLetter({
+    onError: (err) => notify(String(err)),
+  });
+  const editCoverLetter = useEditCoverLetter({
+    onSuccess: () => setEditingId(null),
+    onError: (err) => notify(String(err)),
+  });
 
-  const saveEdit = async (id: string) => {
-    try {
-      await api.editCoverLetter(id, draft);
-      setEditingId(null);
-      onChanged();
-    } catch (err) {
-      notify(String(err));
-    }
-  };
+  const generate = () => generateCoverLetter.mutate(applicationId);
+
+  const saveEdit = (coverLetterId: string) =>
+    editCoverLetter.mutate({ coverLetterId, applicationId, content: draft });
 
   return (
     <Card>
       <CardContent>
         <CardTitle>Cover letter</CardTitle>
         <div className="mt-2">
-          <Button onClick={generate} disabled={generating}>
-            {generating ? "Generating…" : versions.length > 0 ? "Regenerate" : "Generate"}
+          <Button onClick={generate} disabled={generateCoverLetter.isPending}>
+            {generateCoverLetter.isPending
+              ? "Generating…"
+              : versions.length > 0
+                ? "Regenerate"
+                : "Generate"}
           </Button>
         </div>
         {versions.length === 0 ? (
@@ -316,7 +270,9 @@ function CoverLetterPanel({
                   <div className="space-y-2">
                     <Textarea rows={8} value={draft} onChange={(e) => setDraft(e.target.value)} />
                     <div className="flex gap-2">
-                      <Button onClick={() => saveEdit(v.id)}>Save</Button>
+                      <Button onClick={() => saveEdit(v.id)} disabled={editCoverLetter.isPending}>
+                        {editCoverLetter.isPending ? "Saving…" : "Save"}
+                      </Button>
                       <Button variant="secondary" onClick={() => setEditingId(null)}>
                         Cancel
                       </Button>
@@ -337,49 +293,45 @@ function CoverLetterPanel({
 function QuestionsPanel({
   applicationId,
   questions,
-  onChanged,
 }: {
   applicationId: string;
   questions: ApplicationQuestion[];
-  onChanged: () => void;
 }) {
-  const api = useApi();
   const { notify } = useToast();
   const [label, setLabel] = useState("");
   const [type, setType] = useState<QuestionType>("factual");
   const [required, setRequired] = useState(false);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
-  const addQuestion = async () => {
-    if (!label.trim()) return;
-    try {
-      await api.addQuestion(applicationId, label.trim(), type, required);
+  const onError = (err: Error) => notify(String(err));
+
+  const addQuestionMutation = useAddQuestion({
+    onSuccess: () => {
       setLabel("");
       setRequired(false);
-      onChanged();
-    } catch (err) {
-      notify(String(err));
-    }
+    },
+    onError,
+  });
+  const resolveQuestion = useResolveQuestion({ onError });
+  const setQuestionAnswer = useSetQuestionAnswer({
+    // Clear the draft only once the answer is stored, so a failed save
+    // leaves what the user typed in the box.
+    onSuccess: (_answer, { questionId }) =>
+      setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" })),
+    onError,
+  });
+
+  const addQuestion = () => {
+    if (!label.trim()) return;
+    addQuestionMutation.mutate({ applicationId, label: label.trim(), type, required });
   };
 
-  const resolve = async (questionId: string) => {
-    try {
-      await api.resolveQuestion(questionId);
-      onChanged();
-    } catch (err) {
-      notify(String(err));
-    }
-  };
+  const resolve = (questionId: string) => resolveQuestion.mutate({ questionId, applicationId });
 
-  const submitAnswer = async (questionId: string) => {
+  const submitAnswer = (questionId: string) => {
     const answer = answerDrafts[questionId];
     if (!answer) return;
-    try {
-      await api.setQuestionAnswer(questionId, answer);
-      onChanged();
-    } catch (err) {
-      notify(String(err));
-    }
+    setQuestionAnswer.mutate({ questionId, applicationId, answer });
   };
 
   return (
@@ -404,7 +356,9 @@ function QuestionsPanel({
             <Checkbox checked={required} onCheckedChange={(checked) => setRequired(checked === true)} />
             Required
           </label>
-          <Button onClick={addQuestion}>Add</Button>
+          <Button onClick={addQuestion} disabled={addQuestionMutation.isPending}>
+            {addQuestionMutation.isPending ? "Adding…" : "Add"}
+          </Button>
         </div>
 
         {questions.length === 0 ? (

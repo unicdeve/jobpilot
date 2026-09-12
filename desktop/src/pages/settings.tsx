@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FormField } from "../components/form-field";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { useApi } from "../lib/daemon";
+import { useLLMSettings, useSaveLLMSettings } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { LLMSettings } from "../lib/types";
 
@@ -22,37 +22,35 @@ const presets = [
 ];
 
 export function Settings() {
-  const api = useApi();
   const { notify } = useToast();
-  const [settings, setSettings] = useState<LLMSettings | null>(null);
-  const [saving, setSaving] = useState(false);
+  const { data: saved, error } = useLLMSettings();
 
-  useEffect(() => {
-    api.getLLMSettings().then(setSettings).catch((err) => notify(String(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
+  // The form is an editable draft over the saved settings: draft holds the
+  // user's unsaved edits and falls back to what the daemon last returned.
+  const [draft, setDraft] = useState<LLMSettings | null>(null);
+  const settings = draft ?? saved;
 
-  if (!settings) return <p className="text-sm text-slate-500">Loading…</p>;
-
-  const set = <K extends keyof LLMSettings>(key: K, value: LLMSettings[K]) =>
-    setSettings((s) => (s ? { ...s, [key]: value } : s));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const result = await api.saveLLMSettings(settings);
-      setSettings(result.settings);
+  const saveSettings = useSaveLLMSettings({
+    onSuccess: (result) => {
+      // The mutation writes result.settings into the cache, so dropping the
+      // draft shows exactly what was persisted.
+      setDraft(null);
       if (result.connectivity_error) {
         notify(`Settings saved, but could not connect: ${result.connectivity_error}`);
       } else {
         notify("Settings saved and verified.", "success");
       }
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    onError: (err) => notify(String(err)),
+  });
+
+  if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
+  if (!settings) return <p className="text-sm text-slate-500">Loading…</p>;
+
+  const set = <K extends keyof LLMSettings>(key: K, value: LLMSettings[K]) =>
+    setDraft({ ...settings, [key]: value });
+
+  const save = () => saveSettings.mutate(settings);
 
   return (
     <div className="max-w-lg">
@@ -87,8 +85,8 @@ export function Settings() {
           <FormField label="Model" htmlFor="model">
             <Input id="model" value={settings.model} onChange={(e) => set("model", e.target.value)} />
           </FormField>
-          <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+          <Button onClick={save} disabled={saveSettings.isPending}>
+            {saveSettings.isPending ? "Saving…" : "Save"}
           </Button>
         </CardContent>
       </Card>

@@ -166,6 +166,21 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   instead) and any settings category beyond LLM provider/model (same
   reason — unimplemented backend).
 
+- Desktop server state (`desktop/src/lib/queries.ts`,
+  `docs/01_architecture/02_desktop.md`): every screen reads the daemon
+  through TanStack Query hooks over the existing typed client rather than a
+  per-screen `useEffect`. Request deduplication removes the double fetch
+  React StrictMode caused on first render (two concurrent job searches on
+  the dashboard, which is what raced on SQLite); the cache means returning
+  to a screen no longer refetches; and mutations declare which queries they
+  invalidate, replacing the Applications detail screen's habit of reloading
+  all five of its endpoints after every action. The Dashboard and Jobs
+  screens now read stored jobs via `GET /v1/jobs` instead of running a live
+  source search, so opening the app no longer performs a network round trip
+  and a database write. The Dashboard's error text no longer appends
+  "has a candidate profile been created yet?" to every failure regardless of
+  cause; a missing profile is now its own state.
+
 - Browser automation (Phase 6, `internal/adapters/secondary/browser`,
   `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
   (`github.com/mxschmitt/playwright-go`) worker that opens the user's actual
@@ -208,13 +223,12 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   the Profile screen's "create profile" form covers only the candidate
   profile step. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
-- The desktop app does not yet consume `GET /v1/jobs`: the Jobs screen still
-  runs a live search on open and renders every result unpaginated, the
-  Dashboard still runs one just to show a count, and no screen preserves
-  scroll position or caches fetched data across navigation. Screens are also
-  not linked to each other — analysing a job or starting an application
-  means copying a job ID from one screen and pasting it into another, rather
-  than the job-centric flow `docs/00_product/03_user_flows.md` describes.
+- The desktop app renders only the first 50 stored jobs: the Jobs screen has
+  no paging control yet, and no screen preserves scroll position across
+  navigation. Screens are also not linked to each other — analysing a job or
+  starting an application means copying a job ID from one screen and pasting
+  it into another, rather than the job-centric flow
+  `docs/00_product/03_user_flows.md` describes.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
   `Prompt`, `Notification`) are not separate tables — candidate

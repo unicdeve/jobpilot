@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createApiClient, type ApiClient } from "./api";
@@ -22,6 +23,7 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
     error: null,
   });
   const [attempt, setAttempt] = useState(0);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +32,11 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
     invoke<number>("ensure_daemon")
       .then((port) => {
         if (cancelled) return;
+        // A reconnect can resolve to a different daemon on a different port,
+        // whose database is not necessarily the one the cache was filled
+        // from. Start that connection with an empty cache rather than
+        // showing the previous daemon's data.
+        if (attempt > 0) queryClient.clear();
         setState({ status: "ready", client: createApiClient(port), error: null });
       })
       .catch((err) => {
@@ -40,7 +47,7 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [attempt, queryClient]);
 
   return (
     <DaemonContext.Provider value={{ ...state, retry: () => setAttempt((a) => a + 1) }}>

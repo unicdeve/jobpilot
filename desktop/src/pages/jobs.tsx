@@ -1,49 +1,49 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { useApi } from "../lib/daemon";
+import { useImportJob, useJobs, useSearchJobs } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Job } from "../lib/types";
+
+// One page of stored jobs. Paging through the rest of the list is the next
+// phase's work; until then this is the cap on what the screen renders.
+const PAGE_SIZE = 50;
 
 export function Jobs() {
-  const api = useApi();
   const { notify } = useToast();
-  const [jobs, setJobs] = useState<Job[]>([]);
   const [keywords, setKeywords] = useState("");
+  const [appliedKeywords, setAppliedKeywords] = useState("");
   const [importUrl, setImportUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState(false);
 
-  const load = async (criteriaKeywords = "") => {
-    setLoading(true);
-    try {
-      setJobs(await api.searchJobs(criteriaKeywords ? { keywords: criteriaKeywords } : {}));
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setLoading(false);
-    }
+  // The list is stored discovery history, so opening this screen costs a
+  // local read rather than a round trip to every job source. "Search
+  // sources" is the separate, explicit action that goes to the network;
+  // it stores what it finds, which invalidates this query.
+  const { data: page, error } = useJobs(appliedKeywords, PAGE_SIZE, 0);
+
+  const searchJobs = useSearchJobs({
+    onSuccess: (found) => notify(`Found ${found.length} jobs from sources.`, "success"),
+    onError: (err) => notify(String(err)),
+  });
+
+  const importJob = useImportJob({
+    onSuccess: () => {
+      setImportUrl("");
+      notify("Job imported.", "success");
+    },
+    onError: (err) => notify(String(err)),
+  });
+
+  const filterStored = () => setAppliedKeywords(keywords.trim());
+
+  const searchSources = () => {
+    filterStored();
+    searchJobs.mutate(keywords.trim() ? { keywords: keywords.trim() } : {});
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
-
-  const importJob = async () => {
+  const runImport = () => {
     if (!importUrl.trim()) return;
-    setImporting(true);
-    try {
-      await api.importJob(importUrl.trim());
-      setImportUrl("");
-      await load(keywords);
-      notify("Job imported.", "success");
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setImporting(false);
-    }
+    importJob.mutate(importUrl.trim());
   };
 
   return (
@@ -54,38 +54,47 @@ export function Jobs() {
         <CardContent className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-48">
             <Input
-              placeholder="Search keywords…"
+              placeholder="Filter stored jobs…"
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && load(keywords)}
+              onKeyDown={(e) => e.key === "Enter" && filterStored()}
             />
           </div>
-          <Button variant="secondary" onClick={() => load(keywords)} disabled={loading}>
-            Search
+          <Button variant="secondary" onClick={searchSources} disabled={searchJobs.isPending}>
+            {searchJobs.isPending ? "Searching…" : "Search sources"}
           </Button>
           <div className="flex-1 min-w-48">
             <Input
               placeholder="Import job by URL…"
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && importJob()}
-              disabled={importing}
+              onKeyDown={(e) => e.key === "Enter" && runImport()}
+              disabled={importJob.isPending}
             />
           </div>
-          <Button onClick={importJob} disabled={importing}>
-            {importing ? "Importing…" : "Import"}
+          <Button onClick={runImport} disabled={importJob.isPending}>
+            {importJob.isPending ? "Importing…" : "Import"}
           </Button>
         </CardContent>
       </Card>
       <p className="mb-4 -mt-2 text-xs text-slate-500">
-        Importing a URL not from a known job board briefly opens a browser window to read the page.
+        Typing filters jobs already stored; "Search sources" queries job boards for new ones and needs
+        internet. Importing a URL not from a known job board briefly opens a browser window to read the page.
       </p>
 
-      {jobs.length === 0 ? (
-        <p className="text-sm text-slate-500">No jobs discovered yet.</p>
+      {error ? (
+        <p className="text-sm text-red-600">{String(error.message)}</p>
+      ) : !page ? (
+        <p className="text-sm text-slate-500">Loading…</p>
+      ) : page.jobs.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          {appliedKeywords
+            ? `No stored jobs match "${appliedKeywords}".`
+            : "No jobs discovered yet — use “Search sources” or import one by URL."}
+        </p>
       ) : (
         <div className="space-y-2">
-          {jobs.map((job) => (
+          {page.jobs.map((job) => (
             <Card key={job.id}>
               <CardContent>
                 <p className="font-medium">
@@ -99,6 +108,11 @@ export function Jobs() {
               </CardContent>
             </Card>
           ))}
+          {page.total > page.jobs.length && (
+            <p className="pt-1 text-xs text-slate-500">
+              Showing {page.jobs.length} of {page.total} stored jobs.
+            </p>
+          )}
         </div>
       )}
     </div>

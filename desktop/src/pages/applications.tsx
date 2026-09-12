@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { StatusBadge } from "../components/status-badge";
@@ -12,47 +12,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { useApi } from "../lib/daemon";
+import { useApplications, useCandidateId, useCreateApplication } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Application, ApplicationMode } from "../lib/types";
+import type { ApplicationMode } from "../lib/types";
 
 export function Applications() {
-  const api = useApi();
   const { notify } = useToast();
-  const [candidateId, setCandidateId] = useState<string | null>(null);
-  const [applications, setApplications] = useState<Application[]>([]);
+  const { candidateId } = useCandidateId();
+  const { data: applications } = useApplications(candidateId);
   const [jobId, setJobId] = useState("");
   const [resumeId, setResumeId] = useState("");
   const [mode, setMode] = useState<ApplicationMode>("review");
-  const [creating, setCreating] = useState(false);
 
-  const refresh = async (cid: string) => setApplications(await api.listApplications(cid));
-
-  useEffect(() => {
-    api
-      .getProfile()
-      .then(async (profile) => {
-        setCandidateId(profile.id);
-        await refresh(profile.id);
-      })
-      .catch((err) => notify(String(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
-
-  const create = async () => {
-    if (!candidateId || !jobId.trim()) return;
-    setCreating(true);
-    try {
-      await api.createApplication(jobId.trim(), candidateId, resumeId.trim(), mode);
-      await refresh(candidateId);
+  const createApplication = useCreateApplication({
+    onSuccess: () => {
       setJobId("");
       setResumeId("");
       notify("Application created.", "success");
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setCreating(false);
-    }
+    },
+    onError: (err) => notify(String(err)),
+  });
+
+  const create = () => {
+    if (!candidateId || !jobId.trim()) return;
+    createApplication.mutate({
+      jobId: jobId.trim(),
+      candidateId,
+      resumeId: resumeId.trim(),
+      mode,
+    });
   };
 
   if (!candidateId) {
@@ -89,13 +77,13 @@ export function Applications() {
               </Select>
             </FormField>
           </div>
-          <Button onClick={create} disabled={creating}>
-            {creating ? "Creating…" : "Create"}
+          <Button onClick={create} disabled={createApplication.isPending}>
+            {createApplication.isPending ? "Creating…" : "Create"}
           </Button>
         </CardContent>
       </Card>
 
-      {applications.length === 0 ? (
+      {!applications || applications.length === 0 ? (
         <p className="text-sm text-slate-500">No applications yet.</p>
       ) : (
         <div className="space-y-2">

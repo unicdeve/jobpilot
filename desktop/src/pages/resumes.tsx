@@ -1,58 +1,32 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { useApi } from "../lib/daemon";
+import { useCandidateId, useDeleteResume, useImportResume, useResumes } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Resume } from "../lib/types";
 
 export function Resumes() {
-  const api = useApi();
   const { notify } = useToast();
-  const [candidateId, setCandidateId] = useState<string | null>(null);
-  const [resumes, setResumes] = useState<Resume[]>([]);
-  const [importing, setImporting] = useState(false);
+  const { candidateId } = useCandidateId();
+  const { data: resumes } = useResumes(candidateId);
 
-  const refresh = async (cid: string) => {
-    setResumes(await api.listResumes(cid));
-  };
-
-  useEffect(() => {
-    api
-      .getProfile()
-      .then(async (profile) => {
-        setCandidateId(profile.id);
-        await refresh(profile.id);
-      })
-      .catch((err) => notify(String(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
+  const importMutation = useImportResume({
+    onSuccess: () => notify("Resume imported.", "success"),
+    onError: (err) => notify(String(err)),
+  });
+  const deleteMutation = useDeleteResume({
+    onError: (err) => notify(String(err)),
+  });
 
   const importResume = async () => {
     if (!candidateId) return;
     const path = await open({ multiple: false, title: "Select a resume file" });
     if (!path || Array.isArray(path)) return;
-
-    setImporting(true);
-    try {
-      await api.importResume(candidateId, path);
-      await refresh(candidateId);
-      notify("Resume imported.", "success");
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setImporting(false);
-    }
+    importMutation.mutate({ candidateId, filePath: path });
   };
 
-  const remove = async (id: string) => {
+  const remove = (id: string) => {
     if (!candidateId) return;
-    try {
-      await api.deleteResume(id);
-      await refresh(candidateId);
-    } catch (err) {
-      notify(String(err));
-    }
+    deleteMutation.mutate({ id, candidateId });
   };
 
   if (!candidateId) {
@@ -63,11 +37,11 @@ export function Resumes() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Resumes</h1>
-        <Button onClick={importResume} disabled={importing}>
-          {importing ? "Importing…" : "Import resume"}
+        <Button onClick={importResume} disabled={importMutation.isPending}>
+          {importMutation.isPending ? "Importing…" : "Import resume"}
         </Button>
       </div>
-      {resumes.length === 0 ? (
+      {!resumes || resumes.length === 0 ? (
         <p className="text-sm text-slate-500">No resumes imported yet.</p>
       ) : (
         <div className="space-y-2">

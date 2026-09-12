@@ -8,6 +8,7 @@
 - Vite
 - Tailwind CSS
 - shadcn/ui or equivalent accessible component system
+- TanStack Query for server state
 
 ## UX goal
 
@@ -28,6 +29,29 @@ The desktop app handles:
 - approval/review UI
 
 The desktop app does not own business logic that must also work through the CLI.
+
+## Server state
+
+Screens do not call the daemon client directly. `desktop/src/lib/queries.ts`
+wraps it in TanStack Query hooks, and `desktop/src/lib/api.ts` remains the
+single typed description of the daemon's HTTP surface underneath.
+
+What that buys, beyond avoiding a hand-written `useEffect` per screen:
+
+- **Deduplication.** Identical requests in flight at the same moment become
+  one. React's StrictMode deliberately double-invokes effects in
+  development, which previously meant two concurrent job searches on the
+  dashboard's first render — two writers racing on SQLite.
+- **A cache across navigation.** Leaving a screen and returning no longer
+  refetches, which is what lets a list keep its scroll position.
+- **Declared invalidation.** A mutation names the queries it affects, so
+  panels no longer reload everything after every action. Invalidation
+  belongs on settle rather than on success wherever a *failed* call still
+  changed server state — `usePrepareInBrowser` is the example: a blocked
+  browser run moves the application to FAILED and records why.
+
+Cached data belongs to one daemon, so reconnecting clears the cache rather
+than showing a previous daemon's data.
 
 ## Communication
 
