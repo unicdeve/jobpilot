@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -127,9 +129,11 @@ func (f *fakeResumeRepository) Delete(_ context.Context, id string) error {
 type fakeJobRepository struct {
 	jobs        map[string]*domain.Job
 	byURL       map[string]*domain.Job
+	order       []string // insertion order, so List is deterministic
 	saveErr     error
 	getByURLErr error
 	listErr     error
+	countErr    error
 	saveCalls   int
 }
 
@@ -144,6 +148,9 @@ func (f *fakeJobRepository) Save(_ context.Context, job *domain.Job) error {
 	}
 	if job.ID == "" {
 		job.ID = fmt.Sprintf("job-%d", len(f.jobs)+1)
+	}
+	if _, exists := f.jobs[job.ID]; !exists {
+		f.order = append(f.order, job.ID)
 	}
 	f.jobs[job.ID] = job
 	f.byURL[job.CanonicalURL] = job
@@ -169,19 +176,48 @@ func (f *fakeJobRepository) GetByCanonicalURL(_ context.Context, url string) (*d
 	return j, nil
 }
 
-func (f *fakeJobRepository) List(_ context.Context, _, _ int) ([]*domain.Job, error) {
+// matching returns the saved jobs whose title or company contains keywords,
+// in insertion order — the same naive, case-insensitive substring rule the
+// SQLite repository applies.
+func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
+	keywords = strings.ToLower(strings.TrimSpace(keywords))
+
+	out := make([]*domain.Job, 0, len(f.order))
+	for _, id := range f.order {
+		j := f.jobs[id]
+		if keywords != "" &&
+			!strings.Contains(strings.ToLower(j.Title), keywords) &&
+			!strings.Contains(strings.ToLower(j.CompanyName), keywords) {
+			continue
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+func (f *fakeJobRepository) List(_ context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	var out []*domain.Job
-	for _, j := range f.jobs {
-		out = append(out, j)
+
+	matched := f.matching(keywords)
+	if offset >= len(matched) {
+		return []*domain.Job{}, nil
 	}
-	return out, nil
+	end := min(offset+limit, len(matched))
+	return matched[offset:end], nil
+}
+
+func (f *fakeJobRepository) Count(_ context.Context, keywords string) (int, error) {
+	if f.countErr != nil {
+		return 0, f.countErr
+	}
+	return len(f.matching(keywords)), nil
 }
 
 func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
 	delete(f.jobs, id)
+	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
 	return nil
 }
 
@@ -473,6 +509,7 @@ type fakeJobSource struct {
 	searchErr    error
 	getJobResult *domain.Job
 	getJobErr    error
+	searchCalls  int
 }
 
 func (f *fakeJobSource) ID() string { return f.id }
@@ -482,6 +519,7 @@ func (f *fakeJobSource) Name() string { return f.id }
 func (f *fakeJobSource) Capabilities() ports.SourceCapabilities { return f.capabilities }
 
 func (f *fakeJobSource) Search(_ context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+	f.searchCalls++
 	if f.searchErr != nil {
 		return nil, f.searchErr
 	}

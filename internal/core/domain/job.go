@@ -43,3 +43,11 @@ type SearchCriteria struct {
 	IncludedSources   []string `json:"included_sources"`
 	ExcludedCompanies []string `json:"excluded_companies"`
 }
+
+// JobPage is one page of stored jobs together with the total number of jobs
+// matching the same filter, so a caller paginating through history can tell
+// whether more pages remain without fetching them.
+type JobPage struct {
+	Jobs  []*Job `json:"jobs"`
+	Total int    `json:"total"`
+}

@@ -31,7 +31,8 @@ type JobRepository interface {
 	Save(ctx context.Context, job *domain.Job) error
 	GetByID(ctx context.Context, id string) (*domain.Job, error)
 	GetByCanonicalURL(ctx context.Context, url string) (*domain.Job, error)
-	List(ctx context.Context, limit, offset int) ([]*domain.Job, error)
+	List(ctx context.Context, keywords string, limit, offset int) ([]*domain.Job, error)
+	Count(ctx context.Context, keywords string) (int, error)
 	Delete(ctx context.Context, id string) error
 }
 

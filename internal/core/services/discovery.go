@@ -42,6 +42,45 @@ func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource,
 	}
 }
 
+// Job page sizes for ListJobs. The cap keeps a single response bounded no
+// matter what a client asks for; local history grows without limit.
+const (
+	defaultJobPageSize = 50
+	maxJobPageSize     = 200
+)
+
+// ListJobs returns a page of jobs already stored locally, most recently
+// discovered first, optionally filtered by keywords.
+//
+// Unlike Search it never contacts a job source and never writes: it is the
+// read path for browsing discovery history, and it is what keeps that
+// history available without internet access
+// (docs/02_features/04_job_discovery.md AC-006). A limit of zero or less
+// means "the default page size".
+func (s *JobDiscoveryService) ListJobs(ctx context.Context, keywords string, limit, offset int) (*domain.JobPage, error) {
+	switch {
+	case limit <= 0:
+		limit = defaultJobPageSize
+	case limit > maxJobPageSize:
+		limit = maxJobPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	jobs, err := s.repo.List(ctx, keywords, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list stored jobs: %w", err)
+	}
+
+	total, err := s.repo.Count(ctx, keywords)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count stored jobs: %w", err)
+	}
+
+	return &domain.JobPage{Jobs: jobs, Total: total}, nil
+}
+
 // Search executes a search across all registered sources and deduplicates results.
 func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
 	allJobs := make([]domain.Job, 0)

@@ -354,28 +354,57 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
+	// "list" reads stored discovery history and contacts no job source, so
+	// it stays usable offline. It previously ran an empty live search, which
+	// re-queried every source and could not work without internet access.
+	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all discovered jobs",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Short: "List previously discovered jobs from local history",
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := context.Background()
-			jobs, err := client.SearchJobs(ctx, domain.SearchCriteria{})
+
+			keywords, err := cmd.Flags().GetString("keywords")
+			if err != nil {
+				return err
+			}
+			limit, err := cmd.Flags().GetInt("limit")
+			if err != nil {
+				return err
+			}
+			offset, err := cmd.Flags().GetInt("offset")
+			if err != nil {
+				return err
+			}
+
+			page, err := client.ListJobs(ctx, keywords, limit, offset)
 			if err != nil {
 				return fmt.Errorf("listing jobs: %w", err)
 			}
 
-			if len(jobs) == 0 {
-				fmt.Println("No jobs discovered yet.")
+			if len(page.Jobs) == 0 {
+				if offset > 0 {
+					fmt.Printf("No jobs at offset %d (%d stored in total).\n", offset, page.Total)
+					return nil
+				}
+				fmt.Println("No jobs discovered yet. Run 'search run <keywords>' to discover some.")
 				return nil
 			}
 
-			fmt.Printf("Discovered Jobs:\n")
-			for i, j := range jobs {
-				fmt.Printf("%d. %s at %s (ID: %s)\n", i+1, j.Title, j.CompanyName, j.ID)
+			fmt.Printf("Discovered jobs %d-%d of %d:\n", offset+1, offset+len(page.Jobs), page.Total)
+			for i, j := range page.Jobs {
+				fmt.Printf("%d. %s at %s (ID: %s)\n", offset+i+1, j.Title, j.CompanyName, j.ID)
+			}
+
+			if shown := offset + len(page.Jobs); shown < page.Total {
+				fmt.Printf("\n%d more — use --offset %d to see the next page.\n", page.Total-shown, shown)
 			}
 			return nil
 		},
-	})
+	}
+	listCmd.Flags().String("keywords", "", "Only list jobs whose title or company matches these keywords")
+	listCmd.Flags().Int("limit", 0, "Maximum jobs to list (default 50, maximum 200)")
+	listCmd.Flags().Int("offset", 0, "Skip this many jobs before listing")
+	cmd.AddCommand(listCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "import [url]",

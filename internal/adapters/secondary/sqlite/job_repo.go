@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -126,18 +127,51 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 	return &j, nil
 }
 
-// List returns discovered jobs ordered by discovery time, most recent
-// first, paginated by limit/offset.
-func (r *JobRepository) List(ctx context.Context, limit, offset int) ([]*domain.Job, error) {
+// keywordFilter builds the WHERE clause and arguments that restrict a job
+// query to rows matching keywords, or empty values when keywords is blank.
+//
+// The match is a case-insensitive substring over title and company name.
+// That is deliberately the same naive semantic the discovery connectors
+// apply to their own results (see JobDiscoveryService) rather than a new,
+// better matching rule: browsing stored jobs and searching sources should
+// not disagree about what "golang" matches.
+func keywordFilter(keywords string) (string, []any) {
+	keywords = strings.TrimSpace(keywords)
+	if keywords == "" {
+		return "", nil
+	}
+
+	pattern := "%" + strings.ToLower(keywords) + "%"
+	return " WHERE (LOWER(title) LIKE ? OR LOWER(company_name) LIKE ?)", []any{pattern, pattern}
+}
+
+// Count returns how many stored jobs match keywords. Callers paginating
+// through List use it to tell whether more pages remain.
+func (r *JobRepository) Count(ctx context.Context, keywords string) (int, error) {
+	where, args := keywordFilter(keywords)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM jobs"+where, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to count jobs: %w", err)
+	}
+	return total, nil
+}
+
+// List returns stored jobs ordered by discovery time, most recent first,
+// optionally filtered by keywords and paginated by limit/offset. It reads
+// only local history and never contacts a job source, so it works offline.
+func (r *JobRepository) List(ctx context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
+	where, args := keywordFilter(keywords)
+
 	query := `SELECT
 		id, canonical_url, source_id, source_job_id, title, company_name,
 		company_url, description_markdown, locations, remote_type,
 		employment_type, salary_min, salary_max, salary_currency,
 		salary_period, experience_min, experience_max, skills,
 		posted_at, expires_at, discovered_at, updated_at, raw_source_reference
-	FROM jobs ORDER BY discovered_at DESC LIMIT ? OFFSET ?`
+	FROM jobs` + where + ` ORDER BY discovered_at DESC LIMIT ? OFFSET ?`
 
-	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, append(args, limit, offset)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}

@@ -2,13 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -100,6 +103,7 @@ func (f *fakeResumeRepository) Delete(_ context.Context, id string) error {
 type fakeJobRepository struct {
 	jobs  map[string]*domain.Job
 	byURL map[string]*domain.Job
+	order []string // insertion order, so List is deterministic
 }
 
 func newFakeJobRepository() *fakeJobRepository {
@@ -109,6 +113,9 @@ func newFakeJobRepository() *fakeJobRepository {
 func (f *fakeJobRepository) Save(_ context.Context, job *domain.Job) error {
 	if job.ID == "" {
 		job.ID = fmt.Sprintf("job-%d", len(f.jobs)+1)
+	}
+	if _, exists := f.jobs[job.ID]; !exists {
+		f.order = append(f.order, job.ID)
 	}
 	f.jobs[job.ID] = job
 	f.byURL[job.CanonicalURL] = job
@@ -127,12 +134,34 @@ func (f *fakeJobRepository) GetByCanonicalURL(_ context.Context, url string) (*d
 	return f.byURL[url], nil
 }
 
-func (f *fakeJobRepository) List(_ context.Context, _, _ int) ([]*domain.Job, error) {
-	var out []*domain.Job
-	for _, j := range f.jobs {
+// matching returns saved jobs whose title or company contains keywords, in
+// insertion order, mirroring the SQLite repository's substring rule.
+func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
+	keywords = strings.ToLower(strings.TrimSpace(keywords))
+
+	out := make([]*domain.Job, 0, len(f.order))
+	for _, id := range f.order {
+		j := f.jobs[id]
+		if keywords != "" &&
+			!strings.Contains(strings.ToLower(j.Title), keywords) &&
+			!strings.Contains(strings.ToLower(j.CompanyName), keywords) {
+			continue
+		}
 		out = append(out, j)
 	}
-	return out, nil
+	return out
+}
+
+func (f *fakeJobRepository) List(_ context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
+	matched := f.matching(keywords)
+	if offset >= len(matched) {
+		return []*domain.Job{}, nil
+	}
+	return matched[offset:min(offset+limit, len(matched))], nil
+}
+
+func (f *fakeJobRepository) Count(_ context.Context, keywords string) (int, error) {
+	return len(f.matching(keywords)), nil
 }
 
 func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
@@ -221,6 +250,7 @@ func (f *fakeLLMProvider) Provider() string { return "fake" }
 type fakeJobSource struct {
 	searchResult []domain.Job
 	getJobResult *domain.Job
+	searchCalls  int
 }
 
 func (f *fakeJobSource) ID() string   { return "fake" }
@@ -229,6 +259,7 @@ func (f *fakeJobSource) Capabilities() ports.SourceCapabilities {
 	return ports.SourceCapabilities{CanSearch: true, CanGetJob: true}
 }
 func (f *fakeJobSource) Search(_ context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+	f.searchCalls++
 	return f.searchResult, nil
 }
 func (f *fakeJobSource) GetJob(_ context.Context, _ string) (*domain.Job, error) {
@@ -811,4 +842,98 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	require.Len(t, runs, 1)
 	require.Equal(t, domain.AgentRunStatusBlocked, runs[0].Run.Status)
 	require.NotEmpty(t, runs[0].Events)
+}
+
+func TestClient_ListJobs(t *testing.T) {
+	client, _, source := testServer(t)
+	ctx := context.Background()
+
+	// Discover five jobs so there is stored history to page through. The
+	// source is only used here; listing must not touch it again.
+	source.searchResult = []domain.Job{
+		{CanonicalURL: "https://example.com/job/1", Title: "Backend Engineer", CompanyName: "Acme"},
+		{CanonicalURL: "https://example.com/job/2", Title: "Frontend Engineer", CompanyName: "Acme"},
+		{CanonicalURL: "https://example.com/job/3", Title: "Platform Engineer", CompanyName: "Acme"},
+		{CanonicalURL: "https://example.com/job/4", Title: "Product Designer", CompanyName: "Globex"},
+		{CanonicalURL: "https://example.com/job/5", Title: "Data Scientist", CompanyName: "Initech"},
+	}
+	_, err := client.SearchJobs(ctx, domain.SearchCriteria{})
+	require.NoError(t, err)
+
+	t.Run("returns stored jobs and the total", func(t *testing.T) {
+		page, err := client.ListJobs(ctx, "", 0, 0)
+		require.NoError(t, err)
+		assert.Len(t, page.Jobs, 5)
+		assert.Equal(t, 5, page.Total)
+	})
+
+	t.Run("filters by keywords", func(t *testing.T) {
+		page, err := client.ListJobs(ctx, "engineer", 0, 0)
+		require.NoError(t, err)
+		assert.Len(t, page.Jobs, 3)
+		assert.Equal(t, 3, page.Total)
+	})
+
+	t.Run("paginates, reporting the unpaginated total", func(t *testing.T) {
+		page, err := client.ListJobs(ctx, "", 2, 2)
+		require.NoError(t, err)
+		require.Len(t, page.Jobs, 2)
+		assert.Equal(t, "Platform Engineer", page.Jobs[0].Title)
+		assert.Equal(t, 5, page.Total)
+	})
+
+	t.Run("an offset past the end is an empty page, not an error", func(t *testing.T) {
+		page, err := client.ListJobs(ctx, "", 10, 500)
+		require.NoError(t, err)
+		assert.Empty(t, page.Jobs)
+		assert.Equal(t, 5, page.Total)
+	})
+
+	t.Run("does not contact a job source", func(t *testing.T) {
+		before := source.searchCalls
+		_, err := client.ListJobs(ctx, "", 0, 0)
+		require.NoError(t, err)
+		assert.Equal(t, before, source.searchCalls)
+	})
+}
+
+func TestServer_ListJobs_RejectsInvalidPaging(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"non-numeric limit", "?limit=many", `invalid limit "many"`},
+		{"non-numeric offset", "?offset=first", `invalid offset "first"`},
+		{"negative limit", "?limit=-1", "invalid limit -1"},
+		{"negative offset", "?offset=-1", "invalid offset -1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := http.Get(client.baseURL + "/v1/jobs" + tt.query)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = res.Body.Close() })
+
+			assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+
+			var body struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+			assert.Contains(t, body.Error, tt.want)
+		})
+	}
+}
+
+func TestServer_ListJobs_EmptyHistory(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	page, err := client.ListJobs(context.Background(), "", 0, 0)
+
+	require.NoError(t, err)
+	assert.Empty(t, page.Jobs)
+	assert.Zero(t, page.Total)
 }

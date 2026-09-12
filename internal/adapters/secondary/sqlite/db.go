@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"net/url"
+	"strings"
 
 	"github.com/pressly/goose/v3"
 
@@ -17,17 +19,63 @@ type DB struct {
 	conn *sql.DB
 }
 
-// NewDB opens a SQLite database at dbPath and enables foreign key
-// enforcement.
+// connectionPragmas are applied to every connection database/sql opens, not
+// just the first one. Setting them through the DSN rather than a one-off
+// db.Exec matters because database/sql keeps a pool: a PRAGMA executed via
+// db.Exec lands on whichever pooled connection it happened to get, leaving
+// the rest of the pool unconfigured.
+//
+//   - busy_timeout: without it, a connection that finds the database locked
+//     fails immediately with SQLITE_BUSY instead of waiting for the lock to
+//     clear. Concurrent API requests (the desktop app opens several at once
+//     on startup) made that a user-visible "database is locked" error.
+//   - journal_mode=WAL: in the default rollback-journal mode a writer blocks
+//     all readers. WAL lets readers proceed while a write is in flight, which
+//     is the normal shape of this application's load — one writer saving
+//     discovered jobs while screens read.
+//   - foreign_keys: SQLite defaults this off and it is per-connection, so
+//     without it here the schema's foreign keys are only enforced on whatever
+//     connection happened to run the pragma.
+var connectionPragmas = url.Values{
+	"_busy_timeout": {"5000"},
+	"_journal_mode": {"WAL"},
+	"_foreign_keys": {"on"},
+}
+
+// dsn builds the modernc.org/sqlite connection string for dbPath.
+//
+// The path is deliberately not given a "file:" scheme prefix. The driver
+// splits the DSN at the first "?" and, for a non-"file:" DSN, hands the
+// path to SQLite verbatim — so no percent-encoding is needed and Windows
+// paths with backslashes or a drive letter work unchanged. The one case
+// that cannot work is a path containing a literal "?", which the driver
+// would read as the start of the query string; that is rejected rather
+// than silently opening a different database file.
+func dsn(dbPath string) (string, error) {
+	if strings.Contains(dbPath, "?") {
+		return "", fmt.Errorf("database path %q contains '?', which sqlite reads as the start of connection parameters", dbPath)
+	}
+	return dbPath + "?" + connectionPragmas.Encode(), nil
+}
+
+// NewDB opens a SQLite database at dbPath with the connection pragmas every
+// connection in the pool needs (see connectionPragmas).
 func NewDB(dbPath string) (*DB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	connString, err := dsn(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open("sqlite", connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database at %s: %w", dbPath, err)
 	}
 
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	// sql.Open is lazy: it does not connect, so a bad path or an invalid
+	// pragma would otherwise surface much later, at the first query.
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to connect to sqlite database at %s: %w", dbPath, err)
 	}
 
 	return &DB{conn: db}, nil

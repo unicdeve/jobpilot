@@ -63,6 +63,19 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   `MockJobSource` remains in the codebase for tests/dev but is no longer in
   the daemon's production source list, so real searches are never mixed
   with fake jobs.
+- Stored-jobs read path (`GET /v1/jobs`, `JobDiscoveryService.ListJobs`):
+  browsing already-discovered jobs is a separate operation from searching
+  sources. It is paginated (`limit`/`offset`, default 50, capped at 200),
+  optionally filtered by a keyword substring over title and company, and
+  returns a `{jobs, total}` envelope so a client can tell whether more pages
+  remain. It reads local history only and contacts no source, which is what
+  makes AC-006's "existing history remains usable offline" true in practice:
+  previously the only way to see a job was `POST /v1/jobs/search`, which
+  queries every source over the network and writes what it finds, so both
+  `jobpilot-cli search list` (despite its help text) and the desktop Jobs
+  screen re-ran a live search just to show a list. Both now read stored
+  history instead.
+
 - Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
   neither Arbeitnow nor Remotive's public API can fetch an arbitrary job by
   URL, so `JobDiscoveryService.ImportJob` falls back to
@@ -86,6 +99,19 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   custom OpenAI-compatible endpoint, with a manually-entered model name;
   persisted in SQLite's `user_settings` table. A single active provider
   configuration is supported, per `docs/01_architecture/05_llm.md`.
+- SQLite connection configuration (`internal/adapters/secondary/sqlite/db.go`,
+  `docs/01_architecture/04_database.md`): connection pragmas are set through
+  the DSN so they apply to every connection in `database/sql`'s pool, not
+  just whichever one a post-open `db.Exec` happened to take. This fixed two
+  live defects: concurrent API requests failing outright with
+  `database is locked (5) (SQLITE_BUSY)` — visible as an error on the
+  desktop dashboard's first load, which disappeared on the next visit
+  because by then discovery had nothing new to write — and `PRAGMA
+  foreign_keys = ON` leaving most pooled connections with foreign key
+  enforcement off, so the schema's `FOREIGN KEY` clauses held only by luck.
+  `busy_timeout` makes contention wait rather than fail; `journal_mode=WAL`
+  stops a writer from blocking readers.
+
 - Automated test suite (Phase 0 "Test infrastructure"): unit tests for
   `internal/core/services` (fakes, no I/O) and pure-logic helpers, plus
   integration tests (`-tags=integration`) for the SQLite repositories
@@ -182,6 +208,13 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   the Profile screen's "create profile" form covers only the candidate
   profile step. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
+- The desktop app does not yet consume `GET /v1/jobs`: the Jobs screen still
+  runs a live search on open and renders every result unpaginated, the
+  Dashboard still runs one just to show a count, and no screen preserves
+  scroll position or caches fetched data across navigation. Screens are also
+  not linked to each other — analysing a job or starting an application
+  means copying a job ID from one screen and pasting it into another, rather
+  than the job-centric flow `docs/00_product/03_user_flows.md` describes.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
   `Prompt`, `Notification`) are not separate tables — candidate

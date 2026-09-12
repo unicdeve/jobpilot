@@ -83,6 +83,13 @@ export interface SearchCriteria {
   excluded_companies?: string[];
 }
 
+/// JobPage is one page of stored jobs plus the total matching the same
+/// filter, so a caller can tell whether more pages remain.
+export interface JobPage {
+  jobs: Job[];
+  total: number;
+}
+
 export interface JobMatch {
   id: string;
   job_id: string;

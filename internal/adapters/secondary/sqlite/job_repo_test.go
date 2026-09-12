@@ -4,6 +4,7 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func TestJobRepository_List(t *testing.T) {
 	require.NoError(t, repo.Save(context.Background(), older))
 	require.NoError(t, repo.Save(context.Background(), newer))
 
-	jobs, err := repo.List(context.Background(), 10, 0)
+	jobs, err := repo.List(context.Background(), "", 10, 0)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
@@ -106,7 +107,7 @@ func TestJobRepository_List_Pagination(t *testing.T) {
 		}))
 	}
 
-	jobs, err := repo.List(context.Background(), 1, 1)
+	jobs, err := repo.List(context.Background(), "", 1, 1)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -124,4 +125,102 @@ func TestJobRepository_Delete(t *testing.T) {
 
 	_, err := repo.GetByID(context.Background(), job.ID)
 	assert.ErrorContains(t, err, "job not found")
+}
+
+func TestJobRepository_List_Keywords(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	require.NoError(t, repo.Save(ctx, &domain.Job{
+		CanonicalURL: "https://acme.example/go", Title: "Golang Engineer", CompanyName: "Acme",
+	}))
+	require.NoError(t, repo.Save(ctx, &domain.Job{
+		CanonicalURL: "https://globex.example/ux", Title: "Product Designer", CompanyName: "Globex",
+	}))
+
+	tests := []struct {
+		name      string
+		keywords  string
+		wantTitle []string
+	}{
+		{"empty keywords match everything", "", []string{"Product Designer", "Golang Engineer"}},
+		{"matches title", "golang", []string{"Golang Engineer"}},
+		{"matches company", "globex", []string{"Product Designer"}},
+		{"is case insensitive", "GOLANG", []string{"Golang Engineer"}},
+		{"matches a substring", "design", []string{"Product Designer"}},
+		{"surrounding whitespace is ignored", "  golang  ", []string{"Golang Engineer"}},
+		{"no match yields no rows", "kubernetes", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			jobs, err := repo.List(ctx, tt.keywords, 10, 0)
+			require.NoError(t, err)
+
+			titles := make([]string, 0, len(jobs))
+			for _, j := range jobs {
+				titles = append(titles, j.Title)
+			}
+			assert.ElementsMatch(t, tt.wantTitle, titles)
+
+			total, err := repo.Count(ctx, tt.keywords)
+			require.NoError(t, err)
+			assert.Equal(t, len(tt.wantTitle), total, "Count must agree with List")
+		})
+	}
+}
+
+func TestJobRepository_List_KeywordsAreNotTreatedAsSQL(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+	require.NoError(t, repo.Save(ctx, &domain.Job{
+		CanonicalURL: "https://acme.example/go", Title: "Golang Engineer", CompanyName: "Acme",
+	}))
+
+	// Keywords come straight from a search box, so they are bound as
+	// parameters rather than interpolated. The rows must survive.
+	jobs, err := repo.List(ctx, "'; DROP TABLE jobs; --", 10, 0)
+	require.NoError(t, err)
+	assert.Empty(t, jobs)
+
+	remaining, err := repo.Count(ctx, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, remaining, "the jobs table must still be intact")
+}
+
+func TestJobRepository_Count(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	total, err := repo.Count(ctx, "")
+	require.NoError(t, err)
+	assert.Zero(t, total, "an empty database counts zero rather than failing")
+
+	for i := range 3 {
+		require.NoError(t, repo.Save(ctx, &domain.Job{
+			CanonicalURL: fmt.Sprintf("https://acme.example/job-%d", i),
+			Title:        "Engineer",
+		}))
+	}
+
+	total, err = repo.Count(ctx, "")
+	require.NoError(t, err)
+	assert.Equal(t, 3, total)
+
+	// Count describes the whole match, independent of any page size.
+	page, err := repo.List(ctx, "", 1, 0)
+	require.NoError(t, err)
+	assert.Len(t, page, 1)
+	assert.Equal(t, 3, total)
 }

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -50,6 +52,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("DELETE /v1/resumes/{id}", handleDeleteResume(svc.Resume))
 	mux.HandleFunc("POST /v1/resumes/propose-draft", handleProposeDraft(svc.Resume))
 
+	mux.HandleFunc("GET /v1/jobs", handleListJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/search", handleSearchJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/import", handleImportJob(svc.Discovery))
 
@@ -248,6 +251,34 @@ func handleProposeDraft(svc *services.ResumeService) http.HandlerFunc {
 
 // --- jobs ---
 
+// handleListJobs serves already-discovered jobs from local storage. It is
+// the read counterpart to POST /v1/jobs/search, which contacts external job
+// sources and stores what it finds; browsing history must not require a
+// network round trip (docs/02_features/04_job_discovery.md AC-006).
+func handleListJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+
+		limit, err := intQueryParam(query, "limit")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		offset, err := intQueryParam(query, "offset")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		page, err := svc.ListJobs(r.Context(), query.Get("q"), limit, offset)
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	}
+}
+
 func handleSearchJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var criteria domain.SearchCriteria
@@ -359,6 +390,24 @@ func handleSaveLLMSettings(svc *services.SettingsService) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
+}
+
+// intQueryParam reads an optional non-negative integer query parameter.
+// An absent or empty parameter yields 0, which callers read as "unset".
+func intQueryParam(query url.Values, name string) (int, error) {
+	raw := query.Get(name)
+	if raw == "" {
+		return 0, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: must be a whole number", name, raw)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s %d: must not be negative", name, value)
+	}
+	return value, nil
 }
 
 // --- JSON helpers ---

@@ -42,6 +42,11 @@ Duplicate jobs are not created repeatedly for the same canonical job.
 ### AC-006
 When internet access is unavailable, discovery fails clearly without corrupting existing history.
 
+Already-discovered jobs stay readable in that state: `GET /v1/jobs` (the
+desktop Jobs screen and `jobpilot-cli search list`) reads stored history
+only and contacts no source. Searching for *new* jobs is the operation that
+requires internet and reports clearly when it is unavailable.
+
 ### AC-007
 Custom job URLs can be submitted for individual job analysis.
 

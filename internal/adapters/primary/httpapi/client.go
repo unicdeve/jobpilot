@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -112,6 +113,34 @@ func (c *Client) ProposeProfileDraft(ctx context.Context, resumeMarkdown string)
 		return nil, err
 	}
 	return &draft, nil
+}
+
+// ListJobs returns a page of jobs already stored locally, most recently
+// discovered first, optionally filtered by keywords. It reads local history
+// only and contacts no job source, so unlike SearchJobs it works offline. A
+// limit of zero means the daemon's default page size.
+func (c *Client) ListJobs(ctx context.Context, keywords string, limit, offset int) (*domain.JobPage, error) {
+	query := url.Values{}
+	if keywords != "" {
+		query.Set("q", keywords)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		query.Set("offset", strconv.Itoa(offset))
+	}
+
+	path := "/v1/jobs"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+
+	var page domain.JobPage
+	if _, err := c.do(ctx, http.MethodGet, path, nil, &page); err != nil {
+		return nil, err
+	}
+	return &page, nil
 }
 
 // SearchJobs runs a job search against criteria.
