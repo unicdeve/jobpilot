@@ -8,6 +8,7 @@
 // states exactly which cached data it invalidates.
 
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -44,6 +45,8 @@ export const keys = {
     all: ["jobs"] as const,
     list: (keywords: string, limit: number, offset: number) =>
       ["jobs", "list", { keywords, limit, offset }] as const,
+    infinite: (keywords: string, pageSize: number) =>
+      ["jobs", "infinite", { keywords, pageSize }] as const,
   },
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
   matches: (candidateId: string) => ["matches", candidateId] as const,
@@ -88,6 +91,25 @@ export function useJobs(keywords: string, limit: number, offset: number) {
   return useQuery<JobPage>({
     queryKey: keys.jobs.list(keywords, limit, offset),
     queryFn: () => api.listJobs(keywords, limit, offset),
+  });
+}
+
+/// useInfiniteJobs pages through stored jobs. Every page already loaded stays
+/// in the cache, so returning to a list that was scrolled several pages deep
+/// renders at the same height it was left at — which is what makes restoring
+/// the scroll position meaningful rather than a jump to a half-built list.
+export function useInfiniteJobs(keywords: string, pageSize: number) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: keys.jobs.infinite(keywords, pageSize),
+    queryFn: ({ pageParam }) => api.listJobs(keywords, pageSize, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      // The next offset is however many rows are already loaded; total counts
+      // the whole filtered result, so this stops exactly at the end.
+      const loaded = allPages.reduce((count, page) => count + page.jobs.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
   });
 }
 

@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDaemon } from "../lib/daemon";
+import { useScrollRestoration } from "../lib/use-scroll-restoration";
 import { ErrorBoundary } from "./error-boundary";
 import { Button } from "./ui/button";
 
@@ -14,6 +16,14 @@ const navItems = [
 ];
 
 export function Layout() {
+  const { pathname } = useLocation();
+  // <main> is the app's only scrolling element — the window itself never
+  // scrolls — so the shell that owns it is what remembers each screen's
+  // position across navigation.
+  const scrollRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useScrollRestoration(scrollRef, contentRef, pathname);
+
   return (
     <div className="flex h-screen w-screen bg-slate-50 text-slate-900">
       <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -35,12 +45,14 @@ export function Layout() {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">
-        <RequireDaemon>
-          <RouteErrorBoundary>
-            <Outlet />
-          </RouteErrorBoundary>
-        </RequireDaemon>
+      <main ref={scrollRef} className="flex-1 overflow-y-auto p-6">
+        <div ref={contentRef}>
+          <RequireDaemon>
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
+          </RequireDaemon>
+        </div>
       </main>
     </div>
   );

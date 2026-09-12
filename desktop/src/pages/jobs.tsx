@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { useImportJob, useJobs, useSearchJobs } from "../lib/queries";
+import { useImportJob, useInfiniteJobs, useSearchJobs } from "../lib/queries";
 import { useToast } from "../lib/toast";
 
-// One page of stored jobs. Paging through the rest of the list is the next
-// phase's work; until then this is the cap on what the screen renders.
 const PAGE_SIZE = 50;
 
 export function Jobs() {
@@ -17,9 +15,10 @@ export function Jobs() {
 
   // The list is stored discovery history, so opening this screen costs a
   // local read rather than a round trip to every job source. "Search
-  // sources" is the separate, explicit action that goes to the network;
-  // it stores what it finds, which invalidates this query.
-  const { data: page, error } = useJobs(appliedKeywords, PAGE_SIZE, 0);
+  // sources" is the separate, explicit action that goes to the network; it
+  // stores what it finds, which invalidates this query.
+  const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } =
+    useInfiniteJobs(appliedKeywords, PAGE_SIZE);
 
   const searchJobs = useSearchJobs({
     onSuccess: (found) => notify(`Found ${found.length} jobs from sources.`, "success"),
@@ -45,6 +44,9 @@ export function Jobs() {
     if (!importUrl.trim()) return;
     importJob.mutate(importUrl.trim());
   };
+
+  const jobs = data?.pages.flatMap((page) => page.jobs) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
 
   return (
     <div>
@@ -84,9 +86,9 @@ export function Jobs() {
 
       {error ? (
         <p className="text-sm text-red-600">{String(error.message)}</p>
-      ) : !page ? (
+      ) : isPending ? (
         <p className="text-sm text-slate-500">Loading…</p>
-      ) : page.jobs.length === 0 ? (
+      ) : jobs.length === 0 ? (
         <p className="text-sm text-slate-500">
           {appliedKeywords
             ? `No stored jobs match "${appliedKeywords}".`
@@ -94,7 +96,12 @@ export function Jobs() {
         </p>
       ) : (
         <div className="space-y-2">
-          {page.jobs.map((job) => (
+          <p className="text-xs text-slate-500">
+            {jobs.length === total
+              ? `${total} stored ${total === 1 ? "job" : "jobs"}`
+              : `Showing ${jobs.length} of ${total} stored jobs`}
+          </p>
+          {jobs.map((job) => (
             <Card key={job.id}>
               <CardContent>
                 <p className="font-medium">
@@ -108,13 +115,54 @@ export function Jobs() {
               </CardContent>
             </Card>
           ))}
-          {page.total > page.jobs.length && (
-            <p className="pt-1 text-xs text-slate-500">
-              Showing {page.jobs.length} of {page.total} stored jobs.
-            </p>
-          )}
+          <LoadMore
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+          />
         </div>
       )}
+    </div>
+  );
+}
+
+/// LoadMore fetches the next page when it scrolls into view, and is also a
+/// real button: an observer that never fires (or a user on a keyboard) still
+/// has a way to reach the rest of the list.
+function LoadMore({
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+}: {
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+}) {
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasNextPage) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      // Start fetching a little before the end is actually reached, so the
+      // next page is usually there by the time the user scrolls to it.
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  if (!hasNextPage) return null;
+
+  return (
+    <div ref={sentinel} className="pt-2">
+      <Button variant="secondary" onClick={fetchNextPage} disabled={isFetchingNextPage}>
+        {isFetchingNextPage ? "Loading…" : "Load more"}
+      </Button>
     </div>
   );
 }

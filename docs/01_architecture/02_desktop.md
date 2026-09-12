@@ -53,6 +53,26 @@ What that buys, beyond avoiding a hand-written `useEffect` per screen:
 Cached data belongs to one daemon, so reconnecting clears the cache rather
 than showing a previous daemon's data.
 
+## Scrolling
+
+The window never scrolls. The sidebar is fixed and the `<main>` region beside
+it is the app's only scrolling element, which rules out React Router's
+`ScrollRestoration` twice over: it requires a data router (this app uses
+`<HashRouter>` with `<Routes>`), and it restores the window's position rather
+than an inner element's. `desktop/src/lib/use-scroll-restoration.ts` records
+each route's position and puts it back, and the app shell owns it because the
+app shell owns the scrolling element.
+
+Restoring is not a single assignment. A screen's content arrives after the
+effect runs — a cached query renders at once, but a loading one, fonts and
+images all change the height afterwards — so the hook retries via a
+`ResizeObserver` until the content is tall enough for the saved position to be
+reachable, and gives up the moment the user scrolls themselves rather than
+yanking them away from where they chose to be.
+
+This depends on the query cache: a list that refetched from empty on every
+visit would have nothing to scroll back into.
+
 ## Communication
 
 Use a local, authenticated-by-local-process-boundary IPC/API mechanism appropriate to the platform. Do not expose the daemon broadly on the network by default.

@@ -181,6 +181,15 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   "has a candidate profile been created yet?" to every failure regardless of
   cause; a missing profile is now its own state.
 
+- Desktop jobs list and scroll restoration: the Jobs screen pages through
+  stored jobs with `useInfiniteQuery` over `GET /v1/jobs` (50 at a time,
+  fetching the next page when a sentinel scrolls into view, with a real
+  "Load more" button behind it for keyboard users and for the case where the
+  observer never fires). Screen scroll positions survive navigation via
+  `desktop/src/lib/use-scroll-restoration.ts` — see
+  `docs/01_architecture/02_desktop.md` for why React Router's own
+  `ScrollRestoration` does not apply to this layout.
+
 - Browser automation (Phase 6, `internal/adapters/secondary/browser`,
   `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
   (`github.com/mxschmitt/playwright-go`) worker that opens the user's actual
@@ -223,12 +232,14 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   the Profile screen's "create profile" form covers only the candidate
   profile step. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
-- The desktop app renders only the first 50 stored jobs: the Jobs screen has
-  no paging control yet, and no screen preserves scroll position across
-  navigation. Screens are also not linked to each other — analysing a job or
-  starting an application means copying a job ID from one screen and pasting
-  it into another, rather than the job-centric flow
-  `docs/00_product/03_user_flows.md` describes.
+- Desktop screens are not linked to each other: analysing a job or starting
+  an application means copying a job ID from one screen and pasting it into
+  another, rather than the job-centric flow
+  `docs/00_product/03_user_flows.md` describes ("user opens job → ... → match
+  score persisted"; "user selects job → system generates cover letter").
+  There is also no job detail view, so a stored job's description has nowhere
+  to be read, and the Matches screen shows a bare `job_id` rather than the
+  job's title.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
   `Prompt`, `Notification`) are not separate tables — candidate
