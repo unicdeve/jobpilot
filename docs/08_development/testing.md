@@ -72,6 +72,14 @@ by any lint target. Nothing needs to be installed on the machine beyond Go
 itself, and every contributor lints against the same rule set, since a
 different linter version reports a different set of problems.
 
+It is reinstalled when the Go toolchain changes, not only when
+`GOLANGCI_LINT_VERSION` does. golangci-lint type-checks with the `go/types`
+it was compiled against, so a binary built by an older Go cannot parse a
+newer standard library and reports errors that are not in your code — going
+from Go 1.26 to 1.27 produced two invented failures inside
+`crypto/internal/randutil`. `make tools` compares the Go version the binary
+was built with and rebuilds it, so that failure mode never reaches anyone.
+
 It is deliberately not a `go.mod` tool dependency: `go install pkg@version`
 builds it in isolation from this module, whereas a `tool` directive would
 pull golangci-lint's dependency tree into `go.mod` as indirect requires and

@@ -14,6 +14,7 @@ CLI_BINARY_NAME=jobpilot-cli
 # go.mod stays the application's dependency contract.
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOLANGCI_LINT=bin/golangci-lint
+GO_VERSION=$(shell go env GOVERSION)
 
 # Optional override for the migrate-* targets' database file. Left empty by
 # default so cmd/migrate falls back to system.DefaultDBPath() — the exact
@@ -75,15 +76,24 @@ vet:
 vet-integration:
 	go vet -tags=integration ./...
 
-# Installs the pinned linter when it is missing or the wrong version.
+# Installs the pinned linter when it is missing, the wrong version, or built
+# against a different Go toolchain than the one now on PATH.
+#
+# That last condition is not fussiness. golangci-lint type-checks with the
+# go/types it was compiled against, so a binary built by an older Go cannot
+# parse a newer standard library: upgrading Go to 1.27 made the 1.26-built
+# binary report invented errors inside crypto/internal/randutil. Rebuilding
+# it is the fix, and comparing the build version here means nobody has to
+# recognise that failure to get it.
 #
 # Deliberately a phony target rather than a file rule on $(GOLANGCI_LINT):
-# make skips a file rule whenever the file exists, so after bumping
-# GOLANGCI_LINT_VERSION every developer with an older binary already on disk
-# would keep linting with it and never be told. Re-checking costs one exec.
+# make skips a file rule whenever the file exists, so a developer with a
+# stale binary already on disk would keep linting with it and never be told.
+# Re-checking costs one exec.
 tools:
-	@if ! ./$(GOLANGCI_LINT) --version 2>/dev/null | grep -q "version $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) "; then \
-		echo "installing golangci-lint $(GOLANGCI_LINT_VERSION) into ./bin"; \
+	@if ! ./$(GOLANGCI_LINT) --version 2>/dev/null | \
+		grep -q "version $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) built with $(GO_VERSION) "; then \
+		echo "installing golangci-lint $(GOLANGCI_LINT_VERSION) (for $(GO_VERSION)) into ./bin"; \
 		GOBIN="$(CURDIR)/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	fi
 
