@@ -151,20 +151,23 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		discovery.NewRemotiveSource(discovery.DefaultRemotiveBaseURL),
 	}
 
+	// headless: false — real use always shows a visible window so the user
+	// can review and submit themselves; see docs/01_architecture/03_browser_worker.md.
+	// JobDiscoveryService uses the same factory as a fallback for importing
+	// a job by URL when no registered source recognizes it, but closes the
+	// window itself once the page is read — see JobDiscoveryService.importViaBrowser.
+	newBrowserWorker := func() (ports.BrowserWorker, error) {
+		return browser.NewPlaywrightWorker(browserProfileDir, false)
+	}
+
 	resumeSvc := services.NewResumeService(resRepo, llmProv)
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
-	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources)
+	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 	applicationSvc := services.NewApplicationService(appRepo)
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
-
-	// headless: false — real use always shows a visible window so the user
-	// can review and submit themselves; see docs/01_architecture/03_browser_worker.md.
-	newBrowserWorker := func() (ports.BrowserWorker, error) {
-		return browser.NewPlaywrightWorker(browserProfileDir, false)
-	}
 	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker)
 
 	return httpapi.Services{

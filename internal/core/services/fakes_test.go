@@ -569,14 +569,16 @@ func (f *fakeAgentEventRepository) ListByRun(_ context.Context, runID string) ([
 
 // fakeBrowserWorker is a scriptable ports.BrowserWorker test double.
 type fakeBrowserWorker struct {
-	navigateErr   error
-	blockedReason string
-	blocked       bool
-	fields        []ports.FormField
-	extractErr    error
-	fillErr       map[string]error
-	filled        map[string]string
-	closed        bool
+	navigateErr       error
+	blockedReason     string
+	blocked           bool
+	fields            []ports.FormField
+	extractErr        error
+	fillErr           map[string]error
+	filled            map[string]string
+	closed            bool
+	content           string
+	extractContentErr error
 }
 
 func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return f.navigateErr }
@@ -590,6 +592,13 @@ func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, e
 		return nil, f.extractErr
 	}
 	return f.fields, nil
+}
+
+func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) {
+	if f.extractContentErr != nil {
+		return "", f.extractContentErr
+	}
+	return f.content, nil
 }
 
 func (f *fakeBrowserWorker) Fill(_ context.Context, fieldRef, value string) error {

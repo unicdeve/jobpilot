@@ -142,3 +142,16 @@ func TestPlaywrightWorker_ExtractAndFillForm(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, checked)
 }
+
+func TestPlaywrightWorker_ExtractContent(t *testing.T) {
+	server := newFixtureServer(t)
+	worker := newTestWorker(t)
+	ctx := context.Background()
+
+	require.NoError(t, worker.Navigate(ctx, server.URL))
+
+	content, err := worker.ExtractContent(ctx)
+
+	require.NoError(t, err)
+	assert.Contains(t, content, "Why do you want to work here?", "should return the real rendered page, not an empty shell")
+}

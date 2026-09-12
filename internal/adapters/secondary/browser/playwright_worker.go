@@ -383,6 +383,16 @@ func truthy(value string) bool {
 	}
 }
 
+// ExtractContent returns the current page's HTML, for a caller reading the
+// page itself (e.g. importing a job posting) rather than filling a form.
+func (w *PlaywrightWorker) ExtractContent(_ context.Context) (string, error) {
+	content, err := w.page.Content()
+	if err != nil {
+		return "", fmt.Errorf("failed to read page content: %w", err)
+	}
+	return content, nil
+}
+
 // Close releases the browser context and stops the Playwright driver.
 // Callers must only invoke this when nothing useful has been shown to the
 // user yet — every other path leaves the window open deliberately.

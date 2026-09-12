@@ -50,6 +50,10 @@ type BrowserWorker interface {
 	// and stop, never attempt to defeat one.
 	DetectBlocker(ctx context.Context) (reason string, blocked bool)
 	ExtractForm(ctx context.Context) ([]FormField, error)
+	// ExtractContent returns the current page's raw HTML, for a caller that
+	// wants to read the page itself (e.g. a job posting) rather than
+	// extract a form.
+	ExtractContent(ctx context.Context) (string, error)
 	Fill(ctx context.Context, fieldRef, value string) error
 	// Close releases the underlying browser resources. It must only be
 	// called when nothing useful has been shown to the user yet (e.g. the

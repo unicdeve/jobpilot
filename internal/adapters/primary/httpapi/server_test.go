@@ -467,6 +467,8 @@ func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, e
 	return f.fields, nil
 }
 
+func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) { return "", nil }
+
 func (f *fakeBrowserWorker) Fill(_ context.Context, _, _ string) error { return nil }
 
 func (f *fakeBrowserWorker) Close(_ context.Context) error { return nil }
@@ -497,7 +499,7 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), llmProv, nil),
 		Profile:     services.NewProfileService(candRepo),
 		Resume:      services.NewResumeService(resRepo, llmProv),
-		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}),
+		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil),
 		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
 		Settings:    services.NewSettingsService(settingsRepo),
 		Application: appSvc,
