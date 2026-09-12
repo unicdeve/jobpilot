@@ -13,6 +13,7 @@ export function Jobs() {
   const [keywords, setKeywords] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const load = async (criteriaKeywords = "") => {
     setLoading(true);
@@ -32,6 +33,7 @@ export function Jobs() {
 
   const importJob = async () => {
     if (!importUrl.trim()) return;
+    setImporting(true);
     try {
       await api.importJob(importUrl.trim());
       setImportUrl("");
@@ -39,6 +41,8 @@ export function Jobs() {
       notify("Job imported.", "success");
     } catch (err) {
       notify(String(err));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -65,11 +69,17 @@ export function Jobs() {
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && importJob()}
+              disabled={importing}
             />
           </div>
-          <Button onClick={importJob}>Import</Button>
+          <Button onClick={importJob} disabled={importing}>
+            {importing ? "Importing…" : "Import"}
+          </Button>
         </CardContent>
       </Card>
+      <p className="mb-4 -mt-2 text-xs text-slate-500">
+        Importing a URL not from a known job board briefly opens a browser window to read the page.
+      </p>
 
       {jobs.length === 0 ? (
         <p className="text-sm text-slate-500">No jobs discovered yet.</p>
