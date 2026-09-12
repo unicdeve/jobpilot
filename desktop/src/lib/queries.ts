@@ -43,8 +43,7 @@ export const keys = {
   llmSettings: ["llm-settings"] as const,
   jobs: {
     all: ["jobs"] as const,
-    list: (keywords: string, limit: number, offset: number) =>
-      ["jobs", "list", { keywords, limit, offset }] as const,
+    count: ["jobs", "count"] as const,
     infinite: (keywords: string, pageSize: number) =>
       ["jobs", "infinite", { keywords, pageSize }] as const,
   },
@@ -84,13 +83,15 @@ export function useCandidateId() {
   return { candidateId: data?.id ?? null, isPending, isError };
 }
 
-/// useJobs reads stored discovery history. It contacts no job source and so
-/// works offline; useSearchJobs is the network-facing counterpart.
-export function useJobs(keywords: string, limit: number, offset: number) {
+/// useJobCount reports how many jobs are stored locally. `total` describes
+/// the whole stored list independently of the page around it, so asking for
+/// a single row is the cheapest way to read it.
+export function useJobCount() {
   const api = useApi();
-  return useQuery<JobPage>({
-    queryKey: keys.jobs.list(keywords, limit, offset),
-    queryFn: () => api.listJobs(keywords, limit, offset),
+  return useQuery({
+    queryKey: keys.jobs.count,
+    queryFn: () => api.listJobs("", 1, 0),
+    select: (page: JobPage) => page.total,
   });
 }
 
@@ -327,7 +328,7 @@ export function useSaveLLMSettings(opts?: MutationOpts<SaveLLMSettingsResult, LL
   });
 }
 
-export interface CreateApplicationVars {
+interface CreateApplicationVars {
   jobId: string;
   candidateId: string;
   resumeId: string;
@@ -350,7 +351,7 @@ export function useCreateApplication(opts?: MutationOpts<Application, CreateAppl
   });
 }
 
-export interface TransitionVars {
+interface TransitionVars {
   id: string;
   toState: ApplicationState;
   reason: string;
@@ -391,7 +392,7 @@ export function useGenerateCoverLetter(opts?: MutationOpts<CoverLetter, string>)
   });
 }
 
-export interface EditCoverLetterVars {
+interface EditCoverLetterVars {
   coverLetterId: string;
   applicationId: string;
   content: string;
@@ -413,7 +414,7 @@ export function useEditCoverLetter(opts?: MutationOpts<CoverLetter, EditCoverLet
   });
 }
 
-export interface AddQuestionVars {
+interface AddQuestionVars {
   applicationId: string;
   label: string;
   type: QuestionType;
@@ -436,7 +437,7 @@ export function useAddQuestion(opts?: MutationOpts<ApplicationQuestion, AddQuest
   });
 }
 
-export interface QuestionVars {
+interface QuestionVars {
   questionId: string;
   applicationId: string;
 }

@@ -1,15 +1,14 @@
 import { Card, CardContent, CardTitle } from "../components/ui/card";
-import { useApplications, useCandidateId, useJobs, useMatches } from "../lib/queries";
+import { useApplications, useCandidateId, useJobCount, useMatches } from "../lib/queries";
 import type { ApplicationState } from "../lib/types";
 
 export function Dashboard() {
   const { candidateId, isPending: profilePending, isError: noProfile } = useCandidateId();
 
-  // Only the total is rendered, so ask for the smallest page that still
-  // carries one. This reads stored history; it deliberately does not run a
-  // live source search, which would put a network round trip and a database
-  // write in the path of simply opening the app.
-  const jobs = useJobs("", 1, 0);
+  // Reads stored history; deliberately not a live source search, which would
+  // put a network round trip and a database write in the path of simply
+  // opening the app.
+  const jobs = useJobCount();
   const matches = useMatches(candidateId);
   const applications = useApplications(candidateId);
 
@@ -28,7 +27,7 @@ export function Dashboard() {
 
   // The match and application queries stay idle until the profile resolves
   // a candidate ID, so waiting on their data covers the profile load too.
-  if (profilePending || !jobs.data || !matches.data || !applications.data) {
+  if (profilePending || jobs.data === undefined || !matches.data || !applications.data) {
     return <p className="text-sm text-slate-500">Loading…</p>;
   }
 
@@ -44,7 +43,7 @@ export function Dashboard() {
         <Card>
           <CardContent>
             <CardTitle>Jobs discovered</CardTitle>
-            <p className="mt-2 text-3xl font-semibold">{jobs.data.total}</p>
+            <p className="mt-2 text-3xl font-semibold">{jobs.data}</p>
           </CardContent>
         </Card>
         <Card>
