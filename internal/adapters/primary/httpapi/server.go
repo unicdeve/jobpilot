@@ -53,6 +53,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("POST /v1/resumes/propose-draft", handleProposeDraft(svc.Resume))
 
 	mux.HandleFunc("GET /v1/jobs", handleListJobs(svc.Discovery))
+	mux.HandleFunc("GET /v1/jobs/{id}", handleGetJob(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/search", handleSearchJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/import", handleImportJob(svc.Discovery))
 
@@ -276,6 +277,18 @@ func handleListJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, page)
+	}
+}
+
+// handleGetJob serves one stored job, the read behind the desktop app's job
+// detail screen.
+func handleGetJob(svc *services.JobDiscoveryService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, err := svc.GetJob(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
 	}
 }
 

@@ -6,6 +6,7 @@ import { ToastProvider } from "./lib/toast";
 import { ApplicationDetail } from "./pages/application-detail";
 import { Applications } from "./pages/applications";
 import { Dashboard } from "./pages/dashboard";
+import { JobDetail } from "./pages/job-detail";
 import { Jobs } from "./pages/jobs";
 import { Matches } from "./pages/matches";
 import { Profile } from "./pages/profile";
@@ -37,6 +38,7 @@ function App() {
                 <Route path="profile" element={<Profile />} />
                 <Route path="resumes" element={<Resumes />} />
                 <Route path="jobs" element={<Jobs />} />
+                <Route path="jobs/:id" element={<JobDetail />} />
                 <Route path="matches" element={<Matches />} />
                 <Route path="applications" element={<Applications />} />
                 <Route path="applications/:id" element={<ApplicationDetail />} />

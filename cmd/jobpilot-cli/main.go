@@ -407,6 +407,31 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(listCmd)
 
 	cmd.AddCommand(&cobra.Command{
+		Use:   "show [id]",
+		Short: "Show a stored job in full",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			job, err := client.GetJob(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("getting job: %w", err)
+			}
+
+			fmt.Printf("%s at %s\n", job.Title, job.CompanyName)
+			fmt.Printf("ID:       %s\n", job.ID)
+			fmt.Printf("URL:      %s\n", job.CanonicalURL)
+			fmt.Printf("Location: %s\n", strings.Join(job.Locations, ", "))
+			fmt.Printf("Type:     %s · %s\n", job.RemoteType, job.EmploymentType)
+			if len(job.Skills) > 0 {
+				fmt.Printf("Skills:   %s\n", strings.Join(job.Skills, ", "))
+			}
+			if job.DescriptionMarkdown != "" {
+				fmt.Printf("\n%s\n", job.DescriptionMarkdown)
+			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
 		Use:   "import [url]",
 		Short: "Import a job from a specific URL",
 		Args:  cobra.ExactArgs(1),

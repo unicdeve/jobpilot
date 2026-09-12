@@ -190,6 +190,19 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   `docs/01_architecture/02_desktop.md` for why React Router's own
   `ScrollRestoration` does not apply to this layout.
 
+- Job-centric desktop navigation (`docs/01_architecture/02_desktop.md`): a
+  job detail route (`/jobs/:id`, served by `GET /v1/jobs/{id}` and
+  `jobpilot-cli search show`) shows a stored job with its match, its
+  applications, and the actions that create either. Jobs, Matches and
+  Applications all link to it, and matches and applications show the job's
+  title instead of a bare `job_id`. The forms that asked the user to paste a
+  job ID (Matches, Applications) and a resume ID (Applications) are gone:
+  analysis starts from the job, an application starts from the job with its
+  resume chosen from a list of imported resumes, and creating one opens it.
+  This closes the gap between the UI, which had mirrored the CLI's
+  verb-per-command shape, and the job-first flows in
+  `docs/00_product/03_user_flows.md`.
+
 - Browser automation (Phase 6, `internal/adapters/secondary/browser`,
   `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
   (`github.com/mxschmitt/playwright-go`) worker that opens the user's actual
@@ -232,14 +245,11 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   the Profile screen's "create profile" form covers only the candidate
   profile step. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
-- Desktop screens are not linked to each other: analysing a job or starting
-  an application means copying a job ID from one screen and pasting it into
-  another, rather than the job-centric flow
-  `docs/00_product/03_user_flows.md` describes ("user opens job → ... → match
-  score persisted"; "user selects job → system generates cover letter").
-  There is also no job detail view, so a stored job's description has nowhere
-  to be read, and the Matches screen shows a bare `job_id` rather than the
-  job's title.
+- A job description is shown as raw text on the job detail screen. Job
+  descriptions are stored as markdown (MarkItDown converts them on import),
+  so headings and lists appear as their markdown source rather than rendered.
+  Rendering them needs a markdown component, which no requirement documents
+  yet.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
   `Prompt`, `Notification`) are not separate tables — candidate

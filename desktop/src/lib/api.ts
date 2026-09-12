@@ -40,6 +40,7 @@ export interface ApiClient {
   /// so unlike searchJobs it works offline. A limit of 0 means the daemon's
   /// default page size.
   listJobs(keywords: string, limit: number, offset: number): Promise<JobPage>;
+  getJob(id: string): Promise<Job>;
   searchJobs(criteria: SearchCriteria): Promise<Job[]>;
   importJob(url: string): Promise<Job>;
 
@@ -147,6 +148,7 @@ export function createApiClient(port: number): ApiClient {
       const query = new URLSearchParams(params).toString();
       return request<JobPage>(baseUrl, "GET", "/v1/jobs" + (query ? `?${query}` : ""));
     },
+    getJob: (id) => request<Job>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
     searchJobs: (criteria) => request<Job[]>(baseUrl, "POST", "/v1/jobs/search", criteria),
     importJob: (url) => request<Job>(baseUrl, "POST", "/v1/jobs/import", { url }),
 

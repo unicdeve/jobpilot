@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { useImportJob, useInfiniteJobs, useSearchJobs } from "../lib/queries";
+import {
+  useCandidateId,
+  useImportJob,
+  useInfiniteJobs,
+  useMatches,
+  useSearchJobs,
+} from "../lib/queries";
 import { useToast } from "../lib/toast";
 
 const PAGE_SIZE = 50;
@@ -19,6 +26,12 @@ export function Jobs() {
   // stores what it finds, which invalidates this query.
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } =
     useInfiniteJobs(appliedKeywords, PAGE_SIZE);
+
+  // Matches are already loaded as one list per candidate, so showing a score
+  // beside a job costs nothing beyond a lookup.
+  const { candidateId } = useCandidateId();
+  const { data: matches } = useMatches(candidateId);
+  const scoreByJob = new Map(matches?.map((m) => [m.job_id, m.score]));
 
   const searchJobs = useSearchJobs({
     onSuccess: (found) => notify(`Found ${found.length} jobs from sources.`, "success"),
@@ -102,18 +115,27 @@ export function Jobs() {
               : `Showing ${jobs.length} of ${total} stored jobs`}
           </p>
           {jobs.map((job) => (
-            <Card key={job.id}>
-              <CardContent>
-                <p className="font-medium">
-                  {job.title} <span className="font-normal text-slate-500">at {job.company_name}</span>
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {job.remote_type} · {job.employment_type} ·{" "}
-                  {job.locations?.join(", ") || "location unspecified"}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">ID: {job.id}</p>
-              </CardContent>
-            </Card>
+            <Link key={job.id} to={`/jobs/${job.id}`} className="block">
+              <Card className="hover:ring-foreground/20">
+                <CardContent className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">
+                      {job.title}{" "}
+                      <span className="font-normal text-slate-500">at {job.company_name}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {job.remote_type} · {job.employment_type} ·{" "}
+                      {job.locations?.join(", ") || "location unspecified"}
+                    </p>
+                  </div>
+                  {scoreByJob.has(job.id) && (
+                    <span className="shrink-0 text-xs font-medium text-slate-600">
+                      Match {scoreByJob.get(job.id)}/100
+                    </span>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
           ))}
           <LoadMore
             hasNextPage={hasNextPage}

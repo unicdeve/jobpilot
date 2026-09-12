@@ -10,6 +10,7 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type UseMutationOptions,
@@ -44,6 +45,7 @@ export const keys = {
   jobs: {
     all: ["jobs"] as const,
     count: ["jobs", "count"] as const,
+    detail: (id: string) => ["jobs", "detail", id] as const,
     infinite: (keywords: string, pageSize: number) =>
       ["jobs", "infinite", { keywords, pageSize }] as const,
   },
@@ -112,6 +114,47 @@ export function useInfiniteJobs(keywords: string, pageSize: number) {
       return loaded < lastPage.total ? loaded : undefined;
     },
   });
+}
+
+/// useJob loads one stored job. Job records do not change once discovered,
+/// so this stays fresh far longer than a list does.
+export function useJob(id: string | undefined) {
+  const api = useApi();
+  return useQuery<Job>({
+    queryKey: keys.jobs.detail(id ?? ""),
+    queryFn: () => api.getJob(id!),
+    enabled: !!id,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/// useJobsByID loads several jobs at once, for screens that hold job IDs and
+/// need something human-readable to show for them — a match or an
+/// application knows only its job_id.
+///
+/// This is one request per job rather than a bulk endpoint. It is a local
+/// SQLite read over loopback, the counts involved are however many jobs the
+/// user has personally analysed or applied to, and every result is cached
+/// under the same key useJob uses — so opening one of those jobs afterwards
+/// needs no request at all. If these lists ever grow large enough for that
+/// to bite, the fix is a bulk read on the daemon, not a cache here.
+export function useJobsByID(ids: string[]) {
+  const api = useApi();
+  const unique = [...new Set(ids)];
+
+  const results = useQueries({
+    queries: unique.map((id) => ({
+      queryKey: keys.jobs.detail(id),
+      queryFn: () => api.getJob(id),
+      staleTime: 5 * 60_000,
+    })),
+  });
+
+  const byID = new Map<string, Job>();
+  results.forEach((result, i) => {
+    if (result.data) byID.set(unique[i], result.data);
+  });
+  return byID;
 }
 
 export function useResumes(candidateId: string | null) {

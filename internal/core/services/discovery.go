@@ -125,6 +125,17 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 	return finalJobs, nil
 }
 
+// GetJob returns one stored job by ID. Like ListJobs it reads local history
+// only, so a job that was discovered once stays readable without internet
+// access.
+func (s *JobDiscoveryService) GetJob(ctx context.Context, id string) (*domain.Job, error) {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get job %s: %w", id, err)
+	}
+	return job, nil
+}
+
 // ImportJob imports a specific job by its URL, trying every source capable
 // of URL lookup in turn: one source not recognizing this URL shouldn't stop
 // another from resolving it (the same failure-isolation principle Search

@@ -59,6 +59,7 @@ export function Settings() {
         <CardContent className="space-y-4">
           <FormField label="LLM provider" htmlFor="provider">
             <Select
+              items={Object.fromEntries(presets.map((p) => [p.key, p.label]))}
               value={settings.provider || "ollama"}
               onValueChange={(value) => {
                 if (value === null) return;

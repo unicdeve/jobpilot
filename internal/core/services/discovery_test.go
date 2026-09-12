@@ -449,3 +449,31 @@ func (r *limitSpyJobRepository) List(ctx context.Context, keywords string, limit
 	*r.gotLimit = limit
 	return r.fakeJobRepository.List(ctx, keywords, limit, offset)
 }
+
+func TestJobDiscoveryService_GetJob(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns a stored job without contacting a source", func(t *testing.T) {
+		t.Parallel()
+		repo := newFakeJobRepository()
+		job := &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}
+		require.NoError(t, repo.Save(context.Background(), job))
+		source := searchableSource("mock", nil, errors.New("source must not be contacted"))
+		svc := NewJobDiscoveryService(repo, []ports.JobSource{source}, nil, nil)
+
+		got, err := svc.GetJob(context.Background(), job.ID)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer", got.Title)
+		assert.Zero(t, source.searchCalls)
+	})
+
+	t.Run("an unknown id is an error, not an empty job", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), nil, nil, nil)
+
+		_, err := svc.GetJob(context.Background(), "does-not-exist")
+
+		assert.ErrorContains(t, err, "does-not-exist")
+	})
+}

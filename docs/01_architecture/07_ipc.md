@@ -31,6 +31,7 @@ different failure modes, so they are different endpoints.
 - `GET /v1/jobs` returns jobs already stored, paginated (`limit`, `offset`)
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
+- `GET /v1/jobs/{id}` returns one stored job, on the same terms.
 
 Collapsing the two — using an unfiltered search as "list everything" — makes
 browsing history impossible without a network round trip, which

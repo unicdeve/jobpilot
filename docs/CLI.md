@@ -17,6 +17,7 @@ This document lists the currently implemented CLI commands for the JobPilot.
 ## Job Discovery
 - `jobpilot-cli search run [keywords]`: Searches every registered job source for new jobs matching the keywords, normalizes and deduplicates the results, and stores them. Requires internet access.
 - `jobpilot-cli search list`: Lists jobs already discovered, most recent first, from local history. Reads stored data only and contacts no job source, so it works offline. Flags: `--keywords` (only jobs whose title or company matches), `--limit` (default 50, maximum 200), `--offset` (skip this many; the output names the offset for the next page).
+- `jobpilot-cli search show [id]`: Shows one stored job in full, including its description. Reads local history only.
 - `jobpilot-cli search import [url]`: Imports one job by its URL. When no source's API can fetch that URL, the page is opened in the browser worker and its content extracted (see `docs/02_features/04_job_discovery.md` AC-007). Requires internet access.
 
 ## Settings

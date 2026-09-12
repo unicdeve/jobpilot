@@ -30,6 +30,28 @@ The desktop app handles:
 
 The desktop app does not own business logic that must also work through the CLI.
 
+## Navigation
+
+Screens are reached through the objects they are about, not by carrying
+identifiers between them. `docs/00_product/03_user_flows.md` describes the
+flows job-first — "user opens job → loads candidate context → match score
+persisted", "user selects job → system generates cover letter" — and the job
+detail route (`/jobs/:id`) is where that happens: it shows the job, its match
+if it has one, its applications, and the actions that create either.
+
+The lists feed it rather than competing with it. A job on the Jobs list, a
+match, and an application all link to the job they concern, and a match or an
+application shows the job's title rather than its `job_id`. Nothing in the UI
+asks the user to type or paste an identifier.
+
+Matches and applications store only a `job_id`, so those screens fetch the
+jobs they reference one at a time (`useJobsByID`) rather than through a bulk
+endpoint. These are local SQLite reads over loopback, bounded by how many
+jobs the user has personally analysed or applied to, and each result is
+cached under the key the job detail screen reads, so opening one of those
+jobs afterwards costs no request at all. A bulk read on the daemon is the
+answer if those lists ever grow enough for this to matter.
+
 ## Server state
 
 Screens do not call the daemon client directly. `desktop/src/lib/queries.ts`

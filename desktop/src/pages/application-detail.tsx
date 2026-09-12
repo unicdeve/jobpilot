@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
@@ -20,6 +20,7 @@ import {
   useApplicationHistory,
   useCoverLetters,
   useEditCoverLetter,
+  useJob,
   useGenerateCoverLetter,
   usePrepareInBrowser,
   useQuestions,
@@ -36,6 +37,13 @@ import type {
   CoverLetter,
   QuestionType,
 } from "../lib/types";
+
+// Base UI's Select shows the raw value in its trigger unless given the
+// value -> label mapping.
+const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
+  factual: "Factual",
+  narrative: "Narrative",
+};
 
 const ALL_STATES: ApplicationState[] = [
   "DISCOVERED",
@@ -59,15 +67,29 @@ export function ApplicationDetail() {
   const { data: coverLetters } = useCoverLetters(id);
   const { data: questions } = useQuestions(id);
   const { data: agentRuns } = useAgentRuns(id);
+  const { data: job } = useJob(application?.job_id);
 
   if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
   if (!application || !id) return <p className="text-sm text-slate-500">Loading…</p>;
 
   return (
     <div className="max-w-3xl space-y-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold">Application</h1>
-        <StatusBadge value={application.state} />
+      <div>
+        <Link to="/applications" className="text-sm text-slate-500 hover:underline">
+          ← Applications
+        </Link>
+        <div className="mt-1 flex items-center gap-3">
+          <h1 className="text-xl font-semibold">{job ? job.title : "Application"}</h1>
+          <StatusBadge value={application.state} />
+        </div>
+        {job && (
+          <p className="text-sm text-slate-600">
+            {job.company_name} ·{" "}
+            <Link to={`/jobs/${application.job_id}`} className="hover:underline">
+              View job
+            </Link>
+          </p>
+        )}
       </div>
 
       <TransitionPanel application={application} />
@@ -343,13 +365,20 @@ function QuestionsPanel({
           <div className="min-w-48 flex-1">
             <Input placeholder="Question label…" value={label} onChange={(e) => setLabel(e.target.value)} />
           </div>
-          <Select value={type} onValueChange={(value) => setType(value as QuestionType)}>
+          <Select
+            items={QUESTION_TYPE_LABELS}
+            value={type}
+            onValueChange={(value) => setType(value as QuestionType)}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="factual">Factual</SelectItem>
-              <SelectItem value="narrative">Narrative</SelectItem>
+              {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <label className="flex items-center gap-1.5 text-sm text-slate-600">

@@ -937,3 +937,23 @@ func TestServer_ListJobs_EmptyHistory(t *testing.T) {
 	assert.Empty(t, page.Jobs)
 	assert.Zero(t, page.Total)
 }
+
+func TestClient_GetJob(t *testing.T) {
+	client, _, source := testServer(t)
+	ctx := context.Background()
+
+	source.searchResult = []domain.Job{
+		{CanonicalURL: "https://example.com/job/1", Title: "Backend Engineer", CompanyName: "Acme"},
+	}
+	discovered, err := client.SearchJobs(ctx, domain.SearchCriteria{})
+	require.NoError(t, err)
+	require.Len(t, discovered, 1)
+
+	job, err := client.GetJob(ctx, discovered[0].ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Backend Engineer", job.Title)
+	assert.Equal(t, "Acme", job.CompanyName)
+
+	_, err = client.GetJob(ctx, "no-such-job")
+	assert.ErrorContains(t, err, "no-such-job")
+}

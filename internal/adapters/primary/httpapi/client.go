@@ -143,6 +143,15 @@ func (c *Client) ListJobs(ctx context.Context, keywords string, limit, offset in
 	return &page, nil
 }
 
+// GetJob returns one stored job by ID.
+func (c *Client) GetJob(ctx context.Context, id string) (*domain.Job, error) {
+	var job domain.Job
+	if _, err := c.do(ctx, http.MethodGet, "/v1/jobs/"+url.PathEscape(id), nil, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
 // SearchJobs runs a job search against criteria.
 func (c *Client) SearchJobs(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
 	var jobs []*domain.Job
