@@ -1,6 +1,8 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FormField } from "../components/form-field";
+import { Markdown } from "../components/markdown";
 import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
@@ -62,9 +64,13 @@ export function JobDetail() {
         {job.canonical_url && (
           <a
             href={job.canonical_url}
-            target="_blank"
-            rel="noreferrer"
             className="mt-1 inline-block text-xs text-slate-500 hover:underline"
+            onClick={(event) => {
+              // Without this the webview navigates to the job board and the
+              // app is simply gone; the posting belongs in a real browser.
+              event.preventDefault();
+              void openUrl(job.canonical_url);
+            }}
           >
             {job.canonical_url}
           </a>
@@ -108,9 +114,9 @@ export function JobDetail() {
         <CardContent>
           <CardTitle>Description</CardTitle>
           {job.description_markdown ? (
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-              {job.description_markdown}
-            </p>
+            <div className="mt-2">
+              <Markdown>{job.description_markdown}</Markdown>
+            </div>
           ) : (
             <p className="mt-2 text-sm text-slate-500">No description was captured for this job.</p>
           )}

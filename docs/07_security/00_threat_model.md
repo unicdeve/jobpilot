@@ -22,6 +22,20 @@ Mitigation:
 - separate system instructions from external content
 - validate tool actions outside the model
 
+The same text is also *displayed*, which is a second surface: a job
+description is stored as markdown and rendered on the desktop's job detail
+screen (`desktop/src/components/markdown.tsx`).
+
+Mitigation:
+- raw HTML in that markdown is never rendered, so script tags and inline
+  event handlers cannot execute
+- images are not loaded, only their alt text is shown — a remote image is a
+  request to a third-party server disclosing which posting the user is
+  reading, which `docs/07_security/01_privacy.md` does not permit
+- links are restricted to http(s) and opened in the user's browser rather
+  than navigated to in the webview, which would otherwise replace the
+  application with the job board
+
 ### Malicious plugin
 
 Mitigation:

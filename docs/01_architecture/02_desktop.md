@@ -75,6 +75,17 @@ What that buys, beyond avoiding a hand-written `useEffect` per screen:
 Cached data belongs to one daemon, so reconnecting clears the cache rather
 than showing a previous daemon's data.
 
+## Rendering untrusted content
+
+Job descriptions are stored as markdown and rendered by
+`desktop/src/components/markdown.tsx`, never as raw HTML. That component is
+where the threat model's "malicious webpage content" mitigations live for the
+display path — no HTML passthrough, no image loading, http(s) links only and
+opened externally. See `docs/07_security/00_threat_model.md`.
+
+Anything else that displays external text should go through it rather than
+reaching for a second renderer.
+
 ## Scrolling
 
 The window never scrolls. The sidebar is fixed and the `<main>` region beside

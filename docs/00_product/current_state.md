@@ -202,6 +202,11 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   This closes the gap between the UI, which had mirrored the CLI's
   verb-per-command shape, and the job-first flows in
   `docs/00_product/03_user_flows.md`.
+  The job's description is rendered as markdown
+  (`desktop/src/components/markdown.tsx`, react-markdown + remark-gfm) with
+  the restrictions the threat model requires for displayed external text:
+  no raw HTML, no image loading, http(s) links only and opened in the user's
+  browser rather than in the webview.
 
 - Browser automation (Phase 6, `internal/adapters/secondary/browser`,
   `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
@@ -245,11 +250,6 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   the Profile screen's "create profile" form covers only the candidate
   profile step. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
-- A job description is shown as raw text on the job detail screen. Job
-  descriptions are stored as markdown (MarkItDown converts them on import),
-  so headings and lists appear as their markdown source rather than rendered.
-  Rendering them needs a markdown component, which no requirement documents
-  yet.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
   `Prompt`, `Notification`) are not separate tables — candidate
