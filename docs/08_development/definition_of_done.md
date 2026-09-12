@@ -7,7 +7,7 @@ A feature is complete when:
 - [ ] Core logic tests added.
 - [ ] Error cases relevant to the feature handled.
 - [ ] Existing tests pass.
-- [ ] Formatting/linting/static checks pass.
+- [ ] Formatting/linting/static checks pass (`make check`).
 - [ ] No unrelated refactor introduced.
 - [ ] Security implications considered.
 - [ ] Documentation updated if behavior changed.

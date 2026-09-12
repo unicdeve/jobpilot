@@ -2,6 +2,19 @@
 BINARY_NAME=jobpilot
 CLI_BINARY_NAME=jobpilot-cli
 
+# golangci-lint is pinned and installed into ./bin rather than relied on from
+# the machine, so every contributor and CI run lints against the same rules:
+# a different version reports a different set of problems, which would make
+# `make check` mean different things in different places.
+#
+# It is deliberately NOT a go.mod tool dependency. `go install pkg@version`
+# builds it in isolation from this module, whereas a tool directive would
+# pull golangci-lint's dependency tree into go.mod as indirect requires and
+# let its constraints raise shared dependencies for the application itself.
+# go.mod stays the application's dependency contract.
+GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT=bin/golangci-lint
+
 # Optional override for the migrate-* targets' database file. Left empty by
 # default so cmd/migrate falls back to system.DefaultDBPath() — the exact
 # same path cmd/jobpilot-cli itself opens — so the two can never point at
@@ -9,7 +22,7 @@ CLI_BINARY_NAME=jobpilot-cli
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build clean run fmt fmt-check vet vet-integration lint lint-integration \
+.PHONY: all build clean run run-desktop fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -22,6 +35,9 @@ build:
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
 	go run ./cmd/jobpilot
+
+run-desktop:
+	cd desktop && bun tauri dev
 
 clean:
 	rm -rf bin/
@@ -59,13 +75,28 @@ vet:
 vet-integration:
 	go vet -tags=integration ./...
 
-lint:
-	golangci-lint run ./...
+# Installs the pinned linter when it is missing or the wrong version.
+#
+# Deliberately a phony target rather than a file rule on $(GOLANGCI_LINT):
+# make skips a file rule whenever the file exists, so after bumping
+# GOLANGCI_LINT_VERSION every developer with an older binary already on disk
+# would keep linting with it and never be told. Re-checking costs one exec.
+tools:
+	@if ! ./$(GOLANGCI_LINT) --version 2>/dev/null | grep -q "version $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) "; then \
+		echo "installing golangci-lint $(GOLANGCI_LINT_VERSION) into ./bin"; \
+		GOBIN="$(CURDIR)/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+	fi
+
+lint: tools
+	./$(GOLANGCI_LINT) run ./...
 
 # Integration-tagged test files (see docs/08_development/testing.md) are
 # invisible to golangci-lint without this flag.
-lint-integration:
-	golangci-lint run --build-tags=integration ./...
+lint-integration: tools
+	./$(GOLANGCI_LINT) run --build-tags=integration ./...
+
+lint-fix: tools
+	./$(GOLANGCI_LINT) run --fix ./...
 
 tidy:
 	go mod tidy

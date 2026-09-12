@@ -59,4 +59,23 @@ go test -tags=integration ./...
 
 CI and local pre-push checks should run the tagged variant (optionally with
 `-race`) to cover the full suite; `golangci-lint` also needs
-`--build-tags=integration` to lint the tagged files.
+`--build-tags=integration` to lint the tagged files. `make lint` and `make
+lint-integration` cover both, and `make check` runs the whole gate:
+formatting, `go vet` (tagged and untagged), both lint passes, and both test
+suites.
+
+## Tooling
+
+`golangci-lint` is pinned by `GOLANGCI_LINT_VERSION` in the `Makefile` and
+installed into `./bin` (gitignored) on demand — `make tools`, or implicitly
+by any lint target. Nothing needs to be installed on the machine beyond Go
+itself, and every contributor lints against the same rule set, since a
+different linter version reports a different set of problems.
+
+It is deliberately not a `go.mod` tool dependency: `go install pkg@version`
+builds it in isolation from this module, whereas a `tool` directive would
+pull golangci-lint's dependency tree into `go.mod` as indirect requires and
+let its constraints raise shared dependencies for the application itself.
+`go.mod` stays the application's dependency contract.
+
+The enabled linters live in `.golangci.yml`.
