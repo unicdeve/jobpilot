@@ -17,6 +17,8 @@ Use Go Playwright as the initial browser automation technology.
 
 - Navigate to job/application URLs
 - Extract application forms
+- Extract page content (e.g. a job posting's rendered HTML, for custom job
+  URL import — see `docs/02_features/04_job_discovery.md` AC-007)
 - Fill deterministic fields
 - Fill approved generated answers
 - Detect blockers

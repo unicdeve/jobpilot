@@ -63,6 +63,20 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   `MockJobSource` remains in the codebase for tests/dev but is no longer in
   the daemon's production source list, so real searches are never mixed
   with fake jobs.
+- Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
+  neither Arbeitnow nor Remotive's public API can fetch an arbitrary job by
+  URL, so `JobDiscoveryService.ImportJob` falls back to
+  `importViaBrowser` — opening the URL in the same Playwright worker Phase 6
+  built for application prep, reading the rendered page (handles
+  JS-rendered job boards a plain HTTP fetch couldn't), and asking the LLM
+  to extract structured fields (title, company, location, remote/employment
+  type, salary if stated, skills, and a cleaned job description) from the
+  page's converted markdown — the same "extract, review-gated, never
+  invent" pattern `ResumeService.ProposeProfileDraft` already established.
+  Unlike `PrepareApplication`, the browser window is closed once the page
+  is read rather than left open, since importing a job isn't a submission
+  flow. A detected CAPTCHA/blocker, or a page the LLM can't find a job
+  title on, fails clearly rather than saving a garbage job record.
 - Job matching via Ollama: structured JSON output (score, confidence,
   strengths, gaps, missing skills, rationale), persisted per candidate/job.
 - SQLite persistence for candidates, resumes, jobs, and matches, with
@@ -161,14 +175,6 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
 - No settings/configuration system beyond LLM provider/model
   (`docs/02_features/13_settings.md` — other categories like prompt
   customization, search preferences, and notifications are unimplemented).
-- Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007) is
-  currently unsupported: neither Arbeitnow nor Remotive's public API can
-  fetch an arbitrary job by URL (only search/listing), so
-  `JobDiscoveryService.ImportJob` returns a clear "no available source
-  supports importing jobs by URL" error instead of the old mock's
-  fake-success behavior for two hardcoded demo URLs. The browser worker
-  (Phase 6) navigates and extracts forms but isn't wired into `ImportJob` —
-  doing so is a plausible, currently unimplemented follow-up.
 - No persisted search-history feature (Phase 2).
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no onboarding wizard equivalent to the CLI's
@@ -228,4 +234,4 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
 2. The undocumented gaps above (entity normalization, structured LLM
    output, richer answer derivation) once their preconditions land, plus
    the browser-worker-specific gaps just noted (CAPTCHA heuristic, radio
-   grouping fallback, salary fields, custom-URL import).
+   grouping fallback, salary fields).
