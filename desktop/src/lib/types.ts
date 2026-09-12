@@ -81,7 +81,6 @@ export interface SearchCriteria {
   experience_max?: number;
   included_sources?: string[];
   excluded_companies?: string[];
-  custom_urls?: string[];
 }
 
 export interface JobMatch {

@@ -15,7 +15,6 @@ Find jobs using configured criteria and supported sources.
 - Experience preference
 - Included sources
 - Excluded companies
-- Optional custom URLs
 
 ## Source strategy
 

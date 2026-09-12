@@ -42,5 +42,4 @@ type SearchCriteria struct {
 	ExperienceMax     int      `json:"experience_max"`
 	IncludedSources   []string `json:"included_sources"`
 	ExcludedCompanies []string `json:"excluded_companies"`
-	CustomURLs        []string `json:"custom_urls"`
 }
