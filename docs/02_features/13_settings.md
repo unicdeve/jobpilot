@@ -32,7 +32,8 @@ are offered as presets with a manually-entered model name; a "Custom"
 option accepts any OpenAI-compatible endpoint. Per
 `docs/01_architecture/05_llm.md`, only a single active provider
 configuration is supported at a time. Saved settings apply to the
-running daemon immediately.
+running daemon immediately. The desktop's Settings screen offers the same
+presets and fills in the selected provider's default base URL.
 
 Search preferences are implemented as named saved searches: see
 `docs/02_features/04_job_discovery.md` AC-001. They are managed from
