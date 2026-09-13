@@ -129,7 +129,12 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   choose from known local providers (Ollama, llama.cpp, LM Studio) or a
   custom OpenAI-compatible endpoint, with a manually-entered model name;
   persisted in SQLite's `user_settings` table. A single active provider
-  configuration is supported, per `docs/01_architecture/05_llm.md`.
+  configuration is supported, per `docs/01_architecture/05_llm.md`. The
+  daemon resolves those settings per request
+  (`internal/adapters/secondary/llm.ReloadingProvider`) rather than once at
+  startup, so saving them takes effect immediately: the daemon outlives both
+  the desktop app and the CLI, and previously kept using whatever was stored
+  when it started until the user found and restarted it.
 - SQLite connection configuration (`internal/adapters/secondary/sqlite/db.go`,
   `docs/01_architecture/04_database.md`): connection pragmas are set through
   the DSN so they apply to every connection in `database/sql`'s pool, not

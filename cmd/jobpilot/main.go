@@ -25,6 +25,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
+	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
@@ -137,14 +138,16 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	}
 	browserProfileDir := filepath.Join(dataDir, browserProfileDirName)
 
-	llmSettings, err := settingsSvc.GetLLMSettings(context.Background())
-	if err != nil {
-		return httpapi.Services{}, fmt.Errorf("loading LLM settings: %w", err)
-	}
-	llmProv, err := llm.NewProvider(*llmSettings)
-	if err != nil {
-		return httpapi.Services{}, fmt.Errorf("configuring LLM provider: %w", err)
-	}
+	// Resolved per request rather than once here: the daemon outlives both
+	// the desktop app and the CLI, so a provider fixed at startup would
+	// ignore settings the user saves later until they restarted it.
+	llmProv := llm.NewReloadingProvider(func(ctx context.Context) (domain.LLMSettings, error) {
+		settings, err := settingsSvc.GetLLMSettings(ctx)
+		if err != nil {
+			return domain.LLMSettings{}, err
+		}
+		return *settings, nil
+	})
 
 	sources := []ports.JobSource{
 		discovery.NewArbeitnowSource(discovery.DefaultArbeitnowBaseURL),
