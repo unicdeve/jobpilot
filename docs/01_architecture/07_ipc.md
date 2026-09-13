@@ -46,3 +46,19 @@ browsing history impossible without a network round trip, which
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
 
+## Checking a dependency before using it
+
+`GET /v1/settings/llm/health` reports `{"configured": bool, "ok": bool,
+"error": "..."}` for the stored LLM configuration. The two flags are
+separate because the failures need different advice: nothing has been set up
+yet, versus a backend that is set up but not answering.
+
+It exists so a client can check before starting multi-step work that depends
+on the LLM, rather than discovering the problem partway through and leaving
+the user with a half-finished result. The probe is bounded well under the
+providers' own 30s request timeout, since it runs in front of a UI action.
+
+The daemon builds its provider from the stored settings on each request
+(`llm.ReloadingProvider`), so this endpoint and the work it guards always
+describe the same backend, and settings saved through `PUT /v1/settings/llm`
+apply without restarting the daemon.

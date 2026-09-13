@@ -28,6 +28,7 @@ import type {
   Job,
   JobMatch,
   JobPage,
+  LLMHealth,
   LLMSettings,
   ProfileDraft,
   QuestionType,
@@ -428,6 +429,18 @@ export function useAnalyzeMatch(
       void queryClient.invalidateQueries({ queryKey: keys.matches(variables.candidateId) });
       opts?.onSuccess?.(match, variables, ...rest);
     },
+  });
+}
+
+/// useCheckLLMHealth asks the daemon whether the configured backend would
+/// answer right now. It is a mutation rather than a query because it runs on
+/// demand, immediately before work that needs the LLM — probing on every
+/// render of a screen would mean pinging the backend for nothing.
+export function useCheckLLMHealth(opts?: MutationOpts<LLMHealth, void>) {
+  const api = useApi();
+  return useMutation({
+    mutationFn: () => api.checkLLMHealth(),
+    ...opts,
   });
 }
 

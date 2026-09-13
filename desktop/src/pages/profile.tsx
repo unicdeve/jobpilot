@@ -1,13 +1,23 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { FormField } from "../components/form-field";
 import { Card, CardContent } from "../components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import {
+  useCheckLLMHealth,
   useImportResume,
   useInitializeProfile,
   useProfile,
@@ -15,7 +25,7 @@ import {
   useUpdateProfile,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Candidate, ProfileDraft } from "../lib/types";
+import type { Candidate, LLMHealth, ProfileDraft } from "../lib/types";
 
 const emptyProfile: Candidate = {
   id: "",
@@ -49,6 +59,12 @@ export function Profile() {
   // overwrite something half-typed.
   const [draft, setDraft] = useState<Candidate | null>(null);
   const [overwriteExisting, setOverwriteExisting] = useState(false);
+  // Prefilling reads the resume with the local LLM, so it is checked before
+  // the file picker opens rather than after: the old order created the
+  // profile, imported the resume, and only then failed on the part the user
+  // actually asked for.
+  const [llmProblem, setLlmProblem] = useState<LLMHealth | null>(null);
+  const checkLLM = useCheckLLMHealth();
 
   const updateProfile = useUpdateProfile({
     onSuccess: () => {
@@ -69,6 +85,7 @@ export function Profile() {
 
   const saving = updateProfile.isPending || initializeProfile.isPending;
   const importing = importResume.isPending || proposeDraft.isPending;
+  const busy = importing || checkLLM.isPending;
 
   if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
 
@@ -110,6 +127,18 @@ export function Profile() {
   };
 
   const importResumeToPrefill = async () => {
+    let health: LLMHealth;
+    try {
+      health = await checkLLM.mutateAsync();
+    } catch (err) {
+      notify(`Could not check your AI provider: ${err}`);
+      return;
+    }
+    if (!health.ok) {
+      setLlmProblem(health);
+      return;
+    }
+
     const path = await open({ multiple: false, title: "Select a resume file" });
     if (!path || Array.isArray(path)) return;
 
@@ -144,9 +173,28 @@ export function Profile() {
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Profile</h1>
-        <div className="flex items-center gap-3">
+      <Dialog open={!!llmProblem} onOpenChange={(open) => !open && setLlmProblem(null)}>
+        <DialogContent>
+          <DialogTitle>
+            {llmProblem?.configured ? "Can't reach your AI provider" : "Set up your AI provider first"}
+          </DialogTitle>
+          <DialogDescription>
+            {llmProblem?.configured
+              ? "Prefilling reads your resume with the LLM you configured, and it isn't answering. Check that it's running, then try again."
+              : "Prefilling reads your resume with a local LLM — JobPilot never sends it anywhere else. Choose a provider and model in Settings, then come back and import."}
+          </DialogDescription>
+          {llmProblem?.error && (
+            <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs break-words text-muted-foreground">
+              {llmProblem.error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" render={<DialogClose>Not now</DialogClose>} />
+            <Button render={<Link to="/settings">Open settings</Link>} />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+        <div className="flex items-center justify-between mb-4 gap-3">
           <Label htmlFor="overwrite_existing">
             <Checkbox
               id="overwrite_existing"
@@ -155,10 +203,9 @@ export function Profile() {
             />
             Overwrite existing fields with resume data
           </Label>
-          <Button variant="outline" onClick={importResumeToPrefill} disabled={importing}>
-            {importing ? "Importing…" : "Import resume to prefill"}
+          <Button variant="outline" onClick={() => void importResumeToPrefill()} disabled={busy}>
+            {checkLLM.isPending ? "Checking…" : importing ? "Importing…" : "Import resume to prefill"}
           </Button>
-        </div>
       </div>
       {!exists && (
         <p className="mb-4 text-sm text-slate-500">

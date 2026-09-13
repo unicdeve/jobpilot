@@ -14,6 +14,7 @@ import type {
   Job,
   JobMatch,
   JobPage,
+  LLMHealth,
   LLMSettings,
   ProfileDraft,
   QuestionType,
@@ -59,6 +60,7 @@ export interface ApiClient {
   listMatches(candidateId: string): Promise<JobMatch[]>;
 
   getLLMSettings(): Promise<LLMSettings>;
+  checkLLMHealth(): Promise<LLMHealth>;
   saveLLMSettings(settings: LLMSettings): Promise<SaveLLMSettingsResult>;
 
   createApplication(
@@ -187,6 +189,7 @@ export function createApiClient(port: number): ApiClient {
       request<JobMatch[]>(baseUrl, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
 
     getLLMSettings: () => request<LLMSettings>(baseUrl, "GET", "/v1/settings/llm"),
+    checkLLMHealth: () => request<LLMHealth>(baseUrl, "GET", "/v1/settings/llm/health"),
     saveLLMSettings: (settings) =>
       request<SaveLLMSettingsResult>(baseUrl, "PUT", "/v1/settings/llm", settings),
 

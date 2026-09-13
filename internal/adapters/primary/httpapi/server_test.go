@@ -1110,3 +1110,65 @@ func TestServer_SearchJobs_RefusesEmptyCriteria(t *testing.T) {
 	require.NoError(t, listErr)
 	assert.Zero(t, page.Total, "and nothing should have been stored")
 }
+
+func TestLLMHealth(t *testing.T) {
+	// A stand-in Ollama that answers the connectivity probe.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tags" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	t.Cleanup(backend.Close)
+
+	settingsRepo := newFakeSettingsRepository()
+	settingsSvc := services.NewSettingsService(settingsRepo)
+	ts := httptest.NewServer(NewHandler(Services{Settings: settingsSvc}))
+	t.Cleanup(ts.Close)
+
+	health := func(t *testing.T) llmHealthResponse {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/v1/settings/llm/health")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var got llmHealthResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		return got
+	}
+
+	t.Run("nothing configured yet", func(t *testing.T) {
+		got := health(t)
+		require.False(t, got.Configured)
+		require.False(t, got.OK)
+		require.Empty(t, got.Error, "there is nothing to probe, so there is no error to report")
+	})
+
+	t.Run("configured but unreachable", func(t *testing.T) {
+		require.NoError(t, settingsSvc.SaveLLMSettings(context.Background(), &domain.LLMSettings{
+			Provider: "ollama",
+			BaseURL:  "http://127.0.0.1:1",
+			Model:    "llama3",
+		}))
+
+		got := health(t)
+		require.True(t, got.Configured)
+		require.False(t, got.OK)
+		require.Contains(t, got.Error, "failed to connect to Ollama")
+	})
+
+	t.Run("configured and answering", func(t *testing.T) {
+		require.NoError(t, settingsSvc.SaveLLMSettings(context.Background(), &domain.LLMSettings{
+			Provider: "ollama",
+			BaseURL:  backend.URL,
+			Model:    "llama3",
+		}))
+
+		got := health(t)
+		require.True(t, got.Configured)
+		require.True(t, got.OK)
+		require.Empty(t, got.Error)
+	})
+}

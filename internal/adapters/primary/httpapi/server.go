@@ -5,12 +5,14 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -72,6 +74,7 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/settings/llm", handleGetLLMSettings(svc.Settings))
 	mux.HandleFunc("PUT /v1/settings/llm", handleSaveLLMSettings(svc.Settings))
+	mux.HandleFunc("GET /v1/settings/llm/health", handleLLMHealth(svc.Settings))
 
 	mux.HandleFunc("POST /v1/applications", handleCreateApplication(svc.Application))
 	mux.HandleFunc("GET /v1/applications", handleListApplications(svc.Application))
@@ -514,6 +517,57 @@ func handleSaveLLMSettings(svc *services.SettingsService) http.HandlerFunc {
 			resp.ConnectivityError = err.Error()
 		} else if err := provider.TestConnectivity(r.Context()); err != nil {
 			resp.ConnectivityError = err.Error()
+		}
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// llmHealthCheckTimeout bounds the connectivity probe well under the
+// providers' own 30s request timeout: the probe runs before a UI action
+// starts, so an unreachable host must fail fast rather than leave the user
+// waiting on a button.
+const llmHealthCheckTimeout = 5 * time.Second
+
+// llmHealthResponse reports whether a generation request would work right
+// now. Configured and OK are separate because the two failures need
+// different advice: nothing has been set up yet, versus a backend that is
+// set up but not answering.
+type llmHealthResponse struct {
+	Configured bool   `json:"configured"`
+	OK         bool   `json:"ok"`
+	Error      string `json:"error,omitempty"`
+}
+
+// handleLLMHealth lets a caller check the configured backend before starting
+// work that depends on it, rather than discovering the problem partway
+// through and leaving the user with half a result.
+func handleLLMHealth(svc *services.SettingsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := svc.GetLLMSettings(r.Context())
+		if writeErrIfAny(w, err) {
+			return
+		}
+
+		// Unconfigured settings resolve to the Ollama defaults, which may
+		// well answer — but the user still has to choose a model that is
+		// actually installed, so there is nothing to probe for yet.
+		if settings.Provider == "" {
+			writeJSON(w, http.StatusOK, llmHealthResponse{})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), llmHealthCheckTimeout)
+		defer cancel()
+
+		resp := llmHealthResponse{Configured: true}
+		provider, err := llm.NewProvider(*settings)
+		if err == nil {
+			err = provider.TestConnectivity(ctx)
+		}
+		if err != nil {
+			resp.Error = err.Error()
+		} else {
+			resp.OK = true
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}

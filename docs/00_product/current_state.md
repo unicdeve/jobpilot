@@ -135,6 +135,12 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   startup, so saving them takes effect immediately: the daemon outlives both
   the desktop app and the CLI, and previously kept using whatever was stored
   when it started until the user found and restarted it.
+- LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
+  configured backend is set up at all and whether it answers right now, so a
+  screen can check before starting work that needs it. The desktop's
+  "Import resume to prefill" uses it — it previously created the profile and
+  imported the resume before failing on the LLM step the user actually
+  wanted.
 - SQLite connection configuration (`internal/adapters/secondary/sqlite/db.go`,
   `docs/01_architecture/04_database.md`): connection pragmas are set through
   the DSN so they apply to every connection in `database/sql`'s pool, not

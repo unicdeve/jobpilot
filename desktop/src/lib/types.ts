@@ -125,6 +125,15 @@ export interface LLMSettings {
   model: string;
 }
 
+/// LLMHealth reports whether a generation request would work right now.
+/// The two failures need different advice, so they are separate flags:
+/// nothing configured yet, versus configured but not answering.
+export interface LLMHealth {
+  configured: boolean;
+  ok: boolean;
+  error?: string;
+}
+
 export interface SaveLLMSettingsResult {
   settings: LLMSettings;
   connectivity_error?: string;
