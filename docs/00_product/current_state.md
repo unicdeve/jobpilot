@@ -338,8 +338,8 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
 1. Phase 7 (review mode's "browser handoff" polish, submission tracking)
    and Phase 8 (autopilot policy engine) — the natural next steps now that
    Phase 6 gives the browser worker something to hand off from. Remaining
-   Settings categories (prompt customization, search preferences,
-   notifications, data retention) are also still open.
+   Settings categories (prompt customization, notifications, data
+   retention) are also still open.
 2. The undocumented gaps above (entity normalization, structured LLM
    output, richer answer derivation) once their preconditions land, plus
    the browser-worker-specific gaps just noted (CAPTCHA heuristic, radio
