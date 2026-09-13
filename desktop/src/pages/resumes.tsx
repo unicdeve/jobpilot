@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { EmptyState } from "../components/empty-state";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { useCandidateId, useDeleteResume, useImportResume, useResumes } from "../lib/queries";
@@ -30,7 +31,14 @@ export function Resumes() {
   };
 
   if (!candidateId) {
-    return <p className="text-sm text-slate-500">No candidate profile found — create one on the Profile page first.</p>;
+    return (
+      <EmptyState
+        title="No candidate profile yet"
+        description="A resume is imported against a candidate, so JobPilot needs a profile before it can hold one."
+        actionLabel="Create your profile"
+        actionTo="/profile"
+      />
+    );
   }
 
   return (

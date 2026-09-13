@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { EmptyState, fillsContentArea } from "../components/empty-state";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
 import { useCandidateId, useJobsByID, useMatches } from "../lib/queries";
 
@@ -12,13 +13,12 @@ export function Matches() {
 
   if (!candidateId) {
     return (
-      <p className="text-sm text-slate-500">
-        No candidate profile found — create one on the{" "}
-        <Link to="/profile" className="underline">
-          Profile
-        </Link>{" "}
-        page first.
-      </p>
+      <EmptyState
+        title="No candidate profile yet"
+        description="Matching compares a job against your profile, so JobPilot needs one before it can analyze anything."
+        actionLabel="Create your profile"
+        actionTo="/profile"
+      />
     );
   }
 
@@ -26,17 +26,19 @@ export function Matches() {
   if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
 
   return (
-    <div>
+    // A full-height column so an empty state below the heading centres in
+    // what is left, rather than pushing the page past the fold.
+    <div className={`flex flex-col ${fillsContentArea}`}>
       <h1 className="mb-4 text-xl font-semibold">Matches</h1>
 
       {matches.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No matches analyzed yet — open a job from the{" "}
-          <Link to="/jobs" className="underline">
-            Jobs
-          </Link>{" "}
-          page and analyze it there.
-        </p>
+        <EmptyState
+          className="min-h-0 flex-1"
+          title="No matches analyzed yet"
+          description="Open a job and analyze it there — the score, strengths and gaps appear on this page afterwards."
+          actionLabel="Browse jobs"
+          actionTo="/jobs"
+        />
       ) : (
         <div className="space-y-3">
           {matches.map((m) => {

@@ -1,3 +1,4 @@
+import { EmptyState } from "../components/empty-state";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
 import { useApplications, useCandidateId, useJobCount, useMatches } from "../lib/queries";
 import type { ApplicationState } from "../lib/types";
@@ -13,10 +14,15 @@ export function Dashboard() {
   const applications = useApplications(candidateId);
 
   if (noProfile) {
+    // Nothing on this screen can be filled in until a candidate exists, so
+    // the whole screen becomes the invitation to create one.
     return (
-      <p className="text-sm text-slate-500">
-        No candidate profile yet — create one on the Profile page to get started.
-      </p>
+      <EmptyState
+        title="Welcome to JobPilot"
+        description="Start by creating your candidate profile. JobPilot uses it to match you against jobs and to fill in applications on your behalf."
+        actionLabel="Create your profile"
+        actionTo="/profile"
+      />
     );
   }
 
