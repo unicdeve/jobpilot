@@ -135,6 +135,15 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   startup, so saving them takes effect immediately: the daemon outlives both
   the desktop app and the CLI, and previously kept using whatever was stored
   when it started until the user found and restarted it.
+- Desktop first-run setup (`/welcome`, `docs/02_features/01_onboarding.md`):
+  the four things an installation needs — LLM provider, candidate profile,
+  optional resume, saved search — in the CLI `onboard` order, since
+  prefilling a profile from a resume needs the LLM. A new installation is
+  redirected there; skipping is remembered for the session and a banner
+  leads back while anything is still missing. Progress is derived from what
+  exists rather than from a stored flag, so it resumes at the first gap.
+  Previously each prerequisite was reachable on its own screen and each
+  screen said what was missing, but nothing put them in an order.
 - LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
   configured backend is set up at all and whether it answers right now, so a
   screen can check before starting work that needs it. The desktop's
@@ -286,10 +295,7 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   searches (`docs/02_features/13_settings.md` — other categories like prompt
   customization and notifications are unimplemented).
 - No user-configurable prompt customization for matching (Phase 3).
-- The Desktop app has no onboarding wizard equivalent to the CLI's
-  `onboard` command (LLM connectivity check, guided first-run flow) —
-  the Profile screen creates the candidate and Settings covers the LLM
-  provider and job searches, but nothing sequences them. Also no Agent Activity screen (see above) and no import
+- The Desktop app has no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,

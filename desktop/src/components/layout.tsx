@@ -1,8 +1,10 @@
 import { useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { useDaemon } from "../lib/daemon";
+import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useLLMSettings, useProfile, useSavedSearches } from "../lib/queries";
+import { setupSkipped } from "../pages/welcome";
 import { useScrollRestoration } from "../lib/use-scroll-restoration";
 import { ErrorBoundary } from "./error-boundary";
+import { RequireDaemon } from "./require-daemon";
 import { Button } from "./ui/button";
 
 const navItems = [
@@ -48,9 +50,12 @@ export function Layout() {
       <main ref={scrollRef} className="flex-1 overflow-y-auto p-6">
         <div ref={contentRef}>
           <RequireDaemon>
-            <RouteErrorBoundary>
-              <Outlet />
-            </RouteErrorBoundary>
+            <RequireSetup>
+              <SetupBanner />
+              <RouteErrorBoundary>
+                <Outlet />
+              </RouteErrorBoundary>
+            </RequireSetup>
           </RequireDaemon>
         </div>
       </main>
@@ -58,26 +63,51 @@ export function Layout() {
   );
 }
 
-function RequireDaemon({ children }: { children: React.ReactNode }) {
-  const { status, error, retry } = useDaemon();
+/// RequireSetup sends a brand-new installation to the first-run wizard
+/// instead of to a dashboard it cannot fill in. No candidate profile is what
+/// "brand new" means here — it is the first thing onboarding creates and the
+/// one every other screen depends on.
+///
+/// Skipping is honoured for the rest of the session, so the wizard guides
+/// rather than traps: the screens' own empty states still say what is
+/// missing for anyone who would rather look around first.
+function RequireSetup({ children }: { children: React.ReactNode }) {
+  const { isPending, isError: noProfile } = useProfile();
 
-  if (status === "connecting") {
-    return <p className="text-sm text-slate-500">Connecting to the jobpilot daemon…</p>;
-  }
-
-  if (status === "error") {
-    return (
-      <div className="max-w-md space-y-3 rounded-md border border-red-200 bg-red-50 p-4">
-        <p className="text-sm font-medium text-red-800">Could not connect to the jobpilot daemon.</p>
-        <p className="text-sm text-red-700">{error}</p>
-        <Button variant="secondary" onClick={retry}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
+  // Deciding before the answer arrives would either flash the dashboard or
+  // redirect someone who has a profile.
+  if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (noProfile && !setupSkipped()) return <Navigate to="/welcome" replace />;
 
   return <>{children}</>;
+}
+
+/// SetupBanner is the way back to the wizard for an installation that is
+/// past the first-run redirect but still cannot work: someone who skipped
+/// setup, or who created a profile from the Profile screen and never went
+/// near the rest. Only a missing profile redirects, on the grounds that
+/// anyone further along is navigating deliberately and should not be
+/// hijacked — but they still need to be able to find the unfinished steps.
+function SetupBanner() {
+  const { data: llm } = useLLMSettings();
+  const { data: searches } = useSavedSearches();
+  if (!llm || !searches) return null;
+
+  const missing = [
+    searches.length === 0 && "save a search before it can discover jobs",
+    !llm.provider && "know which local LLM to use",
+  ].filter(Boolean);
+  if (missing.length === 0) return null;
+
+  return (
+    <div
+      data-slot="setup-banner"
+      className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
+    >
+      <p className="text-sm text-amber-800">JobPilot needs to {missing.join(", and to ")}.</p>
+      <Button variant="secondary" render={<Link to="/welcome">Finish setup</Link>} />
+    </div>
+  );
 }
 
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {

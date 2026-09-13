@@ -42,7 +42,18 @@ named search with at least one criterion.
 `ConfigureSearchPreferences` cover every requirement above, driven by
 `jobpilot-cli onboard`.
 
-The desktop app has no onboarding wizard. Its equivalents are spread across
-screens — the Profile screen creates a candidate, Settings configures the LLM
-provider and job searches — and the Jobs screen points at Settings when no
-search exists.
+The desktop app covers the same ground with a first-run wizard at
+`/welcome` (`desktop/src/pages/welcome.tsx`), in the CLI's order and for the
+CLI's reason: prefilling a profile from a resume needs the LLM, so the
+provider comes first. An installation with no candidate profile is sent
+there from wherever it lands; skipping is remembered for the session, and a
+banner offers the way back for anything still missing.
+
+Which step opens is derived from what exists — saved LLM settings, a
+candidate, a resume, a saved search — rather than from a stored "completed"
+flag, so the wizard resumes at the first gap and cannot disagree with the
+database about what is done.
+
+`SetupEnvironment` has no desktop equivalent because it needs none: the
+daemon initializes the data directory and runs migrations at startup, so
+AC-001 is satisfied before the app can connect at all.

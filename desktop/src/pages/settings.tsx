@@ -1,16 +1,8 @@
 import { useState } from "react";
-import { FormField } from "../components/form-field";
+import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -22,42 +14,6 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { LLMSettings, SearchCriteria } from "../lib/types";
-
-/// Mirrors llm.Presets in internal/adapters/secondary/llm/presets.go, which
-/// the daemon and CLI use for the same choice.
-const presets = [
-  { key: "ollama", label: "Ollama", defaultBaseUrl: "http://localhost:11434" },
-  { key: "llama.cpp", label: "llama.cpp (llama-server)", defaultBaseUrl: "http://localhost:8080" },
-  { key: "lmstudio", label: "LM Studio", defaultBaseUrl: "http://localhost:1234" },
-  { key: "custom", label: "Custom (OpenAI-compatible endpoint)", defaultBaseUrl: "" },
-];
-
-const defaultProvider = "ollama";
-
-/// withProviderDefaults shows the provider and base URL the daemon would use
-/// for settings that have never been saved, so a fresh install reads
-/// "Ollama / http://localhost:11434" rather than "Ollama" beside a blank URL
-/// the user has to know the port for. The model is deliberately left empty:
-/// which model is installed locally is not something we can guess.
-function withProviderDefaults(settings: LLMSettings): LLMSettings {
-  const provider = settings.provider || defaultProvider;
-  const preset = presets.find((p) => p.key === provider);
-  return {
-    ...settings,
-    provider,
-    base_url: settings.base_url || preset?.defaultBaseUrl || "",
-  };
-}
-
-/// nextBaseUrl picks the base URL to show after switching provider. A URL
-/// the user typed is theirs and is kept; one that is still some preset's
-/// default was filled in here, so it is replaced rather than leaving the
-/// previous provider's port pointing at the new one.
-function nextBaseUrl(current: string, preset?: (typeof presets)[number]): string {
-  if (!preset?.defaultBaseUrl) return current;
-  const untouched = !current || presets.some((p) => p.defaultBaseUrl === current);
-  return untouched ? preset.defaultBaseUrl : current;
-}
 
 export function Settings() {
   const { notify } = useToast();
@@ -85,9 +41,6 @@ export function Settings() {
   if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
   if (!settings) return <p className="text-sm text-slate-500">Loading…</p>;
 
-  const set = <K extends keyof LLMSettings>(key: K, value: LLMSettings[K]) =>
-    setDraft({ ...settings, [key]: value });
-
   const save = () => saveSettings.mutate(settings);
 
   return (
@@ -95,41 +48,7 @@ export function Settings() {
       <h1 className="text-xl font-semibold">Settings</h1>
       <Card>
         <CardContent className="space-y-4">
-          <FormField label="LLM provider" htmlFor="provider">
-            <Select
-              items={Object.fromEntries(presets.map((p) => [p.key, p.label]))}
-              value={settings.provider}
-              onValueChange={(value) => {
-                if (value === null) return;
-                const preset = presets.find((p) => p.key === value);
-                // One setDraft, not two: each `set` derives from the same
-                // `settings` snapshot, so a second call would discard the
-                // provider the first one just chose.
-                setDraft({
-                  ...settings,
-                  provider: value,
-                  base_url: nextBaseUrl(settings.base_url, preset),
-                });
-              }}
-            >
-              <SelectTrigger id="provider" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {presets.map((p) => (
-                  <SelectItem key={p.key} value={p.key}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Base URL" htmlFor="base_url">
-            <Input id="base_url" value={settings.base_url} onChange={(e) => set("base_url", e.target.value)} />
-          </FormField>
-          <FormField label="Model" htmlFor="model">
-            <Input id="model" value={settings.model} onChange={(e) => set("model", e.target.value)} />
-          </FormField>
+          <LLMProviderFields settings={settings} onChange={setDraft} />
           <Button onClick={save} disabled={saveSettings.isPending}>
             {saveSettings.isPending ? "Saving…" : "Save"}
           </Button>
