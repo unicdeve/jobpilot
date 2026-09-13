@@ -54,7 +54,7 @@ func (s *RemotiveSource) Name() string { return "Remotive" }
 // Capabilities reports that Remotive supports search but not
 // lookup-by-arbitrary-URL.
 func (s *RemotiveSource) Capabilities() ports.SourceCapabilities {
-	return ports.SourceCapabilities{CanSearch: true, CanGetJob: false}
+	return ports.SourceCapabilities{CanSearch: true, FiltersServerSide: false, CanGetJob: false}
 }
 
 type remotiveResponse struct {
@@ -73,27 +73,13 @@ type remotiveJob struct {
 	Description               string   `json:"description"`
 }
 
-// Search fetches Remotive's current job listing (cached per
-// remotiveCacheTTL) and filters it by criteria.Keywords client-side: a live
-// check found Remotive's own search/limit query params did not reliably
-// filter results.
-func (s *RemotiveSource) Search(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Job, error) {
-	jobs, err := s.fetch(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if criteria.Keywords == "" {
-		return jobs, nil
-	}
-
-	filtered := make([]domain.Job, 0, len(jobs))
-	for _, j := range jobs {
-		if containsKeyword(j.Title, criteria.Keywords) || containsKeyword(j.DescriptionMarkdown, criteria.Keywords) {
-			filtered = append(filtered, j)
-		}
-	}
-	return filtered, nil
+// Search returns Remotive's current job listing (cached per
+// remotiveCacheTTL). The criteria are ignored here on purpose: Remotive's
+// API accepts search/limit/category parameters but acts on none of them, so
+// the listing is returned whole and JobDiscoveryService applies the criteria
+// — see FiltersServerSide in ports.SourceCapabilities.
+func (s *RemotiveSource) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+	return s.fetch(ctx)
 }
 
 // GetJob always fails: Remotive has no API to fetch a single job by URL.

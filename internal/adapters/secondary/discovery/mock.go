@@ -5,7 +5,6 @@ package discovery
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -33,15 +32,17 @@ func (m *MockJobSource) Name() string {
 // Capabilities reports which features the mock source supports.
 func (m *MockJobSource) Capabilities() ports.SourceCapabilities {
 	return ports.SourceCapabilities{
-		CanSearch:       true,
-		CanGetJob:       true,
-		CanAuthenticate: false,
+		CanSearch:         true,
+		FiltersServerSide: false,
+		CanGetJob:         true,
+		CanAuthenticate:   false,
 	}
 }
 
-// Search returns fake jobs, optionally filtered by criteria.Keywords.
-func (m *MockJobSource) Search(_ context.Context, criteria domain.SearchCriteria) ([]domain.Job, error) {
-	// Return a few fake jobs based on keywords
+// Search returns the fake listing whole. Like the real connectors it does no
+// filtering of its own: JobDiscoveryService applies the criteria, so tests
+// built on this source exercise the same matching path production uses.
+func (m *MockJobSource) Search(_ context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
 	jobs := []domain.Job{
 		{
 			ID:                  "mock-1",
@@ -85,18 +86,7 @@ func (m *MockJobSource) Search(_ context.Context, criteria domain.SearchCriteria
 		},
 	}
 
-	// Simple keyword filter
-	if criteria.Keywords == "" {
-		return jobs, nil
-	}
-
-	var filtered []domain.Job
-	for _, j := range jobs {
-		if containsKeyword(j.Title, criteria.Keywords) || containsKeyword(j.DescriptionMarkdown, criteria.Keywords) {
-			filtered = append(filtered, j)
-		}
-	}
-	return filtered, nil
+	return jobs, nil
 }
 
 // GetJob returns the fake job whose canonical URL matches url.
@@ -114,9 +104,4 @@ func (m *MockJobSource) GetJob(ctx context.Context, url string) (*domain.Job, er
 		return &jobs[1], nil
 	}
 	return nil, fmt.Errorf("job not found in mock source: %s", url)
-}
-
-func containsKeyword(text, keyword string) bool {
-	// In a real app, use a more robust search. For mock, simple contains is fine.
-	return len(keyword) == 0 || strings.Contains(strings.ToLower(text), strings.ToLower(keyword))
 }

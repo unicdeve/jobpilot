@@ -27,6 +27,27 @@ Initial public source implementations should prioritize stable APIs/feeds/public
 ### AC-001
 A user can save search criteria.
 
+Implemented as named saved searches (`saved_searches`, `SavedSearchService`,
+`jobpilot-cli search saved`, and the desktop's Settings → Job searches). A
+user keeps several and picks between them; one is the default that
+`search run` uses when none is named.
+
+Discovery refuses to run on empty criteria. Neither public source filters
+server-side, so an unrestricted search would import every posting on every
+board — roughly 266 jobs at the time of writing — rather than the jobs the
+user wants. An installation with no saved search therefore cannot discover
+jobs at all, which is why configuring one is part of onboarding
+(`docs/02_features/01_onboarding.md`).
+
+Criteria are keywords, title, location, remote type, employment type,
+salary bounds and excluded companies. Keywords and title match every term in
+any order, so "backend engineer" finds "Engineer, Backend (Go)"; a substring
+test did not. Salary bounds keep jobs that advertise no salary, since most
+boards publish none and treating absence as a mismatch would hide them.
+Years-of-experience bounds and a source allowlist were removed: no connector
+could populate them, and the API had been accepting and silently ignoring
+them.
+
 ### AC-002
 A search can be executed from the CLI.
 

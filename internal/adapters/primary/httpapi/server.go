@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,6 +27,7 @@ type Services struct {
 	Profile     *services.ProfileService
 	Resume      *services.ResumeService
 	Discovery   *services.JobDiscoveryService
+	Searches    *services.SavedSearchService
 	Matching    *services.MatchingService
 	Settings    *services.SettingsService
 	Application *services.ApplicationService
@@ -56,6 +58,14 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/jobs/{id}", handleGetJob(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/search", handleSearchJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/import", handleImportJob(svc.Discovery))
+
+	mux.HandleFunc("GET /v1/searches", handleListSavedSearches(svc.Searches))
+	mux.HandleFunc("POST /v1/searches", handleCreateSavedSearch(svc.Searches))
+	mux.HandleFunc("GET /v1/searches/{id}", handleGetSavedSearch(svc.Searches))
+	mux.HandleFunc("PUT /v1/searches/{id}", handleUpdateSavedSearch(svc.Searches))
+	mux.HandleFunc("DELETE /v1/searches/{id}", handleDeleteSavedSearch(svc.Searches))
+	mux.HandleFunc("POST /v1/searches/{id}/default", handleSetDefaultSavedSearch(svc.Searches))
+	mux.HandleFunc("POST /v1/searches/{id}/run", handleRunSavedSearch(svc.Searches, svc.Discovery))
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))
@@ -252,6 +262,106 @@ func handleProposeDraft(svc *services.ResumeService) http.HandlerFunc {
 
 // --- jobs ---
 
+// savedSearchRequest is the body for creating or updating a saved search.
+type savedSearchRequest struct {
+	Name     string                `json:"name"`
+	Criteria domain.SearchCriteria `json:"criteria"`
+}
+
+func handleListSavedSearches(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		searches, err := svc.List(r.Context())
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, searches)
+	}
+}
+
+func handleCreateSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req savedSearchRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		search, err := svc.Create(r.Context(), req.Name, req.Criteria)
+		if err != nil {
+			// A rejected name or empty criteria is the caller's mistake to
+			// correct, not a server failure.
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, search)
+	}
+}
+
+func handleGetSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		search, err := svc.Get(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, search)
+	}
+}
+
+func handleUpdateSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req savedSearchRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		search, err := svc.Update(r.Context(), r.PathValue("id"), req.Name, req.Criteria)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, search)
+	}
+}
+
+func handleDeleteSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if writeErrIfAny(w, svc.Delete(r.Context(), r.PathValue("id"))) {
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleSetDefaultSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		search, err := svc.SetDefault(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, search)
+	}
+}
+
+// handleRunSavedSearch runs discovery using a saved search's criteria. It
+// exists so that neither the CLI nor the desktop has to read a search, hold
+// its criteria, and post them back — which is the shape that let an empty
+// search be submitted in the first place.
+func handleRunSavedSearch(searches *services.SavedSearchService, discovery *services.JobDiscoveryService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		search, err := searches.Get(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+
+		jobs, err := discovery.Search(r.Context(), search.Criteria)
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, jobs)
+	}
+}
+
 // handleListJobs serves already-discovered jobs from local storage. It is
 // the read counterpart to POST /v1/jobs/search, which contacts external job
 // sources and stores what it finds; browsing history must not require a
@@ -301,6 +411,10 @@ func handleSearchJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 		}
 
 		jobs, err := svc.Search(r.Context(), criteria)
+		if errors.Is(err, services.ErrEmptyCriteria) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		if writeErrIfAny(w, err) {
 			return
 		}

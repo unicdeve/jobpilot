@@ -224,3 +224,45 @@ func TestJobRepository_Count(t *testing.T) {
 	assert.Len(t, page, 1)
 	assert.Equal(t, 3, total)
 }
+
+// The stored-job search must agree with discovery about what a query means,
+// so it matches terms in any order rather than the whole string.
+func TestJobRepository_List_MatchesTermsInAnyOrder(t *testing.T) {
+	t.Parallel()
+
+	repo := NewJobRepository(newTestDB(t).Conn())
+	ctx := context.Background()
+	require.NoError(t, repo.Save(ctx, &domain.Job{
+		CanonicalURL: "https://acme.example/1", Title: "Engineer, Backend (Go)", CompanyName: "Acme",
+	}))
+	require.NoError(t, repo.Save(ctx, &domain.Job{
+		CanonicalURL: "https://globex.example/1", Title: "Product Designer", CompanyName: "Globex",
+	}))
+
+	tests := []struct {
+		name     string
+		keywords string
+		want     int
+	}{
+		{"terms in the title's order", "engineer backend", 1},
+		{"terms reversed", "backend engineer", 1},
+		{"a term that is absent excludes the row", "backend rust", 0},
+		{"terms may span title and company", "engineer acme", 1},
+		{"whitespace collapses", "  backend   engineer  ", 1},
+		{"no keywords match everything", "", 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			jobs, err := repo.List(ctx, tt.keywords, 10, 0)
+			require.NoError(t, err)
+			assert.Len(t, jobs, tt.want)
+
+			total, err := repo.Count(ctx, tt.keywords)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, total, "Count must agree with List")
+		})
+	}
+}

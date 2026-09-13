@@ -131,7 +131,13 @@ func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobr
 				}
 			}
 
+			fmt.Println("\n--- Job Search Preferences ---")
+			if err := configureSearchPreferences(ctx, client); err != nil {
+				return err
+			}
+
 			fmt.Println("\n🎉 Onboarding complete! You can now use JobPilot.")
+			fmt.Println("   Run 'jobpilot-cli search run' to discover jobs matching your search.")
 			return nil
 		},
 	}
@@ -324,19 +330,39 @@ func newResumeCmd(client *httpapi.Client) *cobra.Command {
 func newSearchCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "search", Short: "Discover jobs"}
 
-	cmd.AddCommand(&cobra.Command{
+	runCmd := &cobra.Command{
 		Use:   "run [keywords]",
-		Short: "Search for jobs using keywords",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		Short: "Discover jobs, from a saved search or ad-hoc keywords",
+		Long: "Runs discovery against every configured job source.\n\n" +
+			"With no arguments it runs your default saved search. Pass --saved to run a\n" +
+			"different one, or give keywords for a one-off search. Discovery always needs\n" +
+			"criteria: the public job boards do no filtering of their own, so a search with\n" +
+			"nothing set would import every posting on every board.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
-			keywords := args[0]
 
-			criteria := domain.SearchCriteria{
-				Keywords: keywords,
+			saved, err := cmd.Flags().GetString("saved")
+			if err != nil {
+				return err
 			}
 
-			jobs, err := client.SearchJobs(ctx, criteria)
+			var jobs []*domain.Job
+			switch {
+			case saved != "" && len(args) > 0:
+				return fmt.Errorf("give either --saved or keywords, not both")
+
+			case len(args) > 0:
+				jobs, err = client.SearchJobs(ctx, domain.SearchCriteria{Keywords: strings.Join(args, " ")})
+
+			default:
+				search, resolveErr := resolveSavedSearch(ctx, client, saved)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				fmt.Printf("Running saved search %q…\n", search.Name)
+				jobs, err = client.RunSavedSearch(ctx, search.ID)
+			}
 			if err != nil {
 				return fmt.Errorf("searching for jobs: %w", err)
 			}
@@ -352,7 +378,11 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 			}
 			return nil
 		},
-	})
+	}
+	runCmd.Flags().String("saved", "", "Name or ID of a saved search to run (default: your default saved search)")
+	cmd.AddCommand(runCmd)
+
+	cmd.AddCommand(newSavedSearchCmd(client))
 
 	// "list" reads stored discovery history and contacts no job source, so
 	// it stays usable offline. It previously ran an empty live search, which
@@ -592,4 +622,291 @@ func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 	})
 
 	return cmd
+}
+
+// resolveSavedSearch finds the saved search a command should use: the one
+// named (by name or ID), or the default when nothing was named. It reports
+// the absence of any saved search as an actionable message rather than an
+// empty result, since that is the state a new installation starts in and
+// discovery cannot run in it.
+func resolveSavedSearch(ctx context.Context, client *httpapi.Client, nameOrID string) (*domain.SavedSearch, error) {
+	searches, err := client.ListSavedSearches(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing saved searches: %w", err)
+	}
+	if len(searches) == 0 {
+		return nil, fmt.Errorf("no saved searches yet — create one with 'search saved add', or run 'onboard' to set up your first")
+	}
+
+	if nameOrID == "" {
+		for _, search := range searches {
+			if search.IsDefault {
+				return search, nil
+			}
+		}
+		return nil, fmt.Errorf("no default saved search — pick one with 'search saved default <name>' or pass --saved")
+	}
+
+	for _, search := range searches {
+		if strings.EqualFold(search.Name, nameOrID) || search.ID == nameOrID {
+			return search, nil
+		}
+	}
+	return nil, fmt.Errorf("no saved search named %q — 'search saved list' shows what you have", nameOrID)
+}
+
+// criteriaFlags registers the search criteria flags shared by the commands
+// that build a SearchCriteria, so every surface offers the same set.
+func criteriaFlags(cmd *cobra.Command) {
+	cmd.Flags().String("keywords", "", "Words that must all appear in the title or description")
+	cmd.Flags().String("title", "", "Words that must all appear in the job title")
+	cmd.Flags().String("location", "", "Words that must all appear in the job's locations")
+	cmd.Flags().String("remote", "", "Remote type to require, e.g. remote, hybrid, onsite")
+	cmd.Flags().String("employment", "", "Employment type to require, e.g. full_time, contract")
+	cmd.Flags().Float64("salary-min", 0, "Lowest acceptable advertised salary (jobs without a salary are kept)")
+	cmd.Flags().Float64("salary-max", 0, "Highest acceptable advertised salary (jobs without a salary are kept)")
+	cmd.Flags().StringSlice("exclude-company", nil, "Company to exclude; repeatable")
+}
+
+// criteriaFromFlags reads the flags registered by criteriaFlags.
+func criteriaFromFlags(cmd *cobra.Command) (domain.SearchCriteria, error) {
+	var c domain.SearchCriteria
+	var err error
+
+	if c.Keywords, err = cmd.Flags().GetString("keywords"); err != nil {
+		return c, err
+	}
+	if c.Title, err = cmd.Flags().GetString("title"); err != nil {
+		return c, err
+	}
+	if c.Location, err = cmd.Flags().GetString("location"); err != nil {
+		return c, err
+	}
+	if c.RemotePreference, err = cmd.Flags().GetString("remote"); err != nil {
+		return c, err
+	}
+	if c.EmploymentType, err = cmd.Flags().GetString("employment"); err != nil {
+		return c, err
+	}
+	if c.SalaryMin, err = cmd.Flags().GetFloat64("salary-min"); err != nil {
+		return c, err
+	}
+	if c.SalaryMax, err = cmd.Flags().GetFloat64("salary-max"); err != nil {
+		return c, err
+	}
+	if c.ExcludedCompanies, err = cmd.Flags().GetStringSlice("exclude-company"); err != nil {
+		return c, err
+	}
+	return c, nil
+}
+
+// describeCriteria renders the criteria that are set, for listing commands.
+func describeCriteria(c domain.SearchCriteria) string {
+	parts := make([]string, 0, 8)
+	add := func(label, value string) {
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, label+"="+value)
+		}
+	}
+
+	add("keywords", c.Keywords)
+	add("title", c.Title)
+	add("location", c.Location)
+	add("remote", c.RemotePreference)
+	add("employment", c.EmploymentType)
+	if c.SalaryMin > 0 {
+		parts = append(parts, fmt.Sprintf("salary>=%.0f", c.SalaryMin))
+	}
+	if c.SalaryMax > 0 {
+		parts = append(parts, fmt.Sprintf("salary<=%.0f", c.SalaryMax))
+	}
+	if len(c.ExcludedCompanies) > 0 {
+		parts = append(parts, "excluding "+strings.Join(c.ExcludedCompanies, ", "))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func newSavedSearchCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "saved", Short: "Manage saved searches"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List saved searches",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			searches, err := client.ListSavedSearches(context.Background())
+			if err != nil {
+				return fmt.Errorf("listing saved searches: %w", err)
+			}
+			if len(searches) == 0 {
+				fmt.Println("No saved searches yet. Add one with 'search saved add <name> --keywords ...'.")
+				return nil
+			}
+
+			for _, search := range searches {
+				marker := " "
+				if search.IsDefault {
+					marker = "*"
+				}
+				fmt.Printf("%s %s\n    %s\n    ID: %s\n", marker, search.Name, describeCriteria(search.Criteria), search.ID)
+			}
+			fmt.Println("\n* = default, used by 'search run' when no search is named.")
+			return nil
+		},
+	})
+
+	addCmd := &cobra.Command{
+		Use:   "add [name]",
+		Short: "Save a new named search",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			criteria, err := criteriaFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+
+			search, err := client.CreateSavedSearch(context.Background(), args[0], criteria)
+			if err != nil {
+				return fmt.Errorf("saving search: %w", err)
+			}
+
+			fmt.Printf("✅ Saved search %q: %s\n", search.Name, describeCriteria(search.Criteria))
+			if search.IsDefault {
+				fmt.Println("   It is your default, so 'search run' will use it.")
+			}
+			return nil
+		},
+	}
+	criteriaFlags(addCmd)
+	cmd.AddCommand(addCmd)
+
+	editCmd := &cobra.Command{
+		Use:   "edit [name-or-id]",
+		Short: "Replace a saved search's criteria",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			existing, err := resolveSavedSearch(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+
+			criteria, err := criteriaFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+			name, err := cmd.Flags().GetString("name")
+			if err != nil {
+				return err
+			}
+			if name == "" {
+				name = existing.Name
+			}
+
+			updated, err := client.UpdateSavedSearch(ctx, existing.ID, name, criteria)
+			if err != nil {
+				return fmt.Errorf("updating saved search: %w", err)
+			}
+			fmt.Printf("✅ Updated %q: %s\n", updated.Name, describeCriteria(updated.Criteria))
+			return nil
+		},
+	}
+	criteriaFlags(editCmd)
+	editCmd.Flags().String("name", "", "Rename the saved search")
+	cmd.AddCommand(editCmd)
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "delete [name-or-id]",
+		Short: "Delete a saved search",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			search, err := resolveSavedSearch(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+			if err := client.DeleteSavedSearch(ctx, search.ID); err != nil {
+				return fmt.Errorf("deleting saved search: %w", err)
+			}
+			fmt.Printf("✅ Deleted saved search %q.\n", search.Name)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "default [name-or-id]",
+		Short: "Choose the search 'search run' uses by default",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			search, err := resolveSavedSearch(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+			updated, err := client.SetDefaultSavedSearch(ctx, search.ID)
+			if err != nil {
+				return fmt.Errorf("setting default saved search: %w", err)
+			}
+			fmt.Printf("✅ %q is now your default search.\n", updated.Name)
+			return nil
+		},
+	})
+
+	return cmd
+}
+
+// configureSearchPreferences asks for the first saved search, completing the
+// onboarding requirement in docs/02_features/01_onboarding.md.
+//
+// It is not optional the way resume import is: discovery refuses to run
+// without criteria, because the public job boards do no filtering of their
+// own and an unrestricted search would import every posting on every board.
+// An installation with no saved search cannot find jobs at all, so the
+// prompt repeats until it gets something usable.
+func configureSearchPreferences(ctx context.Context, client *httpapi.Client) error {
+	fmt.Println("JobPilot only searches for what you ask it to, so it needs to know what")
+	fmt.Println("you are looking for. You can change or add more searches later with")
+	fmt.Println("'jobpilot-cli search saved'.")
+
+	for {
+		namePrompt := promptui.Prompt{Label: "Name for this search (e.g. Backend Go roles)"}
+		name, err := namePrompt.Run()
+		if err != nil {
+			return fmt.Errorf("prompting for search name: %w", err)
+		}
+
+		keywordsPrompt := promptui.Prompt{Label: "Keywords (e.g. golang backend)"}
+		keywords, err := keywordsPrompt.Run()
+		if err != nil {
+			return fmt.Errorf("prompting for keywords: %w", err)
+		}
+
+		titlePrompt := promptui.Prompt{Label: "Job title to require (optional)"}
+		title, err := titlePrompt.Run()
+		if err != nil {
+			return fmt.Errorf("prompting for title: %w", err)
+		}
+
+		remotePrompt := promptui.Prompt{Label: "Remote type: remote, hybrid, onsite (optional)"}
+		remote, err := remotePrompt.Run()
+		if err != nil {
+			return fmt.Errorf("prompting for remote type: %w", err)
+		}
+
+		criteria := domain.SearchCriteria{
+			Keywords:         strings.TrimSpace(keywords),
+			Title:            strings.TrimSpace(title),
+			RemotePreference: strings.TrimSpace(remote),
+		}
+
+		search, err := client.CreateSavedSearch(ctx, name, criteria)
+		if err != nil {
+			// The daemon rejects an unnamed or unrestricted search; say so
+			// and ask again rather than finishing onboarding unusable.
+			fmt.Printf("❌ %v\n\n", err)
+			continue
+		}
+
+		fmt.Printf("✅ Saved search %q: %s\n", search.Name, describeCriteria(search.Criteria))
+		return nil
+	}
 }

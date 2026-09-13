@@ -25,7 +25,21 @@ type JobSource interface {
 
 // SourceCapabilities defines what a JobSource can actually do.
 type SourceCapabilities struct {
-	CanSearch       bool
-	CanGetJob       bool
-	CanAuthenticate bool
+	// CanSearch reports whether Search can be called at all. A source
+	// without it is skipped entirely and contributes no jobs.
+	CanSearch bool
+	// FiltersServerSide reports whether Search honours the criteria itself.
+	//
+	// When false — true of every public board wired up so far, since neither
+	// Arbeitnow nor Remotive acts on its own query parameters —
+	// JobDiscoveryService filters the returned jobs against the criteria
+	// before any of them are stored. Connectors therefore do not each carry
+	// their own copy of the matching rule, and a new connector cannot import
+	// its whole board by forgetting to filter.
+	//
+	// Set it true only for a source whose API really does apply the
+	// criteria; its results are then taken as-is.
+	FiltersServerSide bool
+	CanGetJob         bool
+	CanAuthenticate   bool
 }

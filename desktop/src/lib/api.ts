@@ -18,6 +18,7 @@ import type {
   ProfileDraft,
   QuestionType,
   Resume,
+  SavedSearch,
   SaveLLMSettingsResult,
   SearchCriteria,
 } from "./types";
@@ -42,6 +43,16 @@ export interface ApiClient {
   listJobs(keywords: string, limit: number, offset: number): Promise<JobPage>;
   getJob(id: string): Promise<Job>;
   searchJobs(criteria: SearchCriteria): Promise<Job[]>;
+
+  listSavedSearches(): Promise<SavedSearch[]>;
+  createSavedSearch(name: string, criteria: SearchCriteria): Promise<SavedSearch>;
+  updateSavedSearch(id: string, name: string, criteria: SearchCriteria): Promise<SavedSearch>;
+  deleteSavedSearch(id: string): Promise<void>;
+  setDefaultSavedSearch(id: string): Promise<SavedSearch>;
+  /// runSavedSearch discovers jobs using a saved search's criteria. The
+  /// daemon reads the criteria itself, so no caller has to hold them and
+  /// post them back — the shape that allowed an empty search to be sent.
+  runSavedSearch(id: string): Promise<Job[]>;
   importJob(url: string): Promise<Job>;
 
   analyzeMatch(candidateId: string, jobId: string): Promise<JobMatch>;
@@ -150,6 +161,21 @@ export function createApiClient(port: number): ApiClient {
     },
     getJob: (id) => request<Job>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
     searchJobs: (criteria) => request<Job[]>(baseUrl, "POST", "/v1/jobs/search", criteria),
+
+    listSavedSearches: () => request<SavedSearch[]>(baseUrl, "GET", "/v1/searches"),
+    createSavedSearch: (name, criteria) =>
+      request<SavedSearch>(baseUrl, "POST", "/v1/searches", { name, criteria }),
+    updateSavedSearch: (id, name, criteria) =>
+      request<SavedSearch>(baseUrl, "PUT", `/v1/searches/${encodeURIComponent(id)}`, {
+        name,
+        criteria,
+      }),
+    deleteSavedSearch: (id) =>
+      request<void>(baseUrl, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
+    setDefaultSavedSearch: (id) =>
+      request<SavedSearch>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
+    runSavedSearch: (id) =>
+      request<Job[]>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
     importJob: (url) => request<Job>(baseUrl, "POST", "/v1/jobs/import", { url }),
 
     analyzeMatch: (candidateId, jobId) =>

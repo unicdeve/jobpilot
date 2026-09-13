@@ -15,19 +15,36 @@ import (
 type OnboardingService struct {
 	candidateRepo ports.CandidateRepository
 	resumeSvc     *ResumeService
+	savedSearches *SavedSearchService
 	llm           ports.LLMProvider
 	sqliteDB      *sqlite.DB
 }
 
 // NewOnboardingService constructs an OnboardingService with its required
 // dependencies.
-func NewOnboardingService(candidateRepo ports.CandidateRepository, resumeSvc *ResumeService, llm ports.LLMProvider, db *sqlite.DB) *OnboardingService {
+func NewOnboardingService(candidateRepo ports.CandidateRepository, resumeSvc *ResumeService, savedSearches *SavedSearchService, llm ports.LLMProvider, db *sqlite.DB) *OnboardingService {
 	return &OnboardingService{
 		candidateRepo: candidateRepo,
 		resumeSvc:     resumeSvc,
+		savedSearches: savedSearches,
 		llm:           llm,
 		sqliteDB:      db,
 	}
+}
+
+// ConfigureSearchPreferences saves the first search the user wants to run,
+// completing the "configure job-search preferences" step that
+// docs/02_features/01_onboarding.md requires.
+//
+// It matters more than a convenience: discovery refuses to run without
+// criteria, so an installation with no saved search cannot find any jobs at
+// all. Setting one here is what makes the application usable on first run.
+func (s *OnboardingService) ConfigureSearchPreferences(ctx context.Context, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
+	search, err := s.savedSearches.Create(ctx, name, criteria)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save search preferences: %w", err)
+	}
+	return search, nil
 }
 
 // SetupEnvironment initializes the local storage and database.

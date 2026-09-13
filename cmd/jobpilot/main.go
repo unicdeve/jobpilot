@@ -161,7 +161,8 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	}
 
 	resumeSvc := services.NewResumeService(resRepo, llmProv)
-	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, llmProv, db)
+	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))
+	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, savedSearchSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
@@ -176,6 +177,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Profile:     profileSvc,
 		Resume:      resumeSvc,
 		Discovery:   discoverySvc,
+		Searches:    savedSearchSvc,
 		Matching:    matchingSvc,
 		Settings:    settingsSvc,
 		Application: applicationSvc,

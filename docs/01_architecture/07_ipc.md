@@ -33,8 +33,16 @@ different failure modes, so they are different endpoints.
   It contacts no source and writes nothing, so it works offline.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
 
+`POST /v1/jobs/search` rejects empty criteria with 400 rather than importing
+every posting both boards return. Saved searches live under `/v1/searches`
+(list, create, get, update, delete, and `POST /v1/searches/{id}/default`),
+and `POST /v1/searches/{id}/run` discovers using a saved search's criteria.
+That last one exists so no client has to read a search, hold its criteria and
+post them back — the shape that let an empty search be submitted at all.
+
 Collapsing the two — using an unfiltered search as "list everything" — makes
 browsing history impossible without a network round trip, which
 `docs/02_features/04_job_discovery.md` AC-006 and the offline user flow both
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
+

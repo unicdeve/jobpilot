@@ -48,7 +48,7 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "New title"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{})
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "title"})
 
 		require.NoError(t, err)
 		require.Len(t, jobs, 1)
@@ -61,10 +61,10 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		t.Parallel()
 		jobRepo := newFakeJobRepository()
 		failing := searchableSource("broken", nil, errors.New("source down"))
-		working := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1"}}, nil)
+		working := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{failing, working}, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{})
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		require.NoError(t, err)
 		assert.Len(t, jobs, 1)
@@ -76,7 +76,7 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		noSearch := &fakeJobSource{id: "no-search", capabilities: ports.SourceCapabilities{CanSearch: false}}
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{noSearch}, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{})
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		require.NoError(t, err)
 		assert.Empty(t, jobs)
@@ -86,10 +86,10 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		t.Parallel()
 		jobRepo := newFakeJobRepository()
 		jobRepo.saveErr = errors.New("disk full")
-		source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1"}}, nil)
+		source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
 
-		_, err := svc.Search(context.Background(), domain.SearchCriteria{})
+		_, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		assert.ErrorContains(t, err, "failed to save discovered job")
 	})
@@ -475,5 +475,90 @@ func TestJobDiscoveryService_GetJob(t *testing.T) {
 		_, err := svc.GetJob(context.Background(), "does-not-exist")
 
 		assert.ErrorContains(t, err, "does-not-exist")
+	})
+}
+
+func TestJobDiscoveryService_Search_RequiresCriteria(t *testing.T) {
+	t.Parallel()
+
+	// A source that fails loudly if contacted: refusing empty criteria must
+	// happen before any network call, not after importing the whole board.
+	source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/1"}}, nil)
+	jobRepo := newFakeJobRepository()
+	svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
+
+	_, err := svc.Search(context.Background(), domain.SearchCriteria{})
+
+	require.ErrorIs(t, err, ErrEmptyCriteria)
+	assert.Zero(t, source.searchCalls, "no source should be queried")
+	assert.Zero(t, jobRepo.saveCalls, "nothing should be stored")
+}
+
+func TestJobDiscoveryService_Search_FiltersSourcesThatCannot(t *testing.T) {
+	t.Parallel()
+
+	// What both public boards actually return: the whole listing, ignoring
+	// the criteria entirely.
+	listing := []domain.Job{
+		{CanonicalURL: "https://acme.example/1", Title: "Backend Engineer", CompanyName: "Acme"},
+		{CanonicalURL: "https://acme.example/2", Title: "Product Designer", CompanyName: "Acme"},
+		{CanonicalURL: "https://acme.example/3", Title: "Engineer, Backend (Go)", CompanyName: "Globex"},
+	}
+
+	t.Run("a source that cannot filter has its results filtered here", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		source := &fakeJobSource{
+			id:           "board",
+			capabilities: ports.SourceCapabilities{CanSearch: true, FiltersServerSide: false},
+			searchResult: listing,
+		}
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
+
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
+
+		require.NoError(t, err)
+		require.Len(t, jobs, 2, "the designer should not be imported")
+		assert.Equal(t, 2, jobRepo.saveCalls, "only matching jobs reach storage")
+		titles := []string{jobs[0].Title, jobs[1].Title}
+		assert.ElementsMatch(t, []string{"Backend Engineer", "Engineer, Backend (Go)"}, titles)
+	})
+
+	t.Run("a source that filters server-side is trusted", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		// It returns something the local rule would reject; the service must
+		// not second-guess a source that applied the criteria itself.
+		source := &fakeJobSource{
+			id:           "real-api",
+			capabilities: ports.SourceCapabilities{CanSearch: true, FiltersServerSide: true},
+			searchResult: []domain.Job{{CanonicalURL: "https://acme.example/9", Title: "Product Designer"}},
+		}
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
+
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
+
+		require.NoError(t, err)
+		assert.Len(t, jobs, 1)
+	})
+
+	t.Run("criteria beyond keywords are applied", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		source := &fakeJobSource{
+			id:           "board",
+			capabilities: ports.SourceCapabilities{CanSearch: true},
+			searchResult: listing,
+		}
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil)
+
+		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{
+			Title:             "engineer",
+			ExcludedCompanies: []string{"Globex"},
+		})
+
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		assert.Equal(t, "Backend Engineer", jobs[0].Title)
 	})
 }

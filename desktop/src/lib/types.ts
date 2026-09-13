@@ -69,6 +69,16 @@ export interface Job {
   raw_source_reference: string;
 }
 
+/// JobPage is one page of stored jobs plus the total matching the same
+/// filter, so a caller can tell whether more pages remain.
+export interface JobPage {
+  jobs: Job[];
+  total: number;
+}
+
+/// SearchCriteria mirrors domain.SearchCriteria. Every field here is applied
+/// by the daemon; fields no source could populate were removed rather than
+/// accepted and ignored.
 export interface SearchCriteria {
   keywords?: string;
   title?: string;
@@ -77,17 +87,19 @@ export interface SearchCriteria {
   employment_type?: string;
   salary_min?: number;
   salary_max?: number;
-  experience_min?: number;
-  experience_max?: number;
-  included_sources?: string[];
   excluded_companies?: string[];
 }
 
-/// JobPage is one page of stored jobs plus the total matching the same
-/// filter, so a caller can tell whether more pages remain.
-export interface JobPage {
-  jobs: Job[];
-  total: number;
+/// SavedSearch is a named set of criteria the user keeps and re-runs.
+/// Discovery only runs against one of these, so an installation with none
+/// cannot import jobs at all.
+export interface SavedSearch {
+  id: string;
+  name: string;
+  criteria: SearchCriteria;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface JobMatch {

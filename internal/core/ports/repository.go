@@ -36,6 +36,18 @@ type JobRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// SavedSearchRepository persists the user's named search criteria.
+type SavedSearchRepository interface {
+	Save(ctx context.Context, search *domain.SavedSearch) error
+	GetByID(ctx context.Context, id string) (*domain.SavedSearch, error)
+	GetByName(ctx context.Context, name string) (*domain.SavedSearch, error)
+	List(ctx context.Context) ([]*domain.SavedSearch, error)
+	Delete(ctx context.Context, id string) error
+	// ClearDefault unsets the default flag on every row, so a caller can set
+	// a new default without tripping the single-default index.
+	ClearDefault(ctx context.Context) error
+}
+
 // MatchRepository persists and retrieves job-match analyses.
 type MatchRepository interface {
 	Save(ctx context.Context, match *domain.JobMatch) error

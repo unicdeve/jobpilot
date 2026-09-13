@@ -48,7 +48,7 @@ const arbeitnowFixture = `{
 func TestArbeitnowSource_Search(t *testing.T) {
 	t.Parallel()
 
-	t.Run("maps fields and filters by keyword client-side", func(t *testing.T) {
+	t.Run("maps fields and returns the listing whole", func(t *testing.T) {
 		t.Parallel()
 		var requests int
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -60,9 +60,12 @@ func TestArbeitnowSource_Search(t *testing.T) {
 
 		source := NewArbeitnowSource(server.URL)
 
+		// Arbeitnow acts on none of its own query parameters, so the source
+		// returns everything and JobDiscoveryService applies the criteria —
+		// the criteria passed here should make no difference to the result.
 		jobs, err := source.Search(context.Background(), domain.SearchCriteria{Keywords: "Go"})
 		require.NoError(t, err)
-		require.Len(t, jobs, 1)
+		require.Len(t, jobs, 2, "filtering is the discovery service's job, not the connector's")
 
 		job := jobs[0]
 		assert.Equal(t, "arbeitnow", job.SourceID)

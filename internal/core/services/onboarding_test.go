@@ -18,7 +18,7 @@ import (
 // setup helper.
 func newTestOnboardingService(candRepo *fakeCandidateRepository, llm *fakeLLMProvider) *OnboardingService {
 	resumeSvc := NewResumeService(newFakeResumeRepository(), llm)
-	return NewOnboardingService(candRepo, resumeSvc, llm, nil)
+	return NewOnboardingService(candRepo, resumeSvc, NewSavedSearchService(newFakeSavedSearchRepository()), llm, nil)
 }
 
 func TestOnboardingService_ConfigureLLM(t *testing.T) {

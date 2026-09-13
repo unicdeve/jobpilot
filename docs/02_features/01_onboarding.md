@@ -27,3 +27,22 @@ Given no internet connection, when onboarding only configures local data, then t
 
 ### AC-004
 The application must not require creating an account.
+
+### AC-005
+Onboarding ends with at least one saved search configured.
+
+Discovery refuses to run on empty criteria, so an installation without a
+saved search cannot find jobs at all. The step is therefore not skippable
+the way resume import is: the CLI's `onboard` re-prompts until it gets a
+named search with at least one criterion.
+
+## Implementation status
+
+`SetupEnvironment`, `ConfigureLLM`, `InitializeProfile`, `ProcessResume` and
+`ConfigureSearchPreferences` cover every requirement above, driven by
+`jobpilot-cli onboard`.
+
+The desktop app has no onboarding wizard. Its equivalents are spread across
+screens — the Profile screen creates a candidate, Settings configures the LLM
+provider and job searches — and the Jobs screen points at Settings when no
+search exists.

@@ -51,7 +51,7 @@ func (s *ArbeitnowSource) Name() string { return "Arbeitnow" }
 // Capabilities reports that Arbeitnow supports search but not
 // lookup-by-arbitrary-URL.
 func (s *ArbeitnowSource) Capabilities() ports.SourceCapabilities {
-	return ports.SourceCapabilities{CanSearch: true, CanGetJob: false}
+	return ports.SourceCapabilities{CanSearch: true, FiltersServerSide: false, CanGetJob: false}
 }
 
 type arbeitnowResponse struct {
@@ -71,26 +71,13 @@ type arbeitnowJob struct {
 	CreatedAt   int64    `json:"created_at"`
 }
 
-// Search fetches Arbeitnow's current job listing (page 1, cached per
-// arbeitnowCacheTTL) and filters it by criteria.Keywords: Arbeitnow's API
-// has no server-side keyword filter.
-func (s *ArbeitnowSource) Search(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Job, error) {
-	jobs, err := s.fetch(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if criteria.Keywords == "" {
-		return jobs, nil
-	}
-
-	filtered := make([]domain.Job, 0, len(jobs))
-	for _, j := range jobs {
-		if containsKeyword(j.Title, criteria.Keywords) || containsKeyword(j.DescriptionMarkdown, criteria.Keywords) {
-			filtered = append(filtered, j)
-		}
-	}
-	return filtered, nil
+// Search returns Arbeitnow's current job listing (page 1, cached per
+// arbeitnowCacheTTL). The criteria are ignored here on purpose: Arbeitnow's
+// API accepts query parameters but acts on none of them, so the listing is
+// returned whole and JobDiscoveryService applies the criteria — see
+// FiltersServerSide in ports.SourceCapabilities.
+func (s *ArbeitnowSource) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+	return s.fetch(ctx)
 }
 
 // GetJob always fails: Arbeitnow has no API to fetch a single job by URL.

@@ -143,6 +143,65 @@ func (c *Client) ListJobs(ctx context.Context, keywords string, limit, offset in
 	return &page, nil
 }
 
+// ListSavedSearches returns the user's named searches, default first.
+func (c *Client) ListSavedSearches(ctx context.Context) ([]*domain.SavedSearch, error) {
+	var searches []*domain.SavedSearch
+	_, err := c.do(ctx, http.MethodGet, "/v1/searches", nil, &searches)
+	return searches, err
+}
+
+// GetSavedSearch returns one named search by ID.
+func (c *Client) GetSavedSearch(ctx context.Context, id string) (*domain.SavedSearch, error) {
+	var search domain.SavedSearch
+	if _, err := c.do(ctx, http.MethodGet, "/v1/searches/"+url.PathEscape(id), nil, &search); err != nil {
+		return nil, err
+	}
+	return &search, nil
+}
+
+// CreateSavedSearch stores a new named search.
+func (c *Client) CreateSavedSearch(ctx context.Context, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
+	req := savedSearchRequest{Name: name, Criteria: criteria}
+	var search domain.SavedSearch
+	if _, err := c.do(ctx, http.MethodPost, "/v1/searches", req, &search); err != nil {
+		return nil, err
+	}
+	return &search, nil
+}
+
+// UpdateSavedSearch replaces a saved search's name and criteria.
+func (c *Client) UpdateSavedSearch(ctx context.Context, id, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
+	req := savedSearchRequest{Name: name, Criteria: criteria}
+	var search domain.SavedSearch
+	if _, err := c.do(ctx, http.MethodPut, "/v1/searches/"+url.PathEscape(id), req, &search); err != nil {
+		return nil, err
+	}
+	return &search, nil
+}
+
+// DeleteSavedSearch removes a named search.
+func (c *Client) DeleteSavedSearch(ctx context.Context, id string) error {
+	_, err := c.do(ctx, http.MethodDelete, "/v1/searches/"+url.PathEscape(id), nil, nil)
+	return err
+}
+
+// SetDefaultSavedSearch promotes a named search to be the one discovery runs
+// when no other is named.
+func (c *Client) SetDefaultSavedSearch(ctx context.Context, id string) (*domain.SavedSearch, error) {
+	var search domain.SavedSearch
+	if _, err := c.do(ctx, http.MethodPost, "/v1/searches/"+url.PathEscape(id)+"/default", nil, &search); err != nil {
+		return nil, err
+	}
+	return &search, nil
+}
+
+// RunSavedSearch runs discovery with a saved search's criteria.
+func (c *Client) RunSavedSearch(ctx context.Context, id string) ([]*domain.Job, error) {
+	var jobs []*domain.Job
+	_, err := c.do(ctx, http.MethodPost, "/v1/searches/"+url.PathEscape(id)+"/run", nil, &jobs)
+	return jobs, err
+}
+
 // GetJob returns one stored job by ID.
 func (c *Client) GetJob(ctx context.Context, id string) (*domain.Job, error) {
 	var job domain.Job

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -81,13 +82,28 @@ func (s *JobDiscoveryService) ListJobs(ctx context.Context, keywords string, lim
 	return &domain.JobPage{Jobs: jobs, Total: total}, nil
 }
 
+// ErrEmptyCriteria is returned when discovery is asked to run without any
+// criteria. It is a named error so callers can tell it apart from a source
+// failure and point the user at configuring a search instead.
+var ErrEmptyCriteria = errors.New("a job search needs at least one criterion: neither public source filters server-side, so an unrestricted search imports every posting on the board rather than the jobs you want")
+
 // Search executes a search across all registered sources and deduplicates results.
+//
+// Criteria must narrow something: see ErrEmptyCriteria. Results from any
+// source that cannot filter server-side are filtered here, against
+// domain.SearchCriteria.Matches, so that filtering is a guarantee of
+// discovery rather than a convention each connector re-implements.
 func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
+	if criteria.IsEmpty() {
+		return nil, ErrEmptyCriteria
+	}
+
 	allJobs := make([]domain.Job, 0)
 
 	// In a production app, these would run in parallel.
 	for _, source := range s.sources {
-		if !source.Capabilities().CanSearch {
+		capabilities := source.Capabilities()
+		if !capabilities.CanSearch {
 			continue
 		}
 
@@ -98,7 +114,18 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 			slog.WarnContext(ctx, "job source search failed", "source", source.ID(), "error", err)
 			continue
 		}
-		allJobs = append(allJobs, jobs...)
+
+		if capabilities.FiltersServerSide {
+			// The source applied the criteria itself; re-filtering here
+			// would second-guess a better-informed match.
+			allJobs = append(allJobs, jobs...)
+			continue
+		}
+		for _, job := range jobs {
+			if criteria.Matches(job) {
+				allJobs = append(allJobs, job)
+			}
+		}
 	}
 
 	finalJobs := make([]*domain.Job, 0, len(allJobs))

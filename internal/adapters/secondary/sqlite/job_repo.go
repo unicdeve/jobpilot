@@ -130,19 +130,29 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 // keywordFilter builds the WHERE clause and arguments that restrict a job
 // query to rows matching keywords, or empty values when keywords is blank.
 //
-// The match is a case-insensitive substring over title and company name.
-// That is deliberately the same naive semantic the discovery connectors
-// apply to their own results (see JobDiscoveryService) rather than a new,
-// better matching rule: browsing stored jobs and searching sources should
-// not disagree about what "golang" matches.
+// Every term must appear, in the title or the company name, in any order —
+// the same rule domain.SearchCriteria.Matches applies during discovery, and
+// for the same reason: browsing stored jobs and searching sources must not
+// disagree about what a query means. Matching terms rather than the whole
+// string is what lets "backend engineer" find "Engineer, Backend (Go)".
+//
+// Terms are bound as parameters, never interpolated: they come straight
+// from a search box.
 func keywordFilter(keywords string) (string, []any) {
-	keywords = strings.TrimSpace(keywords)
-	if keywords == "" {
+	terms := domain.SearchTerms(keywords)
+	if len(terms) == 0 {
 		return "", nil
 	}
 
-	pattern := "%" + strings.ToLower(keywords) + "%"
-	return " WHERE (LOWER(title) LIKE ? OR LOWER(company_name) LIKE ?)", []any{pattern, pattern}
+	clauses := make([]string, 0, len(terms))
+	args := make([]any, 0, len(terms)*2)
+	for _, term := range terms {
+		clauses = append(clauses, "(LOWER(title) LIKE ? OR LOWER(company_name) LIKE ?)")
+		pattern := "%" + term + "%"
+		args = append(args, pattern, pattern)
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }
 
 // Count returns how many stored jobs match keywords. Callers paginating

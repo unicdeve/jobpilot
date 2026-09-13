@@ -45,6 +45,7 @@ constraints going unenforced on most connections.
 - JobSource
 - Job
 - JobMatch
+- SavedSearch (named search criteria; see `docs/02_features/04_job_discovery.md` AC-001)
 - Application
 - ApplicationQuestion
 - ApplicationAnswer

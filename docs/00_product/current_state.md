@@ -76,6 +76,37 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   screen re-ran a live search just to show a list. Both now read stored
   history instead.
 
+- Saved searches (`docs/02_features/04_job_discovery.md` AC-001,
+  `docs/02_features/13_settings.md`): named sets of criteria the user keeps
+  and picks between, one of them the default. Stored in `saved_searches`
+  (migration `00005`) as explicit columns rather than a JSON blob, managed
+  through `jobpilot-cli search saved`, the desktop's Settings → Job searches,
+  and an onboarding step that closes the last outstanding requirement in
+  `docs/02_features/01_onboarding.md`.
+
+  Discovery now refuses empty criteria. It previously did not, and nothing
+  else did either: `SearchCriteria` had eleven fields of which only
+  `Keywords` was read by any code, the API accepted the other ten and
+  silently ignored them, and an empty keyword short-circuited the connectors
+  into returning their whole listing — about 266 jobs across the two boards,
+  every one written to the database. The desktop's "Search sources" button
+  sent empty criteria whenever the box was blank, so the most obvious action
+  in the UI did exactly that. `Title`, `Location`, `RemotePreference`,
+  `EmploymentType`, `SalaryMin/Max` and `ExcludedCompanies` are now applied;
+  `ExperienceMin/Max` and `IncludedSources` were deleted rather than left
+  accepted-and-ignored.
+
+  Filtering moved out of the connectors into `JobDiscoveryService`, behind a
+  new `FiltersServerSide` capability
+  (`docs/04_connectors/00_connector_sdk.md`). The same filter loop had been
+  copy-pasted into all three connectors, sharing a helper defined in the mock
+  source, so every new connector had to remember to filter and nothing caught
+  it if it did not. Matching is now defined once, in
+  `domain.SearchCriteria.Matches`, and matches every term in any order —
+  "backend engineer" finds "Engineer, Backend (Go)", which substring matching
+  missed. SQLite's stored-job search applies the same term rule, so browsing
+  history and searching sources agree about what a query means.
+
 - Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
   neither Arbeitnow nor Remotive's public API can fetch an arbitrary job by
   URL, so `JobDiscoveryService.ImportJob` falls back to
@@ -240,15 +271,14 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
 
 ## Known gaps within Phases 0–6
 
-- No settings/configuration system beyond LLM provider/model
-  (`docs/02_features/13_settings.md` — other categories like prompt
-  customization, search preferences, and notifications are unimplemented).
-- No persisted search-history feature (Phase 2).
+- No settings/configuration system beyond LLM provider/model and job
+  searches (`docs/02_features/13_settings.md` — other categories like prompt
+  customization and notifications are unimplemented).
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no onboarding wizard equivalent to the CLI's
   `onboard` command (LLM connectivity check, guided first-run flow) —
-  the Profile screen's "create profile" form covers only the candidate
-  profile step. Also no Agent Activity screen (see above) and no import
+  the Profile screen creates the candidate and Settings covers the LLM
+  provider and job searches, but nothing sequences them. Also no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,

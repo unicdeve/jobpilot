@@ -32,6 +32,7 @@ import type {
   ProfileDraft,
   QuestionType,
   Resume,
+  SavedSearch,
   SaveLLMSettingsResult,
   SearchCriteria,
 } from "./types";
@@ -49,6 +50,7 @@ export const keys = {
     infinite: (keywords: string, pageSize: number) =>
       ["jobs", "infinite", { keywords, pageSize }] as const,
   },
+  savedSearches: ["saved-searches"] as const,
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
   matches: (candidateId: string) => ["matches", candidateId] as const,
   applications: {
@@ -157,6 +159,17 @@ export function useJobsByID(ids: string[]) {
   return byID;
 }
 
+/// useSavedSearches loads the named searches that drive discovery, default
+/// first. An empty list is the state a new installation starts in, and the
+/// state in which discovery cannot run at all.
+export function useSavedSearches() {
+  const api = useApi();
+  return useQuery<SavedSearch[]>({
+    queryKey: keys.savedSearches,
+    queryFn: () => api.listSavedSearches(),
+  });
+}
+
 export function useResumes(candidateId: string | null) {
   const api = useApi();
   return useQuery<Resume[]>({
@@ -247,26 +260,86 @@ type MutationOpts<TData, TVars> = Omit<
   "mutationFn"
 >;
 
-export function useSearchJobs(opts?: MutationOpts<Job[], SearchCriteria>) {
+export function useImportJob(opts?: MutationOpts<Job, string>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (criteria: SearchCriteria) => api.searchJobs(criteria),
+    mutationFn: (url: string) => api.importJob(url),
     ...opts,
     onSuccess: (...args) => {
-      // A search stores whatever it discovered, so every cached job list is
-      // now potentially stale.
       void queryClient.invalidateQueries({ queryKey: keys.jobs.all });
       opts?.onSuccess?.(...args);
     },
   });
 }
 
-export function useImportJob(opts?: MutationOpts<Job, string>) {
+export function useCreateSavedSearch(
+  opts?: MutationOpts<SavedSearch, { name: string; criteria: SearchCriteria }>,
+) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (url: string) => api.importJob(url),
+    mutationFn: ({ name, criteria }: { name: string; criteria: SearchCriteria }) =>
+      api.createSavedSearch(name, criteria),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useUpdateSavedSearch(
+  opts?: MutationOpts<SavedSearch, { id: string; name: string; criteria: SearchCriteria }>,
+) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name, criteria }: { id: string; name: string; criteria: SearchCriteria }) =>
+      api.updateSavedSearch(id, name, criteria),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useDeleteSavedSearch(opts?: MutationOpts<void, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteSavedSearch(id),
+    ...opts,
+    onSuccess: (...args) => {
+      // Deleting the default promotes another, so the whole list is refetched
+      // rather than the one row removed.
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useSetDefaultSavedSearch(opts?: MutationOpts<SavedSearch, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.setDefaultSavedSearch(id),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+/// useRunSavedSearch discovers jobs with a saved search's criteria and
+/// stores whatever matched, so every cached job list is then stale.
+export function useRunSavedSearch(opts?: MutationOpts<Job[], string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.runSavedSearch(id),
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.jobs.all });

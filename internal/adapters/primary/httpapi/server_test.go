@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -166,6 +167,72 @@ func (f *fakeJobRepository) Count(_ context.Context, keywords string) (int, erro
 
 func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
 	delete(f.jobs, id)
+	return nil
+}
+
+type fakeSavedSearchRepository struct {
+	searches map[string]*domain.SavedSearch
+	order    []string
+}
+
+func newFakeSavedSearchRepository() *fakeSavedSearchRepository {
+	return &fakeSavedSearchRepository{searches: map[string]*domain.SavedSearch{}}
+}
+
+func (f *fakeSavedSearchRepository) Save(_ context.Context, search *domain.SavedSearch) error {
+	if search.ID == "" {
+		search.ID = fmt.Sprintf("search-%d", len(f.searches)+1)
+	}
+	if _, exists := f.searches[search.ID]; !exists {
+		f.order = append(f.order, search.ID)
+	}
+	stored := *search
+	f.searches[search.ID] = &stored
+	return nil
+}
+
+func (f *fakeSavedSearchRepository) GetByID(_ context.Context, id string) (*domain.SavedSearch, error) {
+	search, ok := f.searches[id]
+	if !ok {
+		return nil, fmt.Errorf("saved search not found: %s", id)
+	}
+	return search, nil
+}
+
+func (f *fakeSavedSearchRepository) GetByName(_ context.Context, name string) (*domain.SavedSearch, error) {
+	for _, id := range f.order {
+		if strings.EqualFold(f.searches[id].Name, name) {
+			return f.searches[id], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeSavedSearchRepository) List(_ context.Context) ([]*domain.SavedSearch, error) {
+	out := make([]*domain.SavedSearch, 0, len(f.order))
+	for _, id := range f.order {
+		if f.searches[id].IsDefault {
+			out = append(out, f.searches[id])
+		}
+	}
+	for _, id := range f.order {
+		if !f.searches[id].IsDefault {
+			out = append(out, f.searches[id])
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeSavedSearchRepository) Delete(_ context.Context, id string) error {
+	delete(f.searches, id)
+	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
+	return nil
+}
+
+func (f *fakeSavedSearchRepository) ClearDefault(_ context.Context) error {
+	for _, search := range f.searches {
+		search.IsDefault = false
+	}
 	return nil
 }
 
@@ -522,15 +589,17 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	llmProv := &fakeLLMProvider{response: ports.Response{Content: `{"score":80,"confidence":0.9,"rationale":"good fit"}`, Model: "fake-model"}}
 	source := &fakeJobSource{}
 
+	savedSearchSvc := services.NewSavedSearchService(newFakeSavedSearchRepository())
 	appSvc := services.NewApplicationService(appRepo)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 
 	svc := Services{
 		Candidates:  candRepo,
-		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), llmProv, nil),
+		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), savedSearchSvc, llmProv, nil),
 		Profile:     services.NewProfileService(candRepo),
 		Resume:      services.NewResumeService(resRepo, llmProv),
 		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil),
+		Searches:    savedSearchSvc,
 		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
 		Settings:    services.NewSettingsService(settingsRepo),
 		Application: appSvc,
@@ -857,8 +926,12 @@ func TestClient_ListJobs(t *testing.T) {
 		{CanonicalURL: "https://example.com/job/4", Title: "Product Designer", CompanyName: "Globex"},
 		{CanonicalURL: "https://example.com/job/5", Title: "Data Scientist", CompanyName: "Initech"},
 	}
-	_, err := client.SearchJobs(ctx, domain.SearchCriteria{})
-	require.NoError(t, err)
+	// Discovery now filters, so seeding takes one search per group rather
+	// than a single unrestricted one.
+	for _, keywords := range []string{"engineer", "designer", "scientist"} {
+		_, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: keywords})
+		require.NoError(t, err)
+	}
 
 	t.Run("returns stored jobs and the total", func(t *testing.T) {
 		page, err := client.ListJobs(ctx, "", 0, 0)
@@ -945,7 +1018,7 @@ func TestClient_GetJob(t *testing.T) {
 	source.searchResult = []domain.Job{
 		{CanonicalURL: "https://example.com/job/1", Title: "Backend Engineer", CompanyName: "Acme"},
 	}
-	discovered, err := client.SearchJobs(ctx, domain.SearchCriteria{})
+	discovered, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "backend"})
 	require.NoError(t, err)
 	require.Len(t, discovered, 1)
 
@@ -956,4 +1029,84 @@ func TestClient_GetJob(t *testing.T) {
 
 	_, err = client.GetJob(ctx, "no-such-job")
 	assert.ErrorContains(t, err, "no-such-job")
+}
+
+func TestClient_SavedSearchLifecycle(t *testing.T) {
+	client, _, source := testServer(t)
+	ctx := context.Background()
+	criteria := domain.SearchCriteria{Keywords: "golang backend", RemotePreference: "remote"}
+
+	created, err := client.CreateSavedSearch(ctx, "Go roles", criteria)
+	require.NoError(t, err)
+	assert.Equal(t, "Go roles", created.Name)
+	assert.True(t, created.IsDefault, "the first saved search becomes the default")
+	assert.Equal(t, criteria, created.Criteria)
+
+	got, err := client.GetSavedSearch(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created.ID, got.ID)
+
+	updated, err := client.UpdateSavedSearch(ctx, created.ID, "Go and Rust", domain.SearchCriteria{Keywords: "rust"})
+	require.NoError(t, err)
+	assert.Equal(t, "Go and Rust", updated.Name)
+	assert.Equal(t, "rust", updated.Criteria.Keywords)
+
+	second, err := client.CreateSavedSearch(ctx, "Design roles", domain.SearchCriteria{Keywords: "design"})
+	require.NoError(t, err)
+
+	promoted, err := client.SetDefaultSavedSearch(ctx, second.ID)
+	require.NoError(t, err)
+	assert.True(t, promoted.IsDefault)
+
+	searches, err := client.ListSavedSearches(ctx)
+	require.NoError(t, err)
+	require.Len(t, searches, 2)
+	assert.Equal(t, "Design roles", searches[0].Name, "the default is listed first")
+
+	// Running a saved search discovers against its criteria.
+	source.searchResult = []domain.Job{
+		{CanonicalURL: "https://example.com/job/1", Title: "Design Lead", CompanyName: "Acme"},
+		{CanonicalURL: "https://example.com/job/2", Title: "Backend Engineer", CompanyName: "Acme"},
+	}
+	jobs, err := client.RunSavedSearch(ctx, second.ID)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1, "only jobs matching the saved criteria are imported")
+	assert.Equal(t, "Design Lead", jobs[0].Title)
+
+	require.NoError(t, client.DeleteSavedSearch(ctx, second.ID))
+	searches, err = client.ListSavedSearches(ctx)
+	require.NoError(t, err)
+	assert.Len(t, searches, 1)
+}
+
+func TestClient_SavedSearch_RejectsUnusableSearches(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	_, err := client.CreateSavedSearch(ctx, "Everything", domain.SearchCriteria{})
+	assert.ErrorContains(t, err, "at least one criterion")
+
+	_, err = client.CreateSavedSearch(ctx, "", domain.SearchCriteria{Keywords: "go"})
+	assert.ErrorContains(t, err, "needs a name")
+
+	_, err = client.CreateSavedSearch(ctx, "Go roles", domain.SearchCriteria{Keywords: "go"})
+	require.NoError(t, err)
+	_, err = client.CreateSavedSearch(ctx, "Go roles", domain.SearchCriteria{Keywords: "go"})
+	assert.ErrorContains(t, err, "already exists")
+}
+
+// The behaviour the whole change exists for: an unrestricted search used to
+// import every posting both boards return.
+func TestServer_SearchJobs_RefusesEmptyCriteria(t *testing.T) {
+	client, _, source := testServer(t)
+	source.searchResult = []domain.Job{{CanonicalURL: "https://example.com/job/1", Title: "Anything"}}
+
+	_, err := client.SearchJobs(context.Background(), domain.SearchCriteria{})
+
+	assert.ErrorContains(t, err, "at least one criterion")
+	assert.Zero(t, source.searchCalls, "no source should be contacted")
+
+	page, listErr := client.ListJobs(context.Background(), "", 0, 0)
+	require.NoError(t, listErr)
+	assert.Zero(t, page.Total, "and nothing should have been stored")
 }

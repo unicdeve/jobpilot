@@ -33,6 +33,12 @@ option accepts any OpenAI-compatible endpoint. Per
 `docs/01_architecture/05_llm.md`, only a single active provider
 configuration is supported at a time.
 
-All other categories (prompt customization, search preferences, application
-mode, notification settings, data retention, storage location, browser
-settings, policies) remain unimplemented.
+Search preferences are implemented as named saved searches: see
+`docs/02_features/04_job_discovery.md` AC-001. They are managed from
+`jobpilot-cli search saved` and the desktop's Settings → Job searches, and
+one is created during onboarding. They are not optional in the way other
+settings are — discovery refuses to run without one.
+
+All other categories (prompt customization, application mode, notification
+settings, data retention, storage location, browser settings, policies)
+remain unimplemented.

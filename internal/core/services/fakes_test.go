@@ -221,6 +221,85 @@ func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+// fakeSavedSearchRepository is an in-memory ports.SavedSearchRepository for
+// tests.
+type fakeSavedSearchRepository struct {
+	searches map[string]*domain.SavedSearch
+	order    []string
+	saveErr  error
+	listErr  error
+}
+
+func newFakeSavedSearchRepository() *fakeSavedSearchRepository {
+	return &fakeSavedSearchRepository{searches: map[string]*domain.SavedSearch{}}
+}
+
+func (f *fakeSavedSearchRepository) Save(_ context.Context, search *domain.SavedSearch) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if search.ID == "" {
+		search.ID = fmt.Sprintf("search-%d", len(f.searches)+1)
+	}
+	if _, exists := f.searches[search.ID]; !exists {
+		f.order = append(f.order, search.ID)
+	}
+	stored := *search
+	f.searches[search.ID] = &stored
+	return nil
+}
+
+func (f *fakeSavedSearchRepository) GetByID(_ context.Context, id string) (*domain.SavedSearch, error) {
+	search, ok := f.searches[id]
+	if !ok {
+		return nil, fmt.Errorf("saved search not found: %s", id)
+	}
+	return search, nil
+}
+
+func (f *fakeSavedSearchRepository) GetByName(_ context.Context, name string) (*domain.SavedSearch, error) {
+	for _, id := range f.order {
+		if strings.EqualFold(f.searches[id].Name, name) {
+			return f.searches[id], nil
+		}
+	}
+	return nil, nil
+}
+
+// List mirrors the SQLite ordering: default first, then by name.
+func (f *fakeSavedSearchRepository) List(_ context.Context) ([]*domain.SavedSearch, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	out := make([]*domain.SavedSearch, 0, len(f.order))
+	for _, id := range f.order {
+		out = append(out, f.searches[id])
+	}
+	slices.SortStableFunc(out, func(a, b *domain.SavedSearch) int {
+		if a.IsDefault != b.IsDefault {
+			if a.IsDefault {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return out, nil
+}
+
+func (f *fakeSavedSearchRepository) Delete(_ context.Context, id string) error {
+	delete(f.searches, id)
+	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
+	return nil
+}
+
+func (f *fakeSavedSearchRepository) ClearDefault(_ context.Context) error {
+	for _, search := range f.searches {
+		search.IsDefault = false
+	}
+	return nil
+}
+
 // fakeMatchRepository is an in-memory ports.MatchRepository for tests.
 type fakeMatchRepository struct {
 	matches map[string]*domain.JobMatch
