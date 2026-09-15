@@ -21,10 +21,30 @@ var allowedTransitions = map[domain.ApplicationState][]domain.ApplicationState{
 	domain.ApplicationStatePreparing:      {domain.ApplicationStateReadyForReview, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
 	domain.ApplicationStateReadyForReview: {domain.ApplicationStateApproved, domain.ApplicationStateRejected, domain.ApplicationStateWithdrawn},
 	domain.ApplicationStateApproved:       {domain.ApplicationStateSubmitted, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
-	domain.ApplicationStateSubmitted:      {domain.ApplicationStateRejected},
-	domain.ApplicationStateRejected:       {},
-	domain.ApplicationStateWithdrawn:      {},
-	domain.ApplicationStateFailed:         {domain.ApplicationStatePreparing},
+	// Everything below SUBMITTED is an outcome the user reports, never one
+	// the application works out for itself (08_applications.md AC-007).
+	domain.ApplicationStateSubmitted:    {domain.ApplicationStateInterviewing, domain.ApplicationStateOffered, domain.ApplicationStateRejected, domain.ApplicationStateNoResponse, domain.ApplicationStateWithdrawn},
+	domain.ApplicationStateInterviewing: {domain.ApplicationStateOffered, domain.ApplicationStateRejected, domain.ApplicationStateNoResponse, domain.ApplicationStateWithdrawn},
+	domain.ApplicationStateOffered:      {domain.ApplicationStateRejected, domain.ApplicationStateWithdrawn},
+	// A late reply reopens an application the user had given up on.
+	domain.ApplicationStateNoResponse: {domain.ApplicationStateInterviewing, domain.ApplicationStateRejected},
+	domain.ApplicationStateRejected:   {},
+	domain.ApplicationStateWithdrawn:  {},
+	domain.ApplicationStateFailed:     {domain.ApplicationStatePreparing},
+}
+
+// AllowedTransitions returns the states an application in `from` may move
+// to next, in the order they should be offered.
+//
+// It exists so a client can show only the actions that will work instead of
+// every state there is, without keeping a second copy of the rule table
+// that could disagree with this one. The result is derived from the
+// application's state rather than from the state value alone so that
+// per-application rules — an autopilot policy, say — have somewhere to live
+// later without changing the shape callers depend on.
+func AllowedTransitions(application *domain.Application) []domain.ApplicationState {
+	allowed := allowedTransitions[application.State]
+	return slices.Clone(allowed)
 }
 
 // ApplicationService manages an application's lifecycle: creation and

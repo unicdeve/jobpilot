@@ -5,8 +5,9 @@
 Roadmap Phases 0–6 (`docs/00_product/roadmap.md`) are substantially
 implemented — foundation, candidate profile, job discovery, matching,
 application generation, a desktop app, and a browser automation worker —
-with explicit gaps noted below. Phase 7 (review mode's "browser handoff"/
-submission tracking) and Phase 8 (autopilot policy engine) have not started.
+with explicit gaps noted below.
+Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
+Phase 8 (autopilot policy engine) has not started.
 
 ## Implemented
 
@@ -135,6 +136,13 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   startup, so saving them takes effect immediately: the daemon outlives both
   the desktop app and the CLI, and previously kept using whatever was stored
   when it started until the user found and restarted it.
+- Submission tracking (Phase 7, `docs/02_features/08_applications.md`): what happens to an application after it is sent.
+  JobPilot hands the user a filled form in a browser and never presses send itself, so only the user knows whether they did — and until now nothing asked.
+  An approved application sat approved forever, indistinguishable from one that was sent, and a sent one had nowhere to go but REJECTED.
+  INTERVIEWING, OFFERED and NO_RESPONSE record what the employer said, WITHDRAWN became reachable from all three plus SUBMITTED, and no outcome is ever inferred — NO_RESPONSE is the user closing something out, never a timer (AC-007).
+  `GET /v1/applications/{id}/transitions` serves the state machine's own answer, so the desktop offers the moves that will work instead of all nine states with an error for most of them, and the CLI's `application show` lists them too.
+  The desktop asks the question directly when an application is approved, shows when it was submitted, groups the Applications list by whose move it is, and puts a count of what is waiting on the user on the Dashboard.
+  `jobpilot-cli application submitted <id>` is the same act under the name a user would look for.
 - Desktop first-run setup (`/welcome`, `docs/02_features/01_onboarding.md`):
   the four things an installation needs — LLM provider, candidate profile,
   optional resume, saved search — in the CLI `onboard` order, since

@@ -59,6 +59,7 @@ export const keys = {
     list: (candidateId: string) => ["applications", "list", candidateId] as const,
     detail: (id: string) => ["applications", "detail", id] as const,
     history: (id: string) => ["applications", "history", id] as const,
+    transitions: (id: string) => ["applications", "transitions", id] as const,
     coverLetters: (id: string) => ["applications", "cover-letters", id] as const,
     questions: (id: string) => ["applications", "questions", id] as const,
     agentRuns: (id: string) => ["applications", "agent-runs", id] as const,
@@ -212,6 +213,19 @@ export function useApplicationHistory(id: string | undefined) {
   return useQuery<ApplicationStateTransition[]>({
     queryKey: keys.applications.history(id ?? ""),
     queryFn: () => api.listApplicationHistory(id!),
+    enabled: !!id,
+  });
+}
+
+/// useAllowedTransitions asks the daemon which states an application may
+/// move to next. The rule table lives in Go and is enforced there; fetching
+/// it rather than restating it here is what keeps the buttons on screen and
+/// the transitions the server accepts from drifting apart.
+export function useAllowedTransitions(id: string | undefined) {
+  const api = useApi();
+  return useQuery<ApplicationState[]>({
+    queryKey: keys.applications.transitions(id ?? ""),
+    queryFn: () => api.listAllowedTransitions(id!),
     enabled: !!id,
   });
 }

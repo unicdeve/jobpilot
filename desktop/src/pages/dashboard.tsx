@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { EmptyState } from "../components/empty-state";
 import { Card, CardContent, CardTitle } from "../components/ui/card";
 import { useApplications, useCandidateId, useJobCount, useMatches } from "../lib/queries";
@@ -42,9 +43,34 @@ export function Dashboard() {
     byState[app.state] = (byState[app.state] ?? 0) + 1;
   }
 
+  // Approved-but-not-sent is the state an application gets lost in: JobPilot
+  // has done everything it can and is waiting on a person who has no reason
+  // to remember. It is worth a line at the top of the screen.
+  const waitingOnYou = (byState.READY_FOR_REVIEW ?? 0) + (byState.APPROVED ?? 0);
+
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold">Dashboard</h1>
+
+      {waitingOnYou > 0 && (
+        <Link
+          to="/applications"
+          data-slot="waiting-callout"
+          className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 hover:bg-amber-100"
+        >
+          <div>
+            <p className="text-sm font-medium text-amber-900">
+              {waitingOnYou === 1
+                ? "1 application is waiting on you"
+                : `${waitingOnYou} applications are waiting on you`}
+            </p>
+            <p className="text-sm text-amber-800">
+              Approve what is ready, and record anything you have already sent.
+            </p>
+          </div>
+          <span className="text-sm font-medium text-amber-900">Open →</span>
+        </Link>
+      )}
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent>

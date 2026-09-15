@@ -317,6 +317,14 @@ func (c *Client) TransitionApplication(ctx context.Context, id string, toState d
 	return &app, nil
 }
 
+// ListAllowedTransitions returns the states the application may move to
+// next, as the daemon's own state machine sees them.
+func (c *Client) ListAllowedTransitions(ctx context.Context, id string) ([]domain.ApplicationState, error) {
+	var states []domain.ApplicationState
+	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(id)+"/transitions", nil, &states)
+	return states, err
+}
+
 // ListApplicationHistory returns the durable state-transition history for an
 // application.
 func (c *Client) ListApplicationHistory(ctx context.Context, id string) ([]*domain.ApplicationStateTransition, error) {

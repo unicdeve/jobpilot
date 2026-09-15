@@ -53,5 +53,17 @@ jobpilot-cli search list --keywords golang --limit 20
 jobpilot-cli search list --limit 20 --offset 20
 ```
 
-The `match` and `application` command groups are implemented but not yet
-documented here.
+```bash
+# After JobPilot fills the form in the browser and you send it yourself
+jobpilot-cli application submitted <application-id>
+
+# Then record what the employer said
+jobpilot-cli application transition <application-id> INTERVIEWING
+jobpilot-cli application transition <application-id> OFFERED
+jobpilot-cli application transition <application-id> NO_RESPONSE
+```
+
+`application show` lists the states an application can move to next, as the daemon's own state machine reports them.
+No outcome is ever inferred: every state after SUBMITTED is something the user tells JobPilot.
+
+The rest of the `match` and `application` command groups are implemented but not yet documented here.

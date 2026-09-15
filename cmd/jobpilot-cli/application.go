@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
@@ -17,6 +18,7 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(newApplicationListCmd(client))
 	cmd.AddCommand(newApplicationShowCmd(client))
 	cmd.AddCommand(newApplicationTransitionCmd(client))
+	cmd.AddCommand(newApplicationSubmittedCmd(client))
 	cmd.AddCommand(newCoverLetterCmd(client))
 	cmd.AddCommand(newQuestionCmd(client))
 	cmd.AddCommand(newApplicationPrepareInBrowserCmd(client))
@@ -98,6 +100,26 @@ func newApplicationShowCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("fetching application: %w", err)
 			}
 			fmt.Printf("Application %s\nJob: %s\nState: %s\nMode: %s\n", app.ID, app.JobID, app.State, app.Mode)
+			if app.SubmittedAt != nil {
+				fmt.Printf("Submitted: %s\n", app.SubmittedAt.Format(time.RFC1123))
+			}
+
+			// Which moves are possible is the daemon's answer, not one this
+			// command works out for itself: a second copy of the rule table
+			// here could disagree with the one that enforces it.
+			next, err := client.ListAllowedTransitions(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching allowed transitions: %w", err)
+			}
+			if len(next) > 0 {
+				labels := make([]string, 0, len(next))
+				for _, state := range next {
+					labels = append(labels, string(state))
+				}
+				fmt.Printf("Can move to: %s\n", strings.Join(labels, ", "))
+			} else {
+				fmt.Println("Can move to: nothing — this application is closed.")
+			}
 
 			history, err := client.ListApplicationHistory(ctx, id)
 			if err != nil {
@@ -162,6 +184,33 @@ func newApplicationTransitionCmd(client *httpapi.Client) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&reason, "reason", "", "reason for this transition")
+	return cmd
+}
+
+// newApplicationSubmittedCmd exists because "I sent it" is the one
+// transition a user makes away from the machine, after submitting the form
+// themselves in the browser JobPilot handed them. `transition <id>
+// SUBMITTED` already does it; this is the same act under the name the user
+// would look for.
+func newApplicationSubmittedCmd(client *httpapi.Client) *cobra.Command {
+	var reason string
+
+	cmd := &cobra.Command{
+		Use:   "submitted [application-id]",
+		Short: "Record that you submitted this application yourself",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			app, err := client.TransitionApplication(ctx, args[0], domain.ApplicationStateSubmitted, reason)
+			if err != nil {
+				return fmt.Errorf("recording submission: %w", err)
+			}
+			fmt.Printf("✅ Application %s recorded as submitted.\n", app.ID)
+			fmt.Println("   Tell JobPilot what happens next with 'application transition' — interviewing, offered, rejected, or no-response.")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "note to record with the submission")
 	return cmd
 }
 

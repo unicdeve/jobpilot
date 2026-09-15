@@ -81,6 +81,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/applications/{id}", handleGetApplication(svc.Application))
 	mux.HandleFunc("POST /v1/applications/{id}/transition", handleTransitionApplication(svc.Application))
 	mux.HandleFunc("GET /v1/applications/{id}/history", handleApplicationHistory(svc.Application))
+	mux.HandleFunc("GET /v1/applications/{id}/transitions", handleAllowedTransitions(svc.Application))
 
 	mux.HandleFunc("POST /v1/applications/{id}/cover-letter", handleGenerateCoverLetter(svc.CoverLetter))
 	mux.HandleFunc("GET /v1/applications/{id}/cover-letters", handleListCoverLetterVersions(svc.CoverLetter))
@@ -519,6 +520,19 @@ func handleSaveLLMSettings(svc *services.SettingsService) http.HandlerFunc {
 			resp.ConnectivityError = err.Error()
 		}
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// handleAllowedTransitions serves the state machine's own answer for one
+// application, so a client can offer the actions that will actually work
+// rather than every state there is and an error for most of them.
+func handleAllowedTransitions(svc *services.ApplicationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		application, err := svc.GetApplication(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, services.AllowedTransitions(application))
 	}
 }
 

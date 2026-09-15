@@ -1172,3 +1172,47 @@ func TestLLMHealth(t *testing.T) {
 		require.Empty(t, got.Error)
 	})
 }
+
+func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	profile := &domain.Candidate{FirstName: "Ada"}
+	require.NoError(t, candRepo.Save(ctx, profile))
+	source.searchResult = []domain.Job{
+		{CanonicalURL: "https://example.com/job/outcome", Title: "Engineer", CompanyName: "Acme"},
+	}
+	jobs, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "Engineer"})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobs)
+
+	app, err := client.CreateApplication(ctx, jobs[0].ID, profile.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+
+	next, err := client.ListAllowedTransitions(ctx, app.ID)
+	require.NoError(t, err)
+	require.Contains(t, next, domain.ApplicationStateMatched)
+	require.NotContains(t, next, domain.ApplicationStateSubmitted, "a brand-new application cannot jump to submitted")
+
+	// Walk it to SUBMITTED the way a user would, and the outcomes appear.
+	for _, to := range []domain.ApplicationState{
+		domain.ApplicationStateMatched,
+		domain.ApplicationStatePreparing,
+		domain.ApplicationStateReadyForReview,
+		domain.ApplicationStateApproved,
+		domain.ApplicationStateSubmitted,
+	} {
+		_, err = client.TransitionApplication(ctx, app.ID, to, "")
+		require.NoErrorf(t, err, "transition to %s", to)
+	}
+
+	next, err = client.ListAllowedTransitions(ctx, app.ID)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []domain.ApplicationState{
+		domain.ApplicationStateInterviewing,
+		domain.ApplicationStateOffered,
+		domain.ApplicationStateRejected,
+		domain.ApplicationStateNoResponse,
+		domain.ApplicationStateWithdrawn,
+	}, next)
+}

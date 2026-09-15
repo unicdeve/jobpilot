@@ -148,6 +148,9 @@ export type ApplicationState =
   | "READY_FOR_REVIEW"
   | "APPROVED"
   | "SUBMITTED"
+  | "INTERVIEWING"
+  | "OFFERED"
+  | "NO_RESPONSE"
   | "REJECTED"
   | "WITHDRAWN"
   | "FAILED";

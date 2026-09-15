@@ -17,6 +17,7 @@ import {
   useAddQuestion,
   useAgentRuns,
   useApplication,
+  useAllowedTransitions,
   useApplicationHistory,
   useCoverLetters,
   useEditCoverLetter,
@@ -45,16 +46,29 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   narrative: "Narrative",
 };
 
-const ALL_STATES: ApplicationState[] = [
-  "DISCOVERED",
-  "MATCHED",
-  "PREPARING",
-  "READY_FOR_REVIEW",
-  "APPROVED",
+/// What each transition is called from the user's side. The states are the
+/// daemon's vocabulary; these are the actions a person recognises taking.
+const STATE_ACTIONS: Record<ApplicationState, string> = {
+  DISCOVERED: "Move back to discovered",
+  MATCHED: "Mark as matched",
+  PREPARING: "Start preparing",
+  READY_FOR_REVIEW: "Mark ready for review",
+  APPROVED: "Approve",
+  SUBMITTED: "I submitted this",
+  INTERVIEWING: "I'm interviewing",
+  OFFERED: "I got an offer",
+  NO_RESPONSE: "Never heard back",
+  REJECTED: "I was rejected",
+  WITHDRAWN: "Withdraw",
+  FAILED: "Mark as failed",
+};
+
+/// States that mean the employer's answer, rather than JobPilot's progress.
+const OUTCOME_STATES: ApplicationState[] = [
   "SUBMITTED",
-  "REJECTED",
-  "WITHDRAWN",
-  "FAILED",
+  "INTERVIEWING",
+  "OFFERED",
+  "NO_RESPONSE",
 ];
 
 export function ApplicationDetail() {
@@ -90,9 +104,18 @@ export function ApplicationDetail() {
             </Link>
           </p>
         )}
+        {application.submitted_at && (
+          <p className="mt-1 text-sm text-slate-500">
+            Submitted {new Date(application.submitted_at).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        )}
       </div>
 
-      <TransitionPanel application={application} />
+      <NextStepPanel application={application} />
 
       {history && history.length > 0 && (
         <Card>
@@ -123,15 +146,21 @@ export function ApplicationDetail() {
   );
 }
 
-function TransitionPanel({ application }: { application: Application }) {
+/// NextStepPanel offers the transitions the daemon says are possible, under
+/// a heading that changes with where the application is.
+///
+/// It used to render all nine states as buttons labelled with the raw enum
+/// and let the server reject the seven that were invalid, which taught the
+/// user the state machine one error toast at a time. The allowed set is
+/// fetched rather than restated here, so the buttons and the rule that
+/// enforces them cannot drift apart.
+function NextStepPanel({ application }: { application: Application }) {
   const { notify } = useToast();
   const [reason, setReason] = useState("");
+  const { data: allowed, isPending } = useAllowedTransitions(application.id);
 
   const transitionApplication = useTransitionApplication({
     onSuccess: () => setReason(""),
-    // The server's allowedTransitions map is the single source of truth for
-    // which transitions are valid; the UI never duplicates that rule table,
-    // it just surfaces the rejection here.
     onError: (err) => notify(String(err)),
   });
   const pending = transitionApplication.isPending
@@ -141,24 +170,62 @@ function TransitionPanel({ application }: { application: Application }) {
   const transition = (toState: ApplicationState) =>
     transitionApplication.mutate({ id: application.id, toState, reason });
 
+  // The whole point of the handoff: JobPilot filled the form and left the
+  // browser open, and only the user knows whether they pressed send.
+  const awaitingSubmission = application.state === "APPROVED";
+  const afterSubmission = OUTCOME_STATES.includes(application.state);
+
+  const button = (state: ApplicationState, variant: "default" | "secondary" = "secondary") => (
+    <Button
+      key={state}
+      variant={variant}
+      disabled={transitionApplication.isPending}
+      onClick={() => transition(state)}
+    >
+      {pending === state ? "…" : STATE_ACTIONS[state]}
+    </Button>
+  );
+
+  if (isPending) return null;
+
+  if (!allowed || allowed.length === 0) {
+    return (
+      <Card>
+        <CardContent>
+          <CardTitle>Closed</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            This application is finished — there is nothing left to record.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card>
+    <Card className={awaitingSubmission ? "ring-amber-300" : undefined}>
       <CardContent>
-        <CardTitle>Transition state</CardTitle>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {ALL_STATES.filter((s) => s !== application.state).map((s) => (
-            <Button
-              key={s}
-              variant="secondary"
-              disabled={transitionApplication.isPending}
-              onClick={() => transition(s)}
-            >
-              {pending === s ? "…" : s}
-            </Button>
-          ))}
+        <CardTitle>
+          {awaitingSubmission ? "Did you send it?" : afterSubmission ? "What happened?" : "Next step"}
+        </CardTitle>
+        <p className="mt-1 text-sm text-slate-500">
+          {awaitingSubmission
+            ? "JobPilot never submits for you, so it cannot tell. Record it here and this stops waiting on you."
+            : afterSubmission
+              ? "Tell JobPilot what the employer said, so a sent application does not go quiet in your list."
+              : "Where this application goes next."}
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {awaitingSubmission && allowed.includes("SUBMITTED") && button("SUBMITTED", "default")}
+          {allowed.filter((state) => !(awaitingSubmission && state === "SUBMITTED")).map((state) => button(state))}
         </div>
-        <div className="mt-2">
-          <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+
+        <div className="mt-3">
+          <Input
+            placeholder="Reason (optional)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
         </div>
       </CardContent>
     </Card>

@@ -77,6 +77,9 @@ export interface ApiClient {
     reason: string,
   ): Promise<Application>;
   listApplicationHistory(id: string): Promise<ApplicationStateTransition[]>;
+  /// listAllowedTransitions asks the daemon which states this application
+  /// may move to next, so the UI offers only actions that will work.
+  listAllowedTransitions(id: string): Promise<ApplicationState[]>;
 
   generateCoverLetter(applicationId: string): Promise<CoverLetter>;
   listCoverLetterVersions(applicationId: string): Promise<CoverLetter[]>;
@@ -214,6 +217,12 @@ export function createApiClient(port: number): ApiClient {
         baseUrl,
         "GET",
         `/v1/applications/${encodeURIComponent(id)}/history`,
+      ),
+    listAllowedTransitions: (id) =>
+      request<ApplicationState[]>(
+        baseUrl,
+        "GET",
+        `/v1/applications/${encodeURIComponent(id)}/transitions`,
       ),
 
     generateCoverLetter: (applicationId) =>
