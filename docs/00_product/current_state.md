@@ -55,11 +55,11 @@ submission tracking) and Phase 8 (autopilot policy engine) have not started.
   listing in memory (15 min for Arbeitnow, 4 hours for Remotive) matching
   that API's own stated update cadence, so repeated searches don't poll
   faster than their data actually changes; job descriptions (HTML) are
-  converted via the same MarkItDown engine resume import uses. Keyword
-  filtering happens client-side (neither API's own search parameter proved
-  reliable) via the same naive substring match the old mock used — precise
-  for specific terms ("golang") but noisy for short/common ones ("go"),
-  a known limitation carried over rather than newly introduced.
+  converted via the same MarkItDown engine resume import uses. Filtering
+  happens client-side (neither API's own search parameter proved reliable)
+  and now lives in `JobDiscoveryService`, not the connectors — see the saved
+  searches entry below for the term-matching rule that replaced the naive
+  substring match this originally carried over from the mock source.
   `MockJobSource` remains in the codebase for tests/dev but is no longer in
   the daemon's production source list, so real searches are never mixed
   with fake jobs.
