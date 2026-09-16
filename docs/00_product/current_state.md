@@ -343,6 +343,13 @@ Phase 8 (autopilot policy engine) has not started.
   no structured salary type, so a form's salary field becomes an ordinary
   text question resolved (or not) like any other, rather than something
   purpose-built for numeric/range salary inputs.
+- The browser worker never navigates from the job posting to the application form.
+  `PrepareApplication` opens `job.CanonicalURL` and scrapes every `input`/`select`/`textarea` on whatever page that is; it clicks nothing, so it never presses "Apply" and never follows a posting through to the third-party ATS (Ashby, Greenhouse, Lever) that actually hosts the form.
+  On both current connectors the canonical URL is the board's listing page, so this does not merely find nothing — it finds the wrong thing.
+  Observed live on an Arbeitnow posting: the one field on the page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
+  Filling a marketing form with the user's personal data and calling it a prepared application is a false success, not a missing feature.
+- There is no vision or agentic page understanding in the browser worker.
+  Field discovery is DOM heuristics only (the accessible-name chain, plus fieldset grouping); the LLM is used to answer narrative questions and, separately, to extract job details during custom-URL import, but nothing decides what to click or where to go next.
 - The browser worker requires the user to log into any job board once
   inside its dedicated, JobPilot-owned Chrome profile (never their real
   daily-driver profile) before "prepare in browser" can get past an
@@ -351,12 +358,7 @@ Phase 8 (autopilot policy engine) has not started.
 
 ## Next
 
-1. Phase 7 (review mode's "browser handoff" polish, submission tracking)
-   and Phase 8 (autopilot policy engine) — the natural next steps now that
-   Phase 6 gives the browser worker something to hand off from. Remaining
-   Settings categories (prompt customization, notifications, data
-   retention) are also still open.
-2. The undocumented gaps above (entity normalization, structured LLM
-   output, richer answer derivation) once their preconditions land, plus
-   the browser-worker-specific gaps just noted (CAPTCHA heuristic, radio
-   grouping fallback, salary fields).
+1. The browser worker never navigates from the job posting to the actual application form (below), so "Prepare in browser" does not yet do what its name says on either public board.
+2. Phase 8 (autopilot policy engine), the last unstarted roadmap phase.
+   Before it, entity normalization (below) deserves an ADR and a decision: a policy engine that decides whether to submit on the user's behalf should not have to reason over JSON-blob candidate data.
+3. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).
