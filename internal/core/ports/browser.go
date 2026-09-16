@@ -30,10 +30,11 @@ type FormField struct {
 	Options []string
 }
 
-// BrowserWorkerFactory launches a fresh BrowserWorker (its own browser
-// window/page). It's a factory rather than a shared instance because each
-// PrepareApplication run gets its own window left open for the user — one
-// run's browser is never reused or overwritten by the next.
+// BrowserWorkerFactory returns a BrowserWorker on its own fresh page. It's
+// a factory rather than a shared instance because each PrepareApplication
+// run gets its own tab left open for the user — one run's page is never
+// reused or overwritten by the next. The browser behind those pages is
+// shared, since Chrome permits only one instance per profile directory.
 type BrowserWorkerFactory func() (BrowserWorker, error)
 
 // BrowserWorker drives a single browser page to navigate to a job
@@ -55,9 +56,10 @@ type BrowserWorker interface {
 	// extract a form.
 	ExtractContent(ctx context.Context) (string, error)
 	Fill(ctx context.Context, fieldRef, value string) error
-	// Close releases the underlying browser resources. It must only be
-	// called when nothing useful has been shown to the user yet (e.g. the
-	// browser itself failed to launch) — on every other path the window is
-	// deliberately left open for the user to review and submit themselves.
+	// Close closes this worker's own page, leaving the browser and any
+	// other run's page untouched. It must only be called when nothing
+	// useful has been shown to the user yet — on every other path the page
+	// is deliberately left open for the user to review and submit
+	// themselves.
 	Close(ctx context.Context) error
 }

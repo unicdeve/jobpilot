@@ -156,12 +156,14 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 
 	// headless: false — real use always shows a visible window so the user
 	// can review and submit themselves; see docs/01_architecture/03_browser_worker.md.
-	// JobDiscoveryService uses the same factory as a fallback for importing
-	// a job by URL when no registered source recognizes it, but closes the
-	// window itself once the page is read — see JobDiscoveryService.importViaBrowser.
-	newBrowserWorker := func() (ports.BrowserWorker, error) {
-		return browser.NewPlaywrightWorker(browserProfileDir, false)
-	}
+	// One session, because Chrome allows one process per profile directory
+	// and every task leaves its window open: each task gets its own tab
+	// instead. JobDiscoveryService uses the same factory as a fallback for
+	// importing a job by URL when no registered source recognizes it, but
+	// closes its own tab once the page is read — see
+	// JobDiscoveryService.importViaBrowser.
+	chrome := browser.NewChromeSession(browserProfileDir, false)
+	newBrowserWorker := chrome.NewWorker
 
 	resumeSvc := services.NewResumeService(resRepo, llmProv)
 	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))

@@ -59,14 +59,21 @@ func newFixtureServer(t *testing.T) *httptest.Server {
 	return server
 }
 
+func newTestSession(t *testing.T) *ChromeSession {
+	t.Helper()
+	session := NewChromeSession(t.TempDir(), true)
+	t.Cleanup(session.Shutdown)
+	return session
+}
+
 func newTestWorker(t *testing.T) *PlaywrightWorker {
 	t.Helper()
-	worker, err := NewPlaywrightWorker(t.TempDir(), true)
+	worker, err := newTestSession(t).NewWorker()
 	if err != nil {
 		t.Skipf("skipping: real Chrome/Playwright driver not available in this environment: %v", err)
 	}
-	t.Cleanup(func() { _ = worker.Close(context.Background()) })
-	return worker
+	// The concrete type, so assertions can read the live page back directly.
+	return worker.(*PlaywrightWorker)
 }
 
 func TestPlaywrightWorker_ExtractAndFillForm(t *testing.T) {
@@ -154,4 +161,54 @@ func TestPlaywrightWorker_ExtractContent(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, content, "Why do you want to work here?", "should return the real rendered page, not an empty shell")
+}
+
+// TestChromeSession_ConcurrentWorkersShareOneBrowser is the regression test
+// for the defect that made "Prepare in browser" usable exactly once per
+// daemon: a worker per run launched a second Chrome on a profile directory
+// the first run's still-open window had locked, and every run after the
+// first died at launch with "the profile is already in use by another
+// instance of Chromium".
+func TestChromeSession_ConcurrentWorkersShareOneBrowser(t *testing.T) {
+	server := newFixtureServer(t)
+	session := newTestSession(t)
+	ctx := context.Background()
+
+	first, err := session.NewWorker()
+	if err != nil {
+		t.Skipf("skipping: real Chrome/Playwright driver not available in this environment: %v", err)
+	}
+	require.NoError(t, first.Navigate(ctx, server.URL))
+
+	// The first run's page is still open, exactly as a real one would be.
+	second, err := session.NewWorker()
+	require.NoError(t, err, "a second run must not be blocked by the first run's open window")
+	require.NoError(t, second.Navigate(ctx, server.URL))
+
+	fields, err := second.ExtractForm(ctx)
+	require.NoError(t, err)
+	assert.Len(t, fields, 5, "the second worker must drive a page of its own")
+
+	// Closing one worker must not disturb the other's page.
+	require.NoError(t, second.Close(ctx))
+	_, err = first.ExtractForm(ctx)
+	assert.NoError(t, err, "closing one run's tab must leave the other run's tab usable")
+}
+
+// TestChromeSession_RelaunchesAfterTheUserClosesChrome covers the other
+// half: the window is the user's to close, and the next task should open a
+// new one rather than fail on handles to a browser that is gone.
+func TestChromeSession_RelaunchesAfterTheUserClosesChrome(t *testing.T) {
+	server := newFixtureServer(t)
+	session := newTestSession(t)
+	ctx := context.Background()
+
+	if _, err := session.NewWorker(); err != nil {
+		t.Skipf("skipping: real Chrome/Playwright driver not available in this environment: %v", err)
+	}
+	session.Shutdown()
+
+	worker, err := session.NewWorker()
+	require.NoError(t, err, "a closed browser must be relaunched, not reported as a failure")
+	require.NoError(t, worker.Navigate(ctx, server.URL))
 }

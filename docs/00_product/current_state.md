@@ -289,7 +289,9 @@ Phase 8 (autopilot policy engine) has not started.
   open (on every path, including failure) for the human to review and
   submit themselves, which is what actually satisfies Review Mode's
   explicit-approval requirement here; see the "Submission boundary" section
-  added to `03_browser_worker.md`. `AgentRun`/`AgentEvent`
+  added to `03_browser_worker.md`. One Chrome, one tab per task (`browser.ChromeSession`): Chrome permits a single instance per profile directory and every task leaves its window open on purpose, so the original worker-per-run launched a second Chrome against a profile the first run had locked and failed for every run after the first.
+  Chrome is launched lazily on first use, relaunched if the user closes it, and a task closing its own tab leaves every other task's tab alone.
+  `AgentRun`/`AgentEvent`
   (`internal/core/domain/agent_run.go`) get their first real implementation
   here (schema existed since migration 00001, unused until now), each run
   scoped to one application (migration `00003_agent_runs_application_link.sql`,
