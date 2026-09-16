@@ -212,3 +212,86 @@ func TestChromeSession_RelaunchesAfterTheUserClosesChrome(t *testing.T) {
 	require.NoError(t, err, "a closed browser must be relaunched, not reported as a failure")
 	require.NoError(t, worker.Navigate(ctx, server.URL))
 }
+
+// blockerFixture serves a page whose only interesting feature is `body`, so
+// each DetectBlocker case can state exactly what it is testing.
+func newBlockerFixture(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<!doctype html><html><body>" + body + "</body></html>"))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestPlaywrightWorker_DetectBlocker(t *testing.T) {
+	// A challenge frame big enough to cover a form, as posed reCAPTCHA is.
+	const challengeFrame = `<iframe src="https://www.google.com/recaptcha/api2/bframe?x=1"
+		style="width:400px;height:580px"></iframe>`
+
+	tests := []struct {
+		name        string
+		body        string
+		wantBlocked bool
+	}{
+		{
+			// The regression: an invisible reCAPTCHA sits on real, entirely
+			// fillable ATS forms (measured on Ashby). Flagging it failed
+			// every application the worker could reach.
+			name: "an invisible reCAPTCHA beside a usable form is not a blocker",
+			body: `<iframe src="https://www.recaptcha.net/recaptcha/api2/anchor?ar=1"
+				style="width:256px;height:60px;visibility:hidden"></iframe>
+				<form><label for="n">Name</label><input id="n"></form>`,
+			wantBlocked: false,
+		},
+		{
+			// A checkbox is the human's to tick — they submit the form
+			// themselves, so it stops nothing this worker does.
+			name: "a visible reCAPTCHA checkbox is not a blocker",
+			body: `<iframe src="https://www.google.com/recaptcha/api2/anchor?ar=1"
+				style="width:304px;height:78px"></iframe>`,
+			wantBlocked: false,
+		},
+		{
+			name:        "a posed challenge covering the page is a blocker",
+			body:        challengeFrame,
+			wantBlocked: true,
+		},
+		{
+			name:        "an interstitial's visible text is a blocker",
+			body:        `<h1>Verify you are human</h1>`,
+			wantBlocked: true,
+		},
+		{
+			// The other false positive: page source matched everything,
+			// including these words inside a script on a working page.
+			name: "blocking words in scripts and hidden markup are not a blocker",
+			body: `<script>const msg = "are you a robot";</script>
+				<div hidden>unusual traffic</div>
+				<form><label for="e">Email</label><input id="e"></form>`,
+			wantBlocked: false,
+		},
+		{
+			name:        "an ordinary page is not a blocker",
+			body:        `<form><label for="n">Full name</label><input id="n"></form>`,
+			wantBlocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newBlockerFixture(t, tt.body)
+			worker := newTestWorker(t)
+			ctx := context.Background()
+			require.NoError(t, worker.Navigate(ctx, server.URL))
+
+			reason, blocked := worker.DetectBlocker(ctx)
+
+			assert.Equal(t, tt.wantBlocked, blocked, "reason: %q", reason)
+			if tt.wantBlocked {
+				assert.NotEmpty(t, reason, "a blocked page must say why")
+			}
+		})
+	}
+}

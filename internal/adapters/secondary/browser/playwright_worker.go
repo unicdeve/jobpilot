@@ -28,12 +28,34 @@ var skipInputTypes = map[string]bool{
 	"hidden": true, "submit": true, "button": true, "reset": true, "image": true, "file": true,
 }
 
-// captchaHostMarkers and blockerPhrases are a best-effort heuristic, not an
-// anti-bot solver — "never bypass CAPTCHAs or anti-bot protections" means
-// this only ever detects and stops, never attempts to defeat one. A false
-// negative just means extraction/fill likely fails and stops there anyway;
-// a false positive is the safe failure direction.
-var captchaHostMarkers = []string{"recaptcha", "hcaptcha", "turnstile", "arkoselabs"}
+// captchaFrameSelector matches the iframes anti-bot vendors inject. It is a
+// best-effort heuristic, not an anti-bot solver — "never bypass CAPTCHAs or
+// anti-bot protections" means this only ever detects and stops, never
+// attempts to defeat one.
+const captchaFrameSelector = `iframe[src*="recaptcha" i], iframe[src*="hcaptcha" i], ` +
+	`iframe[src*="turnstile" i], iframe[src*="arkoselabs" i]`
+
+// challengeMinHeight separates a challenge being posed from a vendor script
+// merely being present, measured on real pages in September 2026:
+//
+//	Ashby application form, entirely fillable:  anchor 256x60, visibility hidden
+//	Google's reCAPTCHA demo, checkbox shown:    anchor 304x78, visible
+//	Google's reCAPTCHA demo, challenge closed:  bframe 300x150, hidden
+//
+// An invisible frame blocks nothing, and a visible checkbox or badge sits
+// beside a form the human can still complete — they submit it themselves,
+// so ticking a box is their job, not a reason to abandon the run. Only a
+// challenge dialog, which covers the form and is several hundred pixels
+// tall, actually stops the work.
+//
+// Flagging presence instead of a challenge is not the safe direction it
+// looks like: the Ashby page above loads an invisible reCAPTCHA, so the old
+// URL-substring check would have failed every application it could reach.
+const challengeMinHeight = 200
+
+// blockerPhrases appear on interstitial pages that replace the content
+// entirely. They are matched against rendered text, never page source: the
+// same words sit in the scripts of pages that are working perfectly well.
 var blockerPhrases = []string{"verify you are human", "are you a robot", "unusual traffic"}
 
 // PlaywrightWorker is a ports.BrowserWorker driving one page (one tab) of
@@ -195,19 +217,30 @@ func (w *PlaywrightWorker) Navigate(_ context.Context, url string) error {
 	return nil
 }
 
-// DetectBlocker checks the current page for known CAPTCHA/anti-bot markers.
+// DetectBlocker reports whether the page is posing a challenge the run
+// cannot get past. See challengeMinHeight for why presence of a CAPTCHA is
+// not itself the test.
 func (w *PlaywrightWorker) DetectBlocker(_ context.Context) (string, bool) {
-	for _, frame := range w.page.Frames() {
-		url := strings.ToLower(frame.URL())
-		for _, marker := range captchaHostMarkers {
-			if strings.Contains(url, marker) {
-				return fmt.Sprintf("a %s challenge is present on the page", marker), true
-			}
+	frames := w.page.Locator(captchaFrameSelector)
+	count, err := frames.Count()
+	if err != nil {
+		count = 0
+	}
+	for i := range count {
+		frame := frames.Nth(i)
+		visible, err := frame.IsVisible()
+		if err != nil || !visible {
+			continue
 		}
+		box, err := frame.BoundingBox()
+		if err != nil || box == nil || box.Height < challengeMinHeight {
+			continue
+		}
+		return "a CAPTCHA challenge is covering the page", true
 	}
 
-	if content, err := w.page.Content(); err == nil {
-		lower := strings.ToLower(content)
+	if text, err := w.page.Locator("body").InnerText(); err == nil {
+		lower := strings.ToLower(text)
 		for _, phrase := range blockerPhrases {
 			if strings.Contains(lower, phrase) {
 				return fmt.Sprintf("the page contains blocking text: %q", phrase), true

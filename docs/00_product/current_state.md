@@ -328,12 +328,9 @@ Phase 8 (autopilot policy engine) has not started.
   ones the browser worker makes, are user/CLI/desktop-driven, not
   autopilot-evaluated; `ApplicationMode` "autopilot" exists as a value but
   nothing branches on it yet.
-- The browser worker's CAPTCHA/anti-bot detection
-  (`internal/adapters/secondary/browser/playwright_worker.go`) is a
-  best-effort heuristic (known CAPTCHA iframe hosts, common "verify you're
-  human" phrases), not a real detector — it can miss novel challenges (which
-  then likely surfaces as an extraction/fill failure instead, the same safe
-  stop) or rarely false-positive on ordinary pages containing similar text.
+- The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
+  It now asks whether a challenge is being posed rather than whether a vendor's script is present: a CAPTCHA iframe blocks only when it is visible and tall enough to cover the form, and the interstitial phrases are matched against rendered text rather than page source.
+  Both of those were false positives with teeth. Real ATS forms carry an invisible reCAPTCHA (measured on Ashby: 256x60, `visibility: hidden`) while being entirely fillable, and the words appear in the scripts of pages that work perfectly well, so the previous "any frame URL containing recaptcha" rule would have failed every application the worker could reach.
 - Radio button groups are extracted as one question with the group's
   `<fieldset><legend>` text as its label, falling back to a humanized
   `name` attribute when there's no fieldset/legend — real-world forms
