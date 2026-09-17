@@ -30,6 +30,21 @@ type FormField struct {
 	Options []string
 }
 
+// ApplyControl is a link or button on a job posting that might lead to the
+// application form. The worker reports what is on the page; which one to
+// follow is decided in core (services.PickApplyControl), so the rule is
+// testable without a browser and identical for every connector.
+type ApplyControl struct {
+	// Ref is opaque to callers: a reference the same BrowserWorker instance
+	// can use with FollowControl, valid until the page changes.
+	Ref string
+	// Text is the control's visible text.
+	Text string
+	// URL is the resolved destination, empty for a button that navigates
+	// through script rather than an href.
+	URL string
+}
+
 // BrowserWorkerFactory returns a BrowserWorker on its own fresh page. It's
 // a factory rather than a shared instance because each PrepareApplication
 // run gets its own tab left open for the user — one run's page is never
@@ -51,6 +66,15 @@ type BrowserWorker interface {
 	// and stop, never attempt to defeat one.
 	DetectBlocker(ctx context.Context) (reason string, blocked bool)
 	ExtractForm(ctx context.Context) ([]FormField, error)
+	// CurrentURL is where the page has ended up, which is not necessarily
+	// where it was sent: an apply link commonly redirects to the employer's
+	// applicant tracking system on another origin.
+	CurrentURL(ctx context.Context) string
+	// FindApplyControls lists the page's visible links and buttons, for
+	// core to choose between. It filters nothing itself.
+	FindApplyControls(ctx context.Context) ([]ApplyControl, error)
+	// FollowControl clicks one and waits for the page to settle.
+	FollowControl(ctx context.Context, ref string) error
 	// ExtractContent returns the current page's raw HTML, for a caller that
 	// wants to read the page itself (e.g. a job posting) rather than
 	// extract a form.

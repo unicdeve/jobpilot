@@ -567,6 +567,14 @@ func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, e
 
 func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) { return "", nil }
 
+func (f *fakeBrowserWorker) CurrentURL(_ context.Context) string { return "" }
+
+func (f *fakeBrowserWorker) FindApplyControls(_ context.Context) ([]ports.ApplyControl, error) {
+	return nil, nil
+}
+
+func (f *fakeBrowserWorker) FollowControl(_ context.Context, _ string) error { return nil }
+
 func (f *fakeBrowserWorker) Fill(_ context.Context, _, _ string) error { return nil }
 
 func (f *fakeBrowserWorker) Close(_ context.Context) error { return nil }
@@ -894,13 +902,14 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStatePreparing, "preparing")
 	require.NoError(t, err)
 
-	// testServer's fake browser worker extracts no fields by default, which
-	// PrepareApplication treats as a blocker — this still exercises the
-	// endpoint/JSON contract end to end; the resolver/fill orchestration
-	// itself is already covered by internal/core/services/browserworker_test.go.
+	// testServer's fake browser worker reports a page with no fields and no
+	// links, so the run stops before filling anything — this still exercises
+	// the endpoint/JSON contract end to end; reaching the form and the
+	// resolver/fill orchestration are covered in
+	// internal/core/services/browserworker_test.go.
 	_, err = client.PrepareInBrowser(ctx, app.ID)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no recognizable application form fields")
+	require.Contains(t, err.Error(), "could not find a way to the application form")
 
 	got, err := client.GetApplication(ctx, app.ID)
 	require.NoError(t, err)

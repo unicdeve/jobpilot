@@ -696,6 +696,16 @@ type fakeBrowserWorker struct {
 	closed            bool
 	content           string
 	extractContentErr error
+
+	// pages lets a test describe a route: each hop's fields in order, so a
+	// posting that only reaches its form after following an apply link can
+	// be exercised without a browser.
+	pages      [][]ports.FormField
+	controls   []ports.ApplyControl
+	findErr    error
+	followErr  error
+	followed   []string
+	currentURL string
 }
 
 func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return f.navigateErr }
@@ -708,7 +718,25 @@ func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, e
 	if f.extractErr != nil {
 		return nil, f.extractErr
 	}
+	if len(f.pages) > 0 {
+		hop := min(len(f.followed), len(f.pages)-1)
+		return f.pages[hop], nil
+	}
 	return f.fields, nil
+}
+
+func (f *fakeBrowserWorker) CurrentURL(_ context.Context) string { return f.currentURL }
+
+func (f *fakeBrowserWorker) FindApplyControls(_ context.Context) ([]ports.ApplyControl, error) {
+	return f.controls, f.findErr
+}
+
+func (f *fakeBrowserWorker) FollowControl(_ context.Context, ref string) error {
+	if f.followErr != nil {
+		return f.followErr
+	}
+	f.followed = append(f.followed, ref)
+	return nil
 }
 
 func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) {

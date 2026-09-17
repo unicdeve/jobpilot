@@ -340,11 +340,12 @@ Phase 8 (autopilot policy engine) has not started.
   no structured salary type, so a form's salary field becomes an ordinary
   text question resolved (or not) like any other, rather than something
   purpose-built for numeric/range salary inputs.
-- The browser worker never navigates from the job posting to the application form.
-  `PrepareApplication` opens `job.CanonicalURL` and scrapes every `input`/`select`/`textarea` on whatever page that is; it clicks nothing, so it never presses "Apply" and never follows a posting through to the third-party ATS (Ashby, Greenhouse, Lever) that actually hosts the form.
-  On both current connectors the canonical URL is the board's listing page, so this does not merely find nothing — it finds the wrong thing.
-  Observed live on an Arbeitnow posting: the one field on the page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
-  Filling a marketing form with the user's personal data and calling it a prepared application is a false success, not a missing feature.
+- The browser worker's route to the application form is deterministic only (ADR-0013, partially implemented).
+  `PrepareApplication` now walks from the posting to the form: it asks whether the current page is an application form, and if not follows the control most likely to lead to one, up to two hops.
+  Which control is decided in core (`services.PickApplyControl`) by ATS destination, then URL path, then wording, so the rule is testable without a browser.
+  The LLM fallback the ADR specifies — consulted only when those heuristics find nothing, and choosing among controls already on the page — is **not built yet**, so a board whose apply control reads unlike any known wording still stops with "no link or button on it looks like an apply control".
+  `services.LooksLikeApplicationForm` is the gate: a page counts only if it asks about a person in at least three distinct ways, which is what stands between the user's details and a stranger's form.
+  It was not there before, and the absence had teeth — observed live on an Arbeitnow posting, the one field on the listing page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
 - There is no vision or agentic page understanding in the browser worker.
   Field discovery is DOM heuristics only (the accessible-name chain, plus fieldset grouping); the LLM is used to answer narrative questions and, separately, to extract job details during custom-URL import, but nothing decides what to click or where to go next.
 - The browser worker requires the user to log into any job board once
@@ -355,7 +356,8 @@ Phase 8 (autopilot policy engine) has not started.
 
 ## Next
 
-1. The browser worker never navigates from the job posting to the actual application form (below), so "Prepare in browser" does not yet do what its name says on either public board.
+1. Finish ADR-0013: the LLM fallback for finding an apply control when the deterministic rules find none, and fixtures captured from real ATS pages (Ashby, Greenhouse, Lever) as positive cases with the two boards' listing pages as negatives.
+   The deterministic route and the application-form gate are in; the fallback is not.
 2. Phase 8 (autopilot policy engine), the last unstarted roadmap phase.
    Before it, entity normalization (below) deserves an ADR and a decision: a policy engine that decides whether to submit on the user's behalf should not have to reason over JSON-blob candidate data.
 3. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).

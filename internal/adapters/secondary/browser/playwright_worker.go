@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mxschmitt/playwright-go"
 
@@ -251,6 +252,172 @@ func (w *PlaywrightWorker) DetectBlocker(_ context.Context) (string, bool) {
 	return "", false
 }
 
+// applyControlSelector matches anything a page might use as a way in. It is
+// deliberately broad: narrowing is core's job (services.PickApplyControl),
+// so the rule that decides can be tested without a browser.
+const applyControlSelector = `a[href], button, [role="button"]`
+
+// maxApplyControls bounds the scan. A job posting's navigation, footer and
+// related-jobs list can run to hundreds of links, and the way in is never
+// the four-hundredth of them.
+const maxApplyControls = 300
+
+// describeControlScript reads a control's visible text and resolved
+// destination. href is read from the property rather than the attribute so
+// a relative link arrives absolute, which is what core needs to recognise
+// a hand-off to another origin.
+const describeControlScript = `(el) => ({
+	text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
+	url: el.tagName.toLowerCase() === 'a' ? (el.href || '') : '',
+})`
+
+// CurrentURL is where the page actually is, after any redirect.
+func (w *PlaywrightWorker) CurrentURL(_ context.Context) string {
+	return w.page.URL()
+}
+
+// FindApplyControls lists the page's visible links and buttons.
+func (w *PlaywrightWorker) FindApplyControls(_ context.Context) ([]ports.ApplyControl, error) {
+	locator := w.page.Locator(applyControlSelector)
+	count, err := locator.Count()
+	if err != nil {
+		return nil, fmt.Errorf("failed to count page controls: %w", err)
+	}
+	count = min(count, maxApplyControls)
+
+	controls := make([]ports.ApplyControl, 0, count)
+	for i := range count {
+		item := locator.Nth(i)
+		if visible, err := item.IsVisible(); err != nil || !visible {
+			continue
+		}
+
+		result, err := item.Evaluate(describeControlScript, nil)
+		if err != nil {
+			continue
+		}
+		described, ok := result.(map[string]any)
+		if !ok {
+			continue
+		}
+		text, _ := described["text"].(string)
+		target, _ := described["url"].(string)
+		if text == "" && target == "" {
+			continue
+		}
+		controls = append(controls, ports.ApplyControl{
+			Ref:  strconv.Itoa(i),
+			Text: text,
+			URL:  target,
+		})
+	}
+	return controls, nil
+}
+
+// FollowControl clicks the control and waits for the page to settle,
+// whether it navigates by href, by script, or not at all.
+func (w *PlaywrightWorker) FollowControl(_ context.Context, ref string) error {
+	index, err := strconv.Atoi(ref)
+	if err != nil {
+		return fmt.Errorf("invalid control reference %q", ref)
+	}
+
+	locator := w.page.Locator(applyControlSelector)
+	count, err := locator.Count()
+	if err != nil {
+		return fmt.Errorf("failed to locate page controls: %w", err)
+	}
+	if index < 0 || index >= count {
+		return fmt.Errorf("control reference %d is out of range", index)
+	}
+
+	browserContext := w.page.Context()
+	before := len(browserContext.Pages())
+
+	if err := locator.Nth(index).Click(); err != nil {
+		return fmt.Errorf("failed to click the apply control: %w", err)
+	}
+
+	// Job boards almost always send applicants off with target="_blank" —
+	// both connectors' apply links do — so the page the run continues on is
+	// usually not the page it clicked. Without adopting the new tab the
+	// worker reads the posting again, decides it still is not a form, and
+	// clicks apply a second time.
+	if adopted := waitForNewPage(browserContext, before); adopted != nil {
+		w.page = adopted
+	}
+
+	// A control may navigate, may open a tab, may swap the form in without
+	// navigating at all. Waiting for the network to settle covers them; a
+	// page that never settles is not a failure to follow, so a timeout here
+	// is not fatal — the caller judges the page it ends up on.
+	_ = w.page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateNetworkidle,
+		Timeout: playwright.Float(newPageTimeout),
+	})
+	return nil
+}
+
+// newPageTimeout bounds both the wait for a new tab and the wait for the
+// resulting page to settle, in milliseconds.
+const newPageTimeout = 10_000
+
+// waitForNewPage returns the tab a click opened, or nil if it opened none.
+// Playwright's popup helpers report a missing popup as an error, and a
+// control that navigates in place is an ordinary outcome here rather than a
+// failure, so this polls instead.
+func waitForNewPage(browserContext playwright.BrowserContext, before int) playwright.Page {
+	deadline := time.Now().Add(newPageTimeout * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if pages := browserContext.Pages(); len(pages) > before {
+			return pages[len(pages)-1]
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return nil
+}
+
+// minIdentifierLabelLength is where a label stops being a word and starts
+// being an id. Short all-hex strings are ordinary English ("fee", "added",
+// "cab"); long ones are machine names that leaked through the label chain.
+const minIdentifierLabelLength = 12
+
+// isReadableLabel reports whether a label is something a person could
+// answer, as opposed to a machine name that reached the end of the
+// accessible-name chain.
+//
+// Ashby's radio groups have no <fieldset><legend> and UUID name attributes,
+// so the fallback produced questions labelled
+// "ce2a003d 1cd3 4cab 82ae 298b5f8df5f3 ..." — unanswerable by the user and
+// useless to the resolver. A field dropped here is not lost: the browser
+// window stays open on the form, which is where the human fills in anything
+// the worker left alone, exactly as it does for a question nothing could
+// resolve.
+func isReadableLabel(label string) bool {
+	trimmed := strings.TrimSpace(label)
+	if trimmed == "" {
+		return false
+	}
+	for _, token := range strings.Fields(trimmed) {
+		if containsNonHexLetter(token) {
+			return true
+		}
+	}
+	// Every token could be a fragment of hex. Length decides which it is.
+	return len(trimmed) < minIdentifierLabelLength
+}
+
+// containsNonHexLetter reports whether a token holds a letter that could not
+// appear in a hex id, which is the cheapest evidence that it is a word.
+func containsNonHexLetter(token string) bool {
+	for _, r := range strings.ToLower(token) {
+		if r >= 'g' && r <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
 // formLocator matches every candidate field on the current page.
 func (w *PlaywrightWorker) formLocator() playwright.Locator {
 	return w.page.Locator(formFieldSelector)
@@ -377,6 +544,9 @@ func (w *PlaywrightWorker) ExtractForm(_ context.Context) ([]ports.FormField, er
 			if label == "" {
 				label = humanizeName(f.Name)
 			}
+			if !isReadableLabel(label) {
+				continue
+			}
 			refBytes, _ := json.Marshal(indices)
 			fields = append(fields, ports.FormField{
 				Ref:      string(refBytes),
@@ -388,6 +558,9 @@ func (w *PlaywrightWorker) ExtractForm(_ context.Context) ([]ports.FormField, er
 			continue
 		}
 
+		if !isReadableLabel(f.Label) {
+			continue
+		}
 		fields = append(fields, ports.FormField{
 			Ref:      strconv.Itoa(f.index),
 			Label:    f.Label,

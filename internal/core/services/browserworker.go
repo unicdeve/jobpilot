@@ -94,19 +94,9 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 		return s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to open the job posting: %v", navErr))
 	}
 
-	if reason, blocked := worker.DetectBlocker(ctx); blocked {
-		s.recordEvent(ctx, run.ID, "detect_blocker", "browser", "blocked", "", reason, 0)
-		return s.blockRun(ctx, run, applicationID, reason)
-	}
-
-	start = time.Now()
-	fields, err := worker.ExtractForm(ctx)
-	s.recordEvent(ctx, run.ID, "extract_form", "browser", statusFor(err), "", fmt.Sprintf("%d fields found", len(fields)), time.Since(start))
+	fields, err := s.reachApplicationForm(ctx, worker, run, applicationID)
 	if err != nil {
-		return s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to read the application form: %v", err))
-	}
-	if len(fields) == 0 {
-		return s.blockRun(ctx, run, applicationID, "no recognizable application form fields were found on this page")
+		return err
 	}
 
 	for _, field := range fields {
@@ -127,6 +117,60 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 	}
 
 	return nil
+}
+
+// reachApplicationForm walks from the job posting to the page that actually
+// holds the application form, and refuses to go on if it does not find one
+// (ADR-0013).
+//
+// The posting is rarely the form. On both current boards the stored URL is
+// a listing page whose only input is the board's own newsletter box, and an
+// earlier version of this method extracted that box, filled it with the
+// candidate's email address and reported a prepared application. Arriving
+// somewhere is not the same as arriving at the form, so the fields decide.
+func (s *BrowserWorkerService) reachApplicationForm(
+	ctx context.Context,
+	worker ports.BrowserWorker,
+	run *domain.AgentRun,
+	applicationID string,
+) ([]ports.FormField, error) {
+	for hop := 0; ; hop++ {
+		if reason, blocked := worker.DetectBlocker(ctx); blocked {
+			s.recordEvent(ctx, run.ID, "detect_blocker", "browser", "blocked", "", reason, 0)
+			return nil, s.blockRun(ctx, run, applicationID, reason)
+		}
+
+		start := time.Now()
+		fields, err := worker.ExtractForm(ctx)
+		s.recordEvent(ctx, run.ID, "extract_form", "browser", statusFor(err), worker.CurrentURL(ctx), fmt.Sprintf("%d fields found", len(fields)), time.Since(start))
+		if err != nil {
+			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to read the application form: %v", err))
+		}
+		if LooksLikeApplicationForm(fields) {
+			return fields, nil
+		}
+
+		if hop >= maxApplyHops {
+			return nil, s.blockRun(ctx, run, applicationID,
+				"could not find the application form: the job posting and the pages it links to do not ask for any of the details an application needs")
+		}
+
+		start = time.Now()
+		controls, err := worker.FindApplyControls(ctx)
+		if err != nil {
+			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to read the page's links: %v", err))
+		}
+		control := PickApplyControl(controls)
+		if control == nil {
+			return nil, s.blockRun(ctx, run, applicationID,
+				"could not find a way to the application form on this page — no link or button on it looks like an apply control")
+		}
+		s.recordEvent(ctx, run.ID, "follow_apply", "browser", "ok", control.Text, control.URL, time.Since(start))
+
+		if err := worker.FollowControl(ctx, control.Ref); err != nil {
+			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to follow %q: %v", control.Text, err))
+		}
+	}
 }
 
 // prepareField turns one extracted form field into an ApplicationQuestion,

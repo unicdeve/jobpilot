@@ -295,3 +295,102 @@ func TestPlaywrightWorker_DetectBlocker(t *testing.T) {
 		})
 	}
 }
+
+// TestPlaywrightWorker_FollowsApplyControlAcrossPages is the browser half of
+// ADR-0013: the posting is rarely the form, so the worker has to be able to
+// see a page's controls and click one. Which one is core's decision
+// (services.PickApplyControl); this covers reporting and clicking.
+func TestPlaywrightWorker_FollowsApplyControlAcrossPages(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/jobs/1", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><body>
+			<a href="/jobs/berlin">Jobs in Berlin</a>
+			<a href="/jobs/1/apply">Apply Now</a>
+			<a href="/hidden" style="display:none">Apply hidden</a>
+			<form><input type="email" placeholder="Enter your email"></form>
+		</body></html>`))
+	})
+	mux.HandleFunc("/jobs/1/apply", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><body><h1>Application</h1>
+			<label for="n">Full name</label><input id="n">
+		</body></html>`))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	worker := newTestWorker(t)
+	ctx := context.Background()
+	require.NoError(t, worker.Navigate(ctx, server.URL+"/jobs/1"))
+
+	controls, err := worker.FindApplyControls(ctx)
+	require.NoError(t, err)
+
+	byText := map[string]ports.ApplyControl{}
+	for _, c := range controls {
+		byText[c.Text] = c
+	}
+	apply, ok := byText["Apply Now"]
+	require.True(t, ok, "the apply link must be reported, got %+v", controls)
+	assert.Equal(t, server.URL+"/jobs/1/apply", apply.URL, "a relative href must arrive resolved, so core can see a hand-off to another origin")
+	assert.Contains(t, byText, "Jobs in Berlin", "filtering is core's job, so unrelated links are reported too")
+	assert.NotContains(t, byText, "Apply hidden", "a control nobody can see is not a way in")
+
+	require.NoError(t, worker.FollowControl(ctx, apply.Ref))
+	assert.Equal(t, server.URL+"/jobs/1/apply", worker.CurrentURL(ctx))
+
+	fields, err := worker.ExtractForm(ctx)
+	require.NoError(t, err)
+	require.Len(t, fields, 1)
+	assert.Equal(t, "Full name", fields[0].Label, "the page it landed on is the one it now reads")
+}
+
+// TestPlaywrightWorker_FollowsApplyControlIntoANewTab is the regression test
+// for a run that clicked "Apply" twice and then reported that it could not
+// find the form. Both current boards send applicants off with
+// target="_blank", so the click opens a tab and leaves the worker's own page
+// sitting on the posting: it reads the listing again, decides it still is
+// not a form, and clicks again until it runs out of hops.
+func TestPlaywrightWorker_FollowsApplyControlIntoANewTab(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/posting", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><body>
+			<a href="/form" target="_blank" rel="noopener">Apply Now</a>
+			<form><input type="email" placeholder="Enter your email"></form>
+		</body></html>`))
+	})
+	mux.HandleFunc("/form", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><body>
+			<label for="n">Full name</label><input id="n">
+			<label for="e">Email</label><input id="e">
+			<label for="p">Phone</label><input id="p">
+		</body></html>`))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	worker := newTestWorker(t)
+	ctx := context.Background()
+	require.NoError(t, worker.Navigate(ctx, server.URL+"/posting"))
+
+	controls, err := worker.FindApplyControls(ctx)
+	require.NoError(t, err)
+	var applyRef string
+	for _, c := range controls {
+		if c.Text == "Apply Now" {
+			applyRef = c.Ref
+		}
+	}
+	require.NotEmpty(t, applyRef)
+
+	require.NoError(t, worker.FollowControl(ctx, applyRef))
+
+	assert.Equal(t, server.URL+"/form", worker.CurrentURL(ctx), "the run must continue in the tab the click opened")
+
+	fields, err := worker.ExtractForm(ctx)
+	require.NoError(t, err)
+	assert.Len(t, fields, 3, "and must read the form there, not the posting it came from")
+}
