@@ -1,0 +1,62 @@
+{
+  "source": "https://jobs.ashbyhq.com/lemlist/a2a219b4-85de-47bc-8cbe-6f551f66e65c/application",
+  "is_application_form": true,
+  "fields": [
+    {
+      "label": "Name",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "Email",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "Current company",
+      "kind": "text"
+    },
+    {
+      "label": "Current location",
+      "kind": "text"
+    },
+    {
+      "label": "Phone",
+      "kind": "text"
+    },
+    {
+      "label": "Additional information",
+      "kind": "textarea"
+    },
+    {
+      "label": "LinkedIn",
+      "kind": "text"
+    },
+    {
+      "label": "Twitter",
+      "kind": "text"
+    },
+    {
+      "label": "GitHub",
+      "kind": "text"
+    },
+    {
+      "label": "Portfolio",
+      "kind": "text"
+    },
+    {
+      "label": "Where are you based?",
+      "kind": "text"
+    },
+    {
+      "label": "What are your salary expectations annually ?",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "When are you available",
+      "kind": "textarea",
+      "required": true
+    }
+  ]
+}

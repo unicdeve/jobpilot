@@ -1,0 +1,90 @@
+{
+  "source": "https://jobs.lever.co/matchgroup/1deea0b0-c0c9-4541-972e-2a437b64b023/apply",
+  "is_application_form": true,
+  "fields": [
+    {
+      "label": "Full name",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "He/him",
+      "kind": "checkbox"
+    },
+    {
+      "label": "She/her",
+      "kind": "checkbox"
+    },
+    {
+      "label": "They/them",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Xe/xem",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Ze/hir",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Ey/em",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Hir/hir",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Fae/faer",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Hu/hu",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Use name only",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Custom",
+      "kind": "checkbox"
+    },
+    {
+      "label": "Email",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "Phone",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "Current location",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "label": "Current company",
+      "kind": "text"
+    },
+    {
+      "label": "LinkedIn URL",
+      "kind": "text"
+    },
+    {
+      "label": "GitHub URL",
+      "kind": "text"
+    },
+    {
+      "label": "Portfolio URL",
+      "kind": "text"
+    },
+    {
+      "label": "Other website",
+      "kind": "text"
+    }
+  ]
+}

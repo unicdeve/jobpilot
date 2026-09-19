@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -398,6 +399,9 @@ func isReadableLabel(label string) bool {
 	if trimmed == "" {
 		return false
 	}
+	if machineIDPattern.MatchString(trimmed) {
+		return false
+	}
 	for _, token := range strings.Fields(trimmed) {
 		if containsNonHexLetter(token) {
 			return true
@@ -406,6 +410,33 @@ func isReadableLabel(label string) bool {
 	// Every token could be a fragment of hex. Length decides which it is.
 	return len(trimmed) < minIdentifierLabelLength
 }
+
+// requiredMarkerSuffix matches the asterisk a form puts at the end of a
+// label to mean "required". It is already carried on FormField.Required, so
+// leaving it in the text only shows the user a question with punctuation
+// they cannot answer — "First Name*", "Phone ✱".
+var requiredMarkerSuffix = regexp.MustCompile(`[\s*✱＊†]+$`)
+
+// cleanLabel is the question as a person would read it.
+func cleanLabel(label string) string {
+	return requiredMarkerSuffix.ReplaceAllString(strings.TrimSpace(label), "")
+}
+
+// machineIDPattern matches a UUID however the surrounding markup spells it:
+// hyphenated, spaced, or run together. A question a person can answer never
+// carries one, so a label holding one is a name attribute that reached the
+// end of the accessible-name chain — and the real words around it are the
+// markup's, not the employer's.
+//
+// Measured on the two forms this matters on:
+//
+//	Ashby   "ce2a003d 1cd3 4cab 82ae 298b5f8df5f3"   (a humanized name)
+//	Lever   "cards[e27c9c9a-4ad6-4889-b355-8862299c8274][field0]"
+//
+// The second is why a label being entirely an identifier is not the test:
+// Lever's reads as words to anything looking token by token.
+var machineIDPattern = regexp.MustCompile(
+	`(?i)[0-9a-f]{8}[- ]?[0-9a-f]{4}[- ]?[0-9a-f]{4}[- ]?[0-9a-f]{4}[- ]?[0-9a-f]{12}`)
 
 // containsNonHexLetter reports whether a token holds a letter that could not
 // appear in a hex id, which is the cheapest evidence that it is a word.
@@ -440,6 +471,11 @@ type extractedField struct {
 // attribute as a last resort) rather than reinventing it, plus its
 // enclosing <fieldset><legend> text for grouping radio buttons.
 const extractFieldScript = `(el) => {
+	// What a person can see, not what the markup holds: a Lever label wraps
+	// its field along with the hidden "No location found" and "Loading"
+	// text of an autocomplete that is not open, and textContent hands all
+	// of it back as part of the question.
+	const shown = (node) => (node.innerText || node.textContent || '').trim();
 	const tag = el.tagName.toLowerCase();
 	const type = (el.getAttribute('type') || '').toLowerCase();
 	const name = el.getAttribute('name') || '';
@@ -447,11 +483,11 @@ const extractFieldScript = `(el) => {
 	if (el.id) {
 		const esc = (window.CSS && CSS.escape) ? CSS.escape(el.id) : el.id;
 		const l = document.querySelector('label[for="' + esc + '"]');
-		if (l) label = l.textContent.trim();
+		if (l) label = shown(l);
 	}
 	if (!label) {
 		const wrapping = el.closest('label');
-		if (wrapping) label = wrapping.textContent.trim();
+		if (wrapping) label = shown(wrapping);
 	}
 	if (!label) label = el.getAttribute('aria-label') || '';
 	if (!label) label = el.getAttribute('placeholder') || '';
@@ -465,7 +501,7 @@ const extractFieldScript = `(el) => {
 	const fieldset = el.closest('fieldset');
 	if (fieldset) {
 		const legend = fieldset.querySelector('legend');
-		if (legend) groupLabel = legend.textContent.trim();
+		if (legend) groupLabel = shown(legend);
 	}
 	return { tag, type, name, label, required, options, groupLabel };
 }`
@@ -536,11 +572,11 @@ func (w *PlaywrightWorker) ExtractForm(_ context.Context) ([]ports.FormField, er
 			for _, g := range raw {
 				if g.Tag == "input" && g.Type == "radio" && g.Name == f.Name {
 					indices = append(indices, g.index)
-					options = append(options, g.Label)
+					options = append(options, cleanLabel(g.Label))
 				}
 			}
 
-			label := f.GroupLabel
+			label := cleanLabel(f.GroupLabel)
 			if label == "" {
 				label = humanizeName(f.Name)
 			}
@@ -558,12 +594,13 @@ func (w *PlaywrightWorker) ExtractForm(_ context.Context) ([]ports.FormField, er
 			continue
 		}
 
-		if !isReadableLabel(f.Label) {
+		label := cleanLabel(f.Label)
+		if !isReadableLabel(label) {
 			continue
 		}
 		fields = append(fields, ports.FormField{
 			Ref:      strconv.Itoa(f.index),
-			Label:    f.Label,
+			Label:    label,
 			Kind:     kindOf(f.extractedField),
 			Required: f.Required,
 			Options:  f.Options,
