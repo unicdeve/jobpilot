@@ -615,7 +615,7 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Answers:     answerSvc,
 		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, newFakeAgentRunRepository(), newFakeAgentEventRepository(), answerSvc, func() (ports.BrowserWorker, error) {
 			return &fakeBrowserWorker{}, nil
-		}),
+		}, nil),
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))

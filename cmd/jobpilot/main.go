@@ -174,7 +174,8 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	applicationSvc := services.NewApplicationService(appRepo)
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
-	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker)
+	applyChooser := services.NewApplyControlChooser(llmProv)
+	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
 
 	return httpapi.Services{
 		Candidates:  candRepo,

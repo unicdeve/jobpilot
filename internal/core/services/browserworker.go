@@ -28,6 +28,10 @@ type BrowserWorkerService struct {
 	eventRepo ports.AgentEventRepository
 	answers   *AnswerService
 	newWorker ports.BrowserWorkerFactory
+	// applyChooser is consulted only when the deterministic rules find no
+	// way to the application form. It may be nil, which simply means there
+	// is no fallback and such a page stops the run.
+	applyChooser *ApplyControlChooser
 }
 
 // NewBrowserWorkerService constructs a BrowserWorkerService with its
@@ -42,14 +46,16 @@ func NewBrowserWorkerService(
 	eventRepo ports.AgentEventRepository,
 	answers *AnswerService,
 	newWorker ports.BrowserWorkerFactory,
+	applyChooser *ApplyControlChooser,
 ) *BrowserWorkerService {
 	return &BrowserWorkerService{
-		appSvc:    appSvc,
-		jobRepo:   jobRepo,
-		runRepo:   runRepo,
-		eventRepo: eventRepo,
-		answers:   answers,
-		newWorker: newWorker,
+		appSvc:       appSvc,
+		jobRepo:      jobRepo,
+		runRepo:      runRepo,
+		eventRepo:    eventRepo,
+		answers:      answers,
+		newWorker:    newWorker,
+		applyChooser: applyChooser,
 	}
 }
 
@@ -160,16 +166,70 @@ func (s *BrowserWorkerService) reachApplicationForm(
 		if err != nil {
 			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to read the page's links: %v", err))
 		}
-		control := PickApplyControl(controls)
+
+		control, chosenBy := s.chooseApplyControl(ctx, run, controls)
 		if control == nil {
 			return nil, s.blockRun(ctx, run, applicationID,
 				"could not find a way to the application form on this page — no link or button on it looks like an apply control")
 		}
-		s.recordEvent(ctx, run.ID, "follow_apply", "browser", "ok", control.Text, control.URL, time.Since(start))
+		s.recordEvent(ctx, run.ID, "follow_apply", "browser", "ok",
+			control.Text, hopSummary(worker.CurrentURL(ctx), *control, chosenBy), time.Since(start))
 
 		if err := worker.FollowControl(ctx, control.Ref); err != nil {
 			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to follow %q: %v", control.Text, err))
 		}
+	}
+}
+
+// chooseApplyControl decides which control to follow, and reports how the
+// decision was reached so the trail can say whether a model was involved
+// (ADR-0013 §2).
+//
+// The deterministic rules go first and answer for every board measured so
+// far. Only when they find nothing is the model asked, and then only to
+// pick one of the controls they just considered — it cannot name a
+// destination of its own. A model that is missing, unreachable or
+// incoherent is not an error worth stopping over: it leaves the run in
+// exactly the state it would have been in without a fallback at all.
+func (s *BrowserWorkerService) chooseApplyControl(
+	ctx context.Context,
+	run *domain.AgentRun,
+	controls []ports.ApplyControl,
+) (*ports.ApplyControl, string) {
+	if control := PickApplyControl(controls); control != nil {
+		return control, "heuristics"
+	}
+	if s.applyChooser == nil {
+		return nil, ""
+	}
+
+	start := time.Now()
+	control, err := s.applyChooser.Choose(ctx, controls)
+	switch {
+	case err != nil:
+		s.recordEvent(ctx, run.ID, "choose_apply", "llm", "error", "no control matched the apply rules", err.Error(), time.Since(start))
+		return nil, ""
+	case control == nil:
+		s.recordEvent(ctx, run.ID, "choose_apply", "llm", "ok", "no control matched the apply rules", "the model abstained", time.Since(start))
+		return nil, ""
+	default:
+		s.recordEvent(ctx, run.ID, "choose_apply", "llm", "ok", "no control matched the apply rules", control.Text, time.Since(start))
+		return control, "the model"
+	}
+}
+
+// hopSummary records where a hop went and how it was decided, so the
+// activity trail answers "why did it go there" and "was a model involved"
+// after the fact (ADR-0013 §2), including when the hop left the origin —
+// which is normal, since the employer's ATS is usually the point.
+func hopSummary(fromURL string, control ports.ApplyControl, chosenBy string) string {
+	switch {
+	case control.URL == "":
+		return fmt.Sprintf("no destination, followed by click (chosen by %s)", chosenBy)
+	case hostOf(control.URL) != hostOf(fromURL):
+		return fmt.Sprintf("%s (chosen by %s, cross-origin)", control.URL, chosenBy)
+	default:
+		return fmt.Sprintf("%s (chosen by %s)", control.URL, chosenBy)
 	}
 }
 

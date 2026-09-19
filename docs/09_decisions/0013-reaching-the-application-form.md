@@ -2,8 +2,12 @@
 
 ## Status
 
-Accepted.
+Accepted, and implemented in full.
 The user chose option C: heuristics decide where to go, and the LLM is consulted only when they find nothing.
+
+One detail of part 3 below was changed by what the real pages turned out to look like, and the code follows the pages.
+The file-input arm of the gate is not implemented: a resume upload is an `<input type=file>`, which the worker deliberately skips because it cannot be filled from a text answer, so it never reaches the gate to count.
+The three-distinct-fields arm decides alone, and all three recorded ATS forms clear it comfortably.
 
 ## Context
 

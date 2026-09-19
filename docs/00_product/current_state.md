@@ -275,9 +275,11 @@ Phase 8 (autopilot policy engine) has not started.
   it can't conflict with it and never needs their real passwords; the user
   logs into any job board once inside this profile). `application prepare-
   in-browser <id>` / the desktop's "Prepare in browser" button navigates to
-  the job posting, extracts the form (label association follows the same
+  the job posting, walks from there to the page that actually holds the
+  application form, extracts it (label association follows the same
   chain browsers use: `<label for>` → wrapping `<label>` → `aria-label` →
-  `placeholder` → name, with radio buttons sharing a name grouped into one
+  `placeholder` → name, reading what is rendered rather than what the markup
+  holds, with radio buttons sharing a name grouped into one
   question), turns each field into an `ApplicationQuestion` via
   `AnswerService.AddExtractedQuestion` (unchanged resolver chain reused as-
   is), and fills in whatever resolved — leaving `needs_user_input` fields
@@ -291,6 +293,13 @@ Phase 8 (autopilot policy engine) has not started.
   explicit-approval requirement here; see the "Submission boundary" section
   added to `03_browser_worker.md`. One Chrome, one tab per task (`browser.ChromeSession`): Chrome permits a single instance per profile directory and every task leaves its window open on purpose, so the original worker-per-run launched a second Chrome against a profile the first run had locked and failed for every run after the first.
   Chrome is launched lazily on first use, relaunched if the user closes it, and a task closing its own tab leaves every other task's tab alone.
+  The route from posting to form is ADR-0013, now complete.
+  `services.PickApplyControl` ranks the page's own links and buttons — ATS destination, then URL path, then wording — and on every board measured so far it answers with no model involved.
+  When it ranks nothing, `services.ApplyControlChooser` shows the model those same controls as untrusted content and asks for a position in the list or an abstention; it returns an index, never a URL, so the browser can only be sent where the page already pointed, and a missing, unreachable or incoherent model leaves the run exactly where it would have been without a fallback.
+  Whoever chose, `services.LooksLikeApplicationForm` decides what was reached: a page counts only if it asks about a person in at least three distinct ways.
+  That gate was not there before, and the absence had teeth — observed live on an Arbeitnow posting, the one field on the listing page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
+  Every hop is recorded in the run trail with its destination, whether a model chose it, and whether it left the origin.
+  Recorded copies of six real pages — Ashby, Greenhouse and Lever application forms, and Arbeitnow, Remotive and Ashby postings as the negatives — run the whole decision offline in `internal/adapters/secondary/browser/testdata/ats`, with what was extracted from each checked in beside it.
   `AgentRun`/`AgentEvent`
   (`internal/core/domain/agent_run.go`) get their first real implementation
   here (schema existed since migration 00001, unused until now), each run
@@ -340,14 +349,12 @@ Phase 8 (autopilot policy engine) has not started.
   no structured salary type, so a form's salary field becomes an ordinary
   text question resolved (or not) like any other, rather than something
   purpose-built for numeric/range salary inputs.
-- The browser worker's route to the application form is deterministic only (ADR-0013, partially implemented).
-  `PrepareApplication` now walks from the posting to the form: it asks whether the current page is an application form, and if not follows the control most likely to lead to one, up to two hops.
-  Which control is decided in core (`services.PickApplyControl`) by ATS destination, then URL path, then wording, so the rule is testable without a browser.
-  The LLM fallback the ADR specifies — consulted only when those heuristics find nothing, and choosing among controls already on the page — is **not built yet**, so a board whose apply control reads unlike any known wording still stops with "no link or button on it looks like an apply control".
-  `services.LooksLikeApplicationForm` is the gate: a page counts only if it asks about a person in at least three distinct ways, which is what stands between the user's details and a stranger's form.
-  It was not there before, and the absence had teeth — observed live on an Arbeitnow posting, the one field on the listing page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
 - There is no vision or agentic page understanding in the browser worker.
-  Field discovery is DOM heuristics only (the accessible-name chain, plus fieldset grouping); the LLM is used to answer narrative questions and, separately, to extract job details during custom-URL import, but nothing decides what to click or where to go next.
+  Field discovery is DOM heuristics only: the accessible-name chain, fieldset grouping, and a readability filter that drops a question whose only label is a machine identifier.
+  The model's single job in the browser loop is choosing an apply control when nothing else can (below); it never decides what a field means.
+- Some real questions are dropped rather than asked.
+  A field whose label is a UUID — Lever's custom cards, Ashby's ungrouped radios — is skipped as unanswerable, and the count of skipped fields is not reported anywhere.
+  The user is not told, beyond the browser window being left open on a form with blanks in it.
 - The browser worker requires the user to log into any job board once
   inside its dedicated, JobPilot-owned Chrome profile (never their real
   daily-driver profile) before "prepare in browser" can get past an
@@ -356,8 +363,6 @@ Phase 8 (autopilot policy engine) has not started.
 
 ## Next
 
-1. Finish ADR-0013: the LLM fallback for finding an apply control when the deterministic rules find none, and fixtures captured from real ATS pages (Ashby, Greenhouse, Lever) as positive cases with the two boards' listing pages as negatives.
-   The deterministic route and the application-form gate are in; the fallback is not.
-2. Phase 8 (autopilot policy engine), the last unstarted roadmap phase.
+1. Phase 8 (autopilot policy engine), the last unstarted roadmap phase.
    Before it, entity normalization (below) deserves an ADR and a decision: a policy engine that decides whether to submit on the user's behalf should not have to reason over JSON-blob candidate data.
-3. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).
+2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).

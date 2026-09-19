@@ -109,6 +109,9 @@ func PickApplyControl(controls []ports.ApplyControl) *ports.ApplyControl {
 	best := -1
 	bestScore := 0
 	for i, control := range controls {
+		if !isFollowableControl(control) {
+			continue
+		}
 		if score := scoreApplyControl(control); score > bestScore {
 			best, bestScore = i, score
 		}
@@ -117,6 +120,36 @@ func PickApplyControl(controls []ports.ApplyControl) *ports.ApplyControl {
 		return nil
 	}
 	return &controls[best]
+}
+
+// isFollowableControl is the deterministic check every destination passes
+// before the browser is sent to it, whichever half of ADR-0013 chose it.
+//
+// A control with no destination is followable: plenty of apply buttons
+// navigate by script, and Remotive's does — following one is a click, and
+// the click is the point. A javascript: href is the same thing written
+// differently. Every other scheme is not a way into a form: mailto: and
+// tel: leave the browser entirely, and data:, blob: and file: are a page
+// proposing its own content as a destination.
+func isFollowableControl(control ports.ApplyControl) bool {
+	target := strings.TrimSpace(strings.ToLower(control.URL))
+	if target == "" || strings.HasPrefix(target, "javascript:") {
+		return true
+	}
+	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
+}
+
+// followableControls keeps the order and drops what we would refuse to
+// follow, so the model in the fallback is offered exactly the controls the
+// deterministic rule considered.
+func followableControls(controls []ports.ApplyControl) []ports.ApplyControl {
+	kept := make([]ports.ApplyControl, 0, len(controls))
+	for _, control := range controls {
+		if isFollowableControl(control) {
+			kept = append(kept, control)
+		}
+	}
+	return kept
 }
 
 func scoreApplyControl(control ports.ApplyControl) int {
