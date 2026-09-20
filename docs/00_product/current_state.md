@@ -7,7 +7,7 @@ implemented — foundation, candidate profile, job discovery, matching,
 application generation, a desktop app, and a browser automation worker —
 with explicit gaps noted below.
 Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
-Phase 8 (autopilot policy engine) has not started.
+Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Autopilot by ADR-0014.
 
 ## Implemented
 
@@ -22,7 +22,7 @@ Phase 8 (autopilot policy engine) has not started.
 - Tauri + React desktop direction agreed
 - Go Playwright direction agreed
 - Go MarkItDown direction agreed
-- Assist/Review/Autopilot modes agreed
+- Assist/Review modes agreed; Autopilot removed by ADR-0014, with unattended work moved to a Scout
 - Review is default
 - Cross-platform target agreed
 
@@ -333,10 +333,9 @@ Phase 8 (autopilot policy engine) has not started.
   computed years of experience isn't derivable because `Candidate.Experiences`
   is an unstructured text blob, not structured dates (the same normalization
   gap noted above).
-- No policy engine (Phase 8) integration — state transitions, including
-  ones the browser worker makes, are user/CLI/desktop-driven, not
-  autopilot-evaluated; `ApplicationMode` "autopilot" exists as a value but
-  nothing branches on it yet.
+- No Scouts and no eligibility rules (Phase 8).
+  Every state transition, including the ones the browser worker makes, is driven by the user through the CLI or the desktop; nothing runs unattended.
+  `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
 - The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
   It now asks whether a challenge is being posed rather than whether a vendor's script is present: a CAPTCHA iframe blocks only when it is visible and tall enough to cover the form, and the interstitial phrases are matched against rendered text rather than page source.
   Both of those were false positives with teeth. Real ATS forms carry an invisible reCAPTCHA (measured on Ashby: 256x60, `visibility: hidden`) while being entirely fillable, and the words appear in the scripts of pages that work perfectly well, so the previous "any frame URL containing recaptcha" rule would have failed every application the worker could reach.
@@ -363,6 +362,6 @@ Phase 8 (autopilot policy engine) has not started.
 
 ## Next
 
-1. Phase 8 (autopilot policy engine), the last unstarted roadmap phase.
-   Before it, entity normalization (below) deserves an ADR and a decision: a policy engine that decides whether to submit on the user's behalf should not have to reason over JSON-blob candidate data.
+1. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
+   Before it, entity normalization (below) deserves an ADR and a decision: the work-authorization, notice-period and years-of-experience questions real forms ask should be answerable from structured data rather than by pattern-matching a text blob.
 2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).

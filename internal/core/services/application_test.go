@@ -27,6 +27,22 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 		assert.NotEmpty(t, app.ID)
 	})
 
+	t.Run("a mode JobPilot does not have is refused rather than stored", func(t *testing.T) {
+		t.Parallel()
+		repo := newFakeApplicationRepository()
+		svc := NewApplicationService(repo)
+
+		// The column is free TEXT, so without this check any string a
+		// caller sent became a mode — and "autopilot", removed in
+		// ADR-0014, could come back through the CLI flag alone.
+		for _, mode := range []domain.ApplicationMode{"autopilot", "reveiw", "ASSIST"} {
+			_, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", mode)
+
+			assert.ErrorContains(t, err, "unknown application mode", "mode %q", mode)
+		}
+		assert.Empty(t, repo.applications, "nothing should have been written")
+	})
+
 	t.Run("save error propagates", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()

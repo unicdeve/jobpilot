@@ -47,16 +47,19 @@ Agent identifies application
 → user reviews
 → user submits
 
-## Autopilot post-MVP
+## Scout post-MVP
 
-Agent discovers
+User configures a scout against a saved search
+→ scout runs
+→ agent obtains jobs (stored locally, or fetched from sources)
 → matches
-→ policy engine evaluates
-→ prepares application
-→ policy permits submission
-→ agent submits
-→ result is persisted
-→ user is notified
+→ eligibility rules evaluate each match
+→ agent creates an application for each job that clears them
+→ run is recorded
+→ user reviews the shortlist
+
+The scout stops there. Preparing and submitting stay in the Review flow
+above, driven by the user.
 
 ## Offline
 

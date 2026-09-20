@@ -40,8 +40,8 @@ var allowedTransitions = map[domain.ApplicationState][]domain.ApplicationState{
 // every state there is, without keeping a second copy of the rule table
 // that could disagree with this one. The result is derived from the
 // application's state rather than from the state value alone so that
-// per-application rules — an autopilot policy, say — have somewhere to live
-// later without changing the shape callers depend on.
+// per-application rules have somewhere to live later without changing the
+// shape callers depend on.
 func AllowedTransitions(application *domain.Application) []domain.ApplicationState {
 	allowed := allowedTransitions[application.State]
 	return slices.Clone(allowed)
@@ -65,6 +65,9 @@ func NewApplicationService(repo ports.ApplicationRepository) *ApplicationService
 func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
 	if mode == "" {
 		mode = domain.ApplicationModeReview
+	}
+	if !mode.IsValid() {
+		return nil, fmt.Errorf("unknown application mode %q", mode)
 	}
 
 	application := &domain.Application{

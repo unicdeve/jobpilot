@@ -139,7 +139,7 @@ export interface SaveLLMSettingsResult {
   connectivity_error?: string;
 }
 
-export type ApplicationMode = "assist" | "review" | "autopilot";
+export type ApplicationMode = "assist" | "review";
 
 export type ApplicationState =
   | "DISCOVERED"

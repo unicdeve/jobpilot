@@ -76,12 +76,13 @@
 - Browser handoff
 - Submission tracking
 
-## Phase 8 - Autopilot
+## Phase 8 - Scouts
 
-- Policy engine
-- Policy evaluation
-- Eligibility rules
-- Submission safeguards
+- Scout configuration over a saved search
+- Scout runs: obtain, match, create applications for review
+- Eligibility rules (match score, blocked companies, salary floor, per-run ceiling)
+- Rule evaluation, deterministic and in core
+- Run history in the agent trail
 - Notifications
 
 ## Phase 9 - Extensibility

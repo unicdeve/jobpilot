@@ -17,7 +17,7 @@
 
 - Browser automation
 - Review workflow
-- Autopilot
+- Scouts
 - Notifications
 - Agent trace viewer
 - Connectors

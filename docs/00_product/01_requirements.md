@@ -70,7 +70,7 @@ Previously stored jobs, analyses, generated content, and history remain accessib
 
 - Browser automation for application forms.
 - Review workflow with browser form filling.
-- Autopilot mode.
+- Scouts: unattended discovery and matching that prepares applications for review.
 - More job source connectors.
 - Authenticated website sessions.
 - Connector SDK.

@@ -69,7 +69,7 @@ Review is the default mode.
 Review mode cannot submit without explicit user approval.
 
 ### AC-G-019
-Autopilot cannot bypass policy restrictions.
+JobPilot never submits an application to an external system, in any mode, under any configuration.
 
 ### AC-G-020
 Unknown factual application questions are not guessed.

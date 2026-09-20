@@ -28,7 +28,6 @@ import type { ApplicationMode, JobMatch } from "../lib/types";
 const MODE_LABELS: Record<ApplicationMode, string> = {
   assist: "Assist",
   review: "Review",
-  autopilot: "Autopilot",
 };
 
 /// JobDetail is the hub the rest of the app navigates through: everything

@@ -22,16 +22,32 @@ const (
 	ApplicationStateFailed         ApplicationState = "FAILED"
 )
 
-// ApplicationMode is which of the three application modes (ADR-0007)
-// governs an Application. Review is the default.
+// ApplicationMode is how much of an application JobPilot does for the user
+// (ADR-0014). Review is the default.
+//
+// There were three of these. Autopilot was the third, and it was the wrong
+// shape: "watch my saved searches and bring me things worth applying to" is
+// a standing instruction that produces applications, not a property of one
+// of them. That capability moved out to a Scout, and nothing in JobPilot
+// submits to an employer any more — see
+// docs/09_decisions/0014-scouts-and-no-unattended-submission.md.
 type ApplicationMode string
 
-// Application modes, per ADR-0007. Review is the default.
+// Application modes, per ADR-0014. Review is the default.
 const (
-	ApplicationModeAssist    ApplicationMode = "assist"
-	ApplicationModeReview    ApplicationMode = "review"
-	ApplicationModeAutopilot ApplicationMode = "autopilot"
+	ApplicationModeAssist ApplicationMode = "assist"
+	ApplicationModeReview ApplicationMode = "review"
 )
+
+// IsValid reports whether a mode is one JobPilot actually has.
+//
+// The column behind this is free TEXT with no constraint, so without a
+// check at the boundary any string a caller sent became a mode: a typo
+// would have created a fourth one silently, and "autopilot" could come
+// back by accident after ADR-0014 removed it.
+func (m ApplicationMode) IsValid() bool {
+	return m == ApplicationModeAssist || m == ApplicationModeReview
+}
 
 // Application tracks a candidate's progress applying to a specific job,
 // distinct from the Job itself.

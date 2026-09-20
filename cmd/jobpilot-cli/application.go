@@ -52,7 +52,7 @@ func newApplicationCreateCmd(client *httpapi.Client) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&resumeID, "resume", "", "resume ID to associate with this application")
-	cmd.Flags().StringVar(&mode, "mode", string(domain.ApplicationModeReview), "application mode (assist|review|autopilot)")
+	cmd.Flags().StringVar(&mode, "mode", string(domain.ApplicationModeReview), "application mode (assist|review)")
 	return cmd
 }
 
