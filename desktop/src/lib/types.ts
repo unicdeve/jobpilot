@@ -3,22 +3,66 @@
 // layer, so the wire format here is identical to what
 // internal/adapters/primary/httpapi already serves and tests.
 
+// A fact a form asks for separately is stored separately (ADR-0015):
+// email and phone were one `contact` string until a real form's phone field
+// was filled with an email address, and links were one string until
+// LinkedIn, Portfolio and Website each received all of them.
+export type LinkKind =
+  | "linkedin"
+  | "github"
+  | "portfolio"
+  | "website"
+  | "twitter"
+  | "other";
+
+export const LINK_KINDS: LinkKind[] = [
+  "linkedin",
+  "github",
+  "portfolio",
+  "website",
+  "twitter",
+  "other",
+];
+
+export interface CandidateLink {
+  id: string;
+  candidate_id: string;
+  kind: LinkKind;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkAuthorization {
+  id: string;
+  candidate_id: string;
+  country: string;
+  is_authorized: boolean;
+  requires_sponsorship: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Candidate {
   id: string;
   first_name: string;
   last_name: string;
-  contact: string;
-  location: string;
+  email: string;
+  phone: string;
+  location_city: string;
+  location_region: string;
+  location_country: string;
+  notice_period_days?: number | null;
+  earliest_start_date?: string | null;
   summary: string;
   work_preferences: string;
-  salary_preferences: string;
-  work_authorization: string;
   application_preferences: string;
   skills: string;
   experiences: string;
   education: string;
   certifications: string;
-  links: string;
+  links: CandidateLink[] | null;
+  work_authorizations: WorkAuthorization[] | null;
   created_at: string;
   updated_at: string;
 }

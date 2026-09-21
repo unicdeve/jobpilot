@@ -25,26 +25,41 @@ import {
   useUpdateProfile,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Candidate, LLMHealth, ProfileDraft } from "../lib/types";
+import { LINK_KINDS } from "../lib/types";
+import type { Candidate, CandidateLink, LinkKind, LLMHealth, ProfileDraft, WorkAuthorization } from "../lib/types";
 
 const emptyProfile: Candidate = {
   id: "",
   first_name: "",
   last_name: "",
-  contact: "",
-  location: "",
+  email: "",
+  phone: "",
+  location_city: "",
+  location_region: "",
+  location_country: "",
+  notice_period_days: null,
+  earliest_start_date: null,
   summary: "",
   work_preferences: "",
-  salary_preferences: "",
-  work_authorization: "",
   application_preferences: "",
   skills: "",
   experiences: "",
   education: "",
   certifications: "",
-  links: "",
+  links: [],
+  work_authorizations: [],
   created_at: "",
   updated_at: "",
+};
+
+// LINK_LABELS names each kind the way the forms that ask for it do.
+const LINK_LABELS: Record<LinkKind, string> = {
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  portfolio: "Portfolio",
+  website: "Website",
+  twitter: "Twitter",
+  other: "Other",
 };
 
 export function Profile() {
@@ -119,8 +134,8 @@ export function Profile() {
       ...current,
       first_name: pick(suggestion.first_name, current.first_name),
       last_name: pick(suggestion.last_name, current.last_name),
-      contact: pick(suggestion.contact, current.contact),
-      location: pick(suggestion.location, current.location),
+      email: pick(suggestion.contact, current.email),
+      location_city: pick(suggestion.location, current.location_city),
       summary: pick(suggestion.summary, current.summary),
       skills: pick(suggestion.skills.join(", "), current.skills),
     };
@@ -228,12 +243,35 @@ export function Profile() {
               onChange={(e) => set("last_name", e.target.value)}
             />
           </FormField>
-          <FormField label="Contact (email/phone)" htmlFor="contact">
-            <Input id="contact" value={profile.contact} onChange={(e) => set("contact", e.target.value)} />
+          <FormField label="Email" htmlFor="email">
+            <Input id="email" type="email" value={profile.email} onChange={(e) => set("email", e.target.value)} />
           </FormField>
-          <FormField label="Location" htmlFor="location">
-            <Input id="location" value={profile.location} onChange={(e) => set("location", e.target.value)} />
+          <FormField label="Phone" htmlFor="phone">
+            <Input id="phone" value={profile.phone} onChange={(e) => set("phone", e.target.value)} />
           </FormField>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FormField label="City" htmlFor="location_city">
+              <Input
+                id="location_city"
+                value={profile.location_city}
+                onChange={(e) => set("location_city", e.target.value)}
+              />
+            </FormField>
+            <FormField label="State / region" htmlFor="location_region">
+              <Input
+                id="location_region"
+                value={profile.location_region}
+                onChange={(e) => set("location_region", e.target.value)}
+              />
+            </FormField>
+            <FormField label="Country" htmlFor="location_country">
+              <Input
+                id="location_country"
+                value={profile.location_country}
+                onChange={(e) => set("location_country", e.target.value)}
+              />
+            </FormField>
+          </div>
           <FormField label="Summary" htmlFor="summary">
             <Textarea
               id="summary"
@@ -245,20 +283,37 @@ export function Profile() {
           <FormField label="Skills" htmlFor="skills">
             <Input id="skills" value={profile.skills} onChange={(e) => set("skills", e.target.value)} />
           </FormField>
-          <FormField label="Salary preferences" htmlFor="salary_preferences">
-            <Input
-              id="salary_preferences"
-              value={profile.salary_preferences}
-              onChange={(e) => set("salary_preferences", e.target.value)}
-            />
-          </FormField>
-          <FormField label="Work authorization" htmlFor="work_authorization">
-            <Input
-              id="work_authorization"
-              value={profile.work_authorization}
-              onChange={(e) => set("work_authorization", e.target.value)}
-            />
-          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Notice period (days)" htmlFor="notice_period_days">
+              <Input
+                id="notice_period_days"
+                type="number"
+                min={0}
+                value={profile.notice_period_days ?? ""}
+                onChange={(e) =>
+                  set("notice_period_days", e.target.value === "" ? null : Number(e.target.value))
+                }
+              />
+            </FormField>
+            <FormField label="Earliest start date" htmlFor="earliest_start_date">
+              <Input
+                id="earliest_start_date"
+                type="date"
+                value={profile.earliest_start_date?.slice(0, 10) ?? ""}
+                onChange={(e) => set("earliest_start_date", e.target.value || null)}
+              />
+            </FormField>
+          </div>
+
+          <LinksEditor
+            links={profile.links ?? []}
+            onChange={(links) => set("links", links)}
+          />
+
+          <WorkAuthorizationsEditor
+            authorizations={profile.work_authorizations ?? []}
+            onChange={(authorizations) => set("work_authorizations", authorizations)}
+          />
           <FormField label="Application preferences (tone/length for generated content)" htmlFor="application_preferences">
             <Textarea
               id="application_preferences"
@@ -273,5 +328,147 @@ export function Profile() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/// LinksEditor edits one link per kind, which is the shape a form asks for:
+/// a page with a LinkedIn field and a GitHub field wants a different URL in
+/// each (ADR-0015). Every kind is shown, so an empty GitHub box is visibly
+/// empty rather than silently missing.
+function LinksEditor({
+  links,
+  onChange,
+}: {
+  links: CandidateLink[];
+  onChange: (links: CandidateLink[]) => void;
+}) {
+  const urlFor = (kind: LinkKind) => links.find((link) => link.kind === kind)?.url ?? "";
+
+  const setURL = (kind: LinkKind, url: string) => {
+    const rest = links.filter((link) => link.kind !== kind);
+    if (!url.trim()) {
+      onChange(rest);
+      return;
+    }
+    const existing = links.find((link) => link.kind === kind);
+    onChange([...rest, { ...(existing ?? emptyLink(kind)), kind, url }]);
+  };
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">Links</h3>
+        <p className="text-xs text-slate-500">
+          Application forms ask for these one at a time, so each has its own box.
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {LINK_KINDS.map((kind) => (
+          <FormField key={kind} label={LINK_LABELS[kind]} htmlFor={`link-${kind}`}>
+            <Input
+              id={`link-${kind}`}
+              value={urlFor(kind)}
+              placeholder="https://"
+              onChange={(e) => setURL(kind, e.target.value)}
+            />
+          </FormField>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function emptyLink(kind: LinkKind): CandidateLink {
+  return { id: "", candidate_id: "", kind, url: "", created_at: "", updated_at: "" };
+}
+
+/// WorkAuthorizationsEditor edits the right to work, per country.
+///
+/// It is per country because the question always is: "will you require
+/// sponsorship" on a Berlin posting and the same words on a London posting
+/// are different questions, and for many people they have different
+/// answers. A country left unsaid means JobPilot answers nothing about it
+/// rather than guessing — see ADR-0015.
+function WorkAuthorizationsEditor({
+  authorizations,
+  onChange,
+}: {
+  authorizations: WorkAuthorization[];
+  onChange: (authorizations: WorkAuthorization[]) => void;
+}) {
+  const update = (index: number, patch: Partial<WorkAuthorization>) =>
+    onChange(authorizations.map((auth, i) => (i === index ? { ...auth, ...patch } : auth)));
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">Work authorization</h3>
+        <p className="text-xs text-slate-500">
+          Per country, matched against where a job is. A country you leave out is one JobPilot
+          will not answer for — it asks you instead.
+        </p>
+      </div>
+
+      {authorizations.length === 0 ? (
+        <p className="text-sm text-slate-500">No countries added yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {authorizations.map((auth, index) => (
+            <li key={auth.id || index} className="flex flex-wrap items-center gap-4 rounded-md border border-slate-200 p-3">
+              <Input
+                aria-label="Country"
+                className="w-48"
+                placeholder="Country"
+                value={auth.country}
+                onChange={(e) => update(index, { country: e.target.value })}
+              />
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={auth.is_authorized}
+                  onChange={(e) => update(index, { is_authorized: e.target.checked })}
+                />
+                Authorized to work here
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={auth.requires_sponsorship}
+                  onChange={(e) => update(index, { requires_sponsorship: e.target.checked })}
+                />
+                Needs sponsorship
+              </label>
+              <Button
+                variant="ghost"
+                className="ml-auto"
+                onClick={() => onChange(authorizations.filter((_, i) => i !== index))}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Button
+        variant="secondary"
+        onClick={() =>
+          onChange([
+            ...authorizations,
+            {
+              id: "",
+              candidate_id: "",
+              country: "",
+              is_authorized: false,
+              requires_sponsorship: false,
+              created_at: "",
+              updated_at: "",
+            },
+          ])
+        }
+      >
+        Add a country
+      </Button>
+    </section>
   );
 }

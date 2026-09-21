@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -96,12 +97,18 @@ func (s *AnswerService) Resolve(ctx context.Context, questionID string) (*domain
 		return nil, fmt.Errorf("failed to fetch question: %w", err)
 	}
 
-	candidate, err := s.candidateForQuestion(ctx, question)
+	candidate, job, err := s.contextForQuestion(ctx, question)
 	if err != nil {
 		return nil, err
 	}
 
 	if source, answer := profileFactAnswer(candidate, question.Label); answer != "" {
+		question.Answer = answer
+		question.AnswerSource = source
+		question.Category = domain.AnswerCategoryProfileFact
+		question.Confidence = 1.0
+		question.Status = domain.QuestionStatusAnswered
+	} else if source, answer := workAuthorizationAnswer(candidate, job, question.Label); answer != "" {
 		question.Answer = answer
 		question.AnswerSource = source
 		question.Category = domain.AnswerCategoryProfileFact
@@ -153,16 +160,28 @@ func (s *AnswerService) SetUserAnswer(ctx context.Context, questionID, answer st
 	return question, nil
 }
 
-func (s *AnswerService) candidateForQuestion(ctx context.Context, question *domain.ApplicationQuestion) (*domain.Candidate, error) {
+// contextForQuestion loads what the resolvers need: the candidate the
+// question is about, and the job it is being asked by.
+//
+// The job is needed because a right-to-work question is always about
+// somewhere, and the only honest way to answer one is to know where.
+// A job that cannot be loaded is not fatal — the resolvers that need it
+// simply decline, and the question goes to the user.
+func (s *AnswerService) contextForQuestion(ctx context.Context, question *domain.ApplicationQuestion) (*domain.Candidate, *domain.Job, error) {
 	application, err := s.appRepo.GetByID(ctx, question.ApplicationID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch application: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch application: %w", err)
 	}
 	candidate, err := s.candRepo.GetByID(ctx, application.CandidateID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch candidate: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch candidate: %w", err)
 	}
-	return candidate, nil
+
+	job, err := s.jobRepo.GetByID(ctx, application.JobID)
+	if err != nil {
+		return candidate, nil, nil
+	}
+	return candidate, job, nil
 }
 
 // profileFactAnswer keyword-matches a question label against the
@@ -170,45 +189,295 @@ func (s *AnswerService) candidateForQuestion(ctx context.Context, question *doma
 // AnswerSource) and the answer itself. An empty answer means no field
 // matched (or the matching field is itself empty) and the caller should
 // fall through to the next resolver step.
-func profileFactAnswer(c *domain.Candidate, label string) (source, answer string) {
-	l := strings.ToLower(label)
+// decisionOpeners begin a label that is asking the candidate to decide
+// something rather than naming a fact about them.
+//
+// This one guard removes most of the resolver's measured mistakes.
+// "Where are you based?" wants a location. "Are you currently based in any
+// of these countries? Please note these are the only countries where we are
+// accepting applications" contains the same word and wants a choice, and
+// the old matcher answered it with the candidate's city.
+//
+// It is a prefix test on purpose: "Where are you based?" contains "are you"
+// but does not open with it.
+var decisionOpeners = []string{
+	"are you", "do you", "did you", "have you", "has ", "will you",
+	"would you", "can you", "could you", "is there", "please confirm",
+	"please select", "by submitting", "i acknowledge", "i confirm",
+}
 
-	switch {
-	case strings.Contains(l, "first name"), strings.Contains(l, "given name"):
-		source, answer = "candidate.first_name", c.FirstName
-	case strings.Contains(l, "last name"), strings.Contains(l, "surname"), strings.Contains(l, "family name"):
-		source, answer = "candidate.last_name", c.LastName
-	case strings.Contains(l, "name"):
-		source, answer = "candidate.name", c.FullName()
-	case strings.Contains(l, "email"), strings.Contains(l, "phone"), strings.Contains(l, "contact"):
-		source, answer = "candidate.contact", c.Contact
-	case strings.Contains(l, "location"), strings.Contains(l, "based"):
-		source, answer = "candidate.location", c.Location
-	case strings.Contains(l, "sponsorship"), strings.Contains(l, "visa"), strings.Contains(l, "authorization"), strings.Contains(l, "authorised"):
-		source, answer = "candidate.work_authorization", c.WorkAuthorization
-	case strings.Contains(l, "salary"), strings.Contains(l, "compensation"):
-		source, answer = "candidate.salary_preferences", c.SalaryPreferences
-	case strings.Contains(l, "linkedin"), strings.Contains(l, "portfolio"), strings.Contains(l, "website"):
-		source, answer = "candidate.links", c.Links
+// factRule maps a question to a fact the profile holds. Order matters:
+// "first name" must be tried before "name", and "city" before "location",
+// because a real form asks for both and the narrower reading is the right
+// one.
+type factRule struct {
+	// source is recorded on the answer so the user can see where it came
+	// from, and so a wrong answer can be traced to the rule that made it.
+	source string
+	match  func(label string) bool
+	value  func(c *domain.Candidate) string
+}
+
+func linkValue(kind domain.LinkKind) func(*domain.Candidate) string {
+	return func(c *domain.Candidate) string {
+		link, ok := c.LinkOf(kind)
+		if !ok {
+			return ""
+		}
+		return link.URL
 	}
+}
 
-	// A matched field that's empty on this candidate isn't an answer — fall
-	// through to the next resolver step rather than "answering" blank.
-	if answer == "" {
+// factRules is the whole mapping from a form's words to a candidate fact.
+//
+// Every entry is here because a real recorded form asks for it
+// (internal/adapters/secondary/browser/testdata/ats), and each kind of link
+// has its own rule because a form asks for them one at a time — which is
+// the defect ADR-0015 exists to fix. One "links" string could only ever put
+// every URL into each of LinkedIn, GitHub and Website.
+var factRules = []factRule{
+	{
+		source: "candidate.first_name",
+		match:  labelMentions("first name", "given name", "forename"),
+		value:  func(c *domain.Candidate) string { return c.FirstName },
+	},
+	{
+		source: "candidate.last_name",
+		match:  labelMentions("last name", "surname", "family name"),
+		value:  func(c *domain.Candidate) string { return c.LastName },
+	},
+	{
+		source: "candidate.name",
+		// Not every "name" is the candidate's: a form asks for the current
+		// employer's too, and one of those in the wrong box is the same
+		// class of mistake as an email in a phone field.
+		match: both(
+			labelMentions("name"),
+			labelAvoids("company", "employer", "school", "university", "college",
+				"institution", "reference", "referee", "username", "user name",
+				"nickname", "file name", "filename"),
+		),
+		value: func(c *domain.Candidate) string { return c.FullName() },
+	},
+	{
+		source: "candidate.email",
+		match:  labelMentions("email", "e-mail", "courriel"),
+		value:  func(c *domain.Candidate) string { return c.Email },
+	},
+	{
+		// The defect this whole change started from: phone shared a rule
+		// with email, so a real form's phone field was filled with the
+		// candidate's email address.
+		source: "candidate.phone",
+		match:  labelMentions("phone", "mobile", "telephone", "téléphone", "cell"),
+		value:  func(c *domain.Candidate) string { return c.Phone },
+	},
+	{
+		source: "candidate.links.linkedin",
+		match:  labelMentions("linkedin"),
+		value:  linkValue(domain.LinkKindLinkedIn),
+	},
+	{
+		source: "candidate.links.github",
+		match:  labelMentions("github"),
+		value:  linkValue(domain.LinkKindGitHub),
+	},
+	{
+		source: "candidate.links.twitter",
+		match:  labelMentions("twitter"),
+		value:  linkValue(domain.LinkKindTwitter),
+	},
+	{
+		source: "candidate.links.portfolio",
+		match:  labelMentions("portfolio"),
+		value:  linkValue(domain.LinkKindPortfolio),
+	},
+	{
+		source: "candidate.links.website",
+		match:  labelMentions("website", "web site", "personal site", "blog"),
+		value:  linkValue(domain.LinkKindWebsite),
+	},
+	{
+		source: "candidate.location_country",
+		match:  labelMentions("country"),
+		value:  func(c *domain.Candidate) string { return c.LocationCountry },
+	},
+	{
+		source: "candidate.location_city",
+		match:  labelMentions("city", "town"),
+		value:  func(c *domain.Candidate) string { return c.LocationCity },
+	},
+	{
+		source: "candidate.location_region",
+		match:  labelMentions("state", "province", "region", "county"),
+		value:  func(c *domain.Candidate) string { return c.LocationRegion },
+	},
+	{
+		source: "candidate.location",
+		match:  labelMentions("location", "where are you based", "based in", "are you based"),
+		value:  func(c *domain.Candidate) string { return c.LocationDisplay() },
+	},
+	{
+		source: "candidate.notice_period_days",
+		match:  labelMentions("notice period", "notice"),
+		value:  noticePeriodAnswer,
+	},
+	{
+		source: "candidate.earliest_start_date",
+		match:  labelMentions("start date", "available", "availability", "when can you start"),
+		value:  availabilityAnswer,
+	},
+}
+
+// profileFactAnswer looks a question up against the profile.
+//
+// It answers only labels that name a fact. A label that opens by asking the
+// candidate something is a decision, and a decision is not a lookup — see
+// decisionOpeners.
+func profileFactAnswer(c *domain.Candidate, label string) (source, answer string) {
+	l := normalizeLabel(label)
+	if l == "" || isDecisionQuestion(l) {
 		return "", ""
 	}
-	return source, answer
+
+	for _, rule := range factRules {
+		if !rule.match(l) {
+			continue
+		}
+		// A rule that matched but has nothing to say is not an answer:
+		// fall through and let the user be asked, rather than filling a
+		// form field with an empty string.
+		if value := strings.TrimSpace(rule.value(c)); value != "" {
+			return rule.source, value
+		}
+	}
+
+	return "", ""
+}
+
+// workAuthorizationAnswer answers a sponsorship or right-to-work question,
+// and is deliberately allowed to answer decision-shaped labels — "Will you
+// require Visa Sponsorship now, or in the future?" is a decision, and the
+// profile genuinely knows it.
+//
+// It answers only about a country the candidate has actually spoken about,
+// matched by name against the job's own stated locations. A sponsorship
+// answer for the wrong country is worse than no answer: it is a claim about
+// someone's right to work, made to an employer, under their name.
+func workAuthorizationAnswer(c *domain.Candidate, job *domain.Job, label string) (source, answer string) {
+	if job == nil || len(c.WorkAuthorizations) == 0 {
+		return "", ""
+	}
+
+	l := normalizeLabel(label)
+	asksSponsorship := labelMentions("sponsorship", "sponsor", "visa")(l)
+	asksAuthorization := labelMentions("authorized to work", "authorised to work", "work authorization",
+		"work authorisation", "right to work", "work permit", "eligible to work", "legally able to work")(l)
+	if !asksSponsorship && !asksAuthorization {
+		return "", ""
+	}
+
+	where := strings.ToLower(strings.Join(job.Locations, " "))
+	if where == "" {
+		return "", ""
+	}
+	for _, auth := range c.WorkAuthorizations {
+		country := strings.ToLower(strings.TrimSpace(auth.Country))
+		if country == "" || !strings.Contains(where, country) {
+			continue
+		}
+		// Sponsorship first: a label can mention both, and "will you need
+		// sponsorship" is the narrower question.
+		if asksSponsorship {
+			return "candidate.work_authorization." + country, yesNo(auth.RequiresSponsorship)
+		}
+		return "candidate.work_authorization." + country, yesNo(auth.IsAuthorized)
+	}
+
+	return "", ""
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "Yes"
+	}
+	return "No"
+}
+
+// noticePeriodAnswer renders a notice period, where zero is an answer.
+func noticePeriodAnswer(c *domain.Candidate) string {
+	if c.NoticePeriodDays == nil {
+		return ""
+	}
+	switch days := *c.NoticePeriodDays; {
+	case days <= 0:
+		return "Immediately"
+	case days == 1:
+		return "1 day"
+	default:
+		return fmt.Sprintf("%d days", days)
+	}
+}
+
+// availabilityAnswer prefers a stated date, because "available from
+// 2026-11-01" is a more useful answer than "60 days" to a form that asked
+// when someone can start.
+func availabilityAnswer(c *domain.Candidate) string {
+	if c.EarliestStartDate != nil {
+		return c.EarliestStartDate.Format(time.DateOnly)
+	}
+	return noticePeriodAnswer(c)
+}
+
+func normalizeLabel(label string) string {
+	return strings.ToLower(strings.TrimSpace(label))
+}
+
+func isDecisionQuestion(normalizedLabel string) bool {
+	for _, opener := range decisionOpeners {
+		if strings.HasPrefix(normalizedLabel, opener) {
+			return true
+		}
+	}
+	return false
+}
+
+// labelMentions builds a matcher for a label containing any of the terms.
+func labelMentions(terms ...string) func(string) bool {
+	return func(label string) bool {
+		for _, term := range terms {
+			if strings.Contains(label, term) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// labelAvoids builds a matcher for a label containing none of the terms.
+func labelAvoids(terms ...string) func(string) bool {
+	return func(label string) bool {
+		for _, term := range terms {
+			if strings.Contains(label, term) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func both(a, b func(string) bool) func(string) bool {
+	return func(label string) bool { return a(label) && b(label) }
 }
 
 // derivedAnswer applies deterministic rules that compute an answer from
-// candidate data rather than looking up a single field directly. Real
-// derivation (e.g. computed years of experience) isn't reliable today
-// because Candidate.Experiences is an unstructured text blob rather than
-// structured dates (a limitation already flagged in
-// docs/00_product/current_state.md's known gaps) — this is intentionally
-// a single honest rule for now, not a placeholder pretending to be more.
+// candidate data rather than looking up a single field directly.
+//
+// It is still one rule. The derivations worth having — years of experience
+// with a skill, current employer — need Experiences to be dates rather than
+// prose, which is stage two of ADR-0015.
 func derivedAnswer(c *domain.Candidate, label string) (source, answer string) {
-	l := strings.ToLower(label)
+	l := normalizeLabel(label)
 
 	if strings.Contains(l, "remote") && (strings.Contains(l, "open") || strings.Contains(l, "willing") || strings.Contains(l, "able") || strings.Contains(l, "comfortable")) {
 		if strings.Contains(strings.ToLower(c.WorkPreferences), "remote") {

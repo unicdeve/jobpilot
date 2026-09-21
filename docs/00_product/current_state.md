@@ -185,6 +185,25 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   reachable. This closes the gap between the CLI-direct wiring that existed
   through Phase 3 and the client/daemon architecture described in
   `docs/01_architecture/00_overview.md` and `07_ipc.md`.
+- Candidate profile normalization, stage one (ADR-0015, migration
+  `00007_normalize_candidate_facts.sql`): email and phone, city/region/country,
+  notice period and earliest start date as columns; links and per-country work
+  authorization as their own tables (`candidate_links`,
+  `candidate_work_authorizations`), written with the candidate in one
+  transaction.
+  This exists because the resolver was measurably wrong, not merely thin.
+  Run against the question labels recorded from live Ashby, Greenhouse and
+  Lever forms, the old matcher put the candidate's email address in both
+  forms' phone fields, put every one of their URLs into each of LinkedIn,
+  Portfolio and Website while leaving GitHub and Twitter empty, and answered
+  a Yes/No sponsorship question with a paragraph of prose.
+  `profileFactAnswer` is now an ordered rule table that refuses
+  decision-shaped labels ("Are you…", "Do you…"), work authorization is
+  answered only for a country the candidate has spoken about and the job is
+  actually in, and a question offering fixed choices is answered only with
+  one of them — an answer a `<select>` does not have used to fail the whole
+  run. `internal/core/services/answers_forms_test.go` asserts all of it
+  against the recorded labels.
 - Application schema (`internal/adapters/secondary/sqlite/migrations/00002_application_schema.sql`):
   revised the Phase-0-era `applications`/`application_questions` tables —
   versioned `cover_letters` (replacing a single mutable column, so
@@ -318,21 +337,27 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   progress/loading polish beyond basic "Loading…" text.
 - Some core entities from `docs/01_architecture/04_database.md`
   (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
-  `Prompt`, `Notification`) are not separate tables — candidate
-  skills/experience/education are JSON-blob columns on `candidates`, jobs
+  `Prompt`, `Notification`) are still not separate tables — candidate
+  skills/experience/education remain text columns on `candidates`, jobs
   reference their source only by free-text ID, and there is no schema home
-  yet for prompt customization or notifications. This deviation from the
-  architecture doc is undocumented in an ADR and unaddressed so far.
+  yet for prompt customization or notifications.
+  ADR-0015 covers the candidate half and is half-built: stage one normalized
+  contact, location, links, work authorization and availability; stage two,
+  which is experiences/skills/education and the derivations they unlock, has
+  not started.
 - The LLM provider abstraction (`internal/core/ports/llm.go`) has no
   schema-constrained structured output support: matching, profile-draft, and
   cover-letter/answer generation all rely on prompt instructions plus
   post-hoc parsing, not provider-level schema constraints, despite
   `docs/01_architecture/05_llm.md` preferring the latter where supported.
-- `AnswerService`'s deterministic-derivation step is intentionally a single
-  rule (remote-work preference) rather than a general capability — e.g.
-  computed years of experience isn't derivable because `Candidate.Experiences`
-  is an unstructured text blob, not structured dates (the same normalization
-  gap noted above).
+- `AnswerService`'s deterministic-derivation step is still a single rule
+  (remote-work preference). Computed years of experience and current employer
+  remain out of reach because `Candidate.Experiences` is prose rather than
+  dated entries — ADR-0015 stage two.
+- Nothing has repopulated the profile after ADR-0015 dropped the prose
+  columns. The "extract my profile" action the ADR specifies — reading the
+  stored resume and proposing structured values, review-gated under
+  ADR-0011 — is not built, so the structured fields are filled by hand.
 - No Scouts and no eligibility rules (Phase 8).
   Every state transition, including the ones the browser worker makes, is driven by the user through the CLI or the desktop; nothing runs unattended.
   `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
@@ -362,6 +387,10 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 
 ## Next
 
-1. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
-   Before it, entity normalization (below) deserves an ADR and a decision: the work-authorization, notice-period and years-of-experience questions real forms ask should be answerable from structured data rather than by pattern-matching a text blob.
-2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic, radio grouping fallback and salary fields — and the Settings categories still open (prompt customization, notifications, data retention).
+1. ADR-0015 stage two: experiences, skills, education and certifications as
+   dated entries, plus the "extract my profile" action that fills them from
+   the stored resume. This is what makes years-of-experience and current-employer
+   questions answerable at all.
+2. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
+3. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback — and the Settings categories still open (prompt customization, notifications, data retention).
+   Salary is no longer among them: ADR-0015 §4 settled it, with the filter on the saved search and a form's salary question left for the user.

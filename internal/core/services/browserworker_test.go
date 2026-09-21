@@ -254,7 +254,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 	t.Run("refuses to fill a newsletter box and call it an application", func(t *testing.T) {
 		t.Parallel()
 		svc, appRepo, jobRepo, candRepo, _, worker := newTestBrowserWorkerService(t)
-		candidate := &domain.Candidate{FirstName: "Ada", Contact: "ada@example.com"}
+		candidate := &domain.Candidate{FirstName: "Ada", Email: "ada@example.com"}
 		job := &domain.Job{CanonicalURL: "https://board.example/jobs/1"}
 		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
 
@@ -413,7 +413,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		llm := &fakeLLMProvider{response: ports.Response{Content: `{"index": -1}`}}
 		svc, appRepo, jobRepo, candRepo, _, worker := newBrowserWorkerServiceWithChooser(t, llm)
 		job := &domain.Job{CanonicalURL: "https://board.example/jobs/1"}
-		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{Contact: "ada@example.com"}, job)
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{Email: "ada@example.com"}, job)
 
 		worker.pages = [][]ports.FormField{newsletterOnly}
 		worker.controls = unreadableWayIn
@@ -455,7 +455,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		llm := &fakeLLMProvider{response: ports.Response{Content: `{"index": 0}`}}
 		svc, appRepo, jobRepo, candRepo, _, worker := newBrowserWorkerServiceWithChooser(t, llm)
 		job := &domain.Job{CanonicalURL: "https://board.example/jobs/1"}
-		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{Contact: "ada@example.com"}, job)
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{Email: "ada@example.com"}, job)
 
 		// Wherever the model sends it, every page is the same newsletter box.
 		worker.pages = [][]ports.FormField{newsletterOnly}

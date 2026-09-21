@@ -250,8 +250,10 @@ function ProfileStep({
   const [draft, setDraft] = useState({
     first_name: profile?.first_name ?? "",
     last_name: profile?.last_name ?? "",
-    contact: profile?.contact ?? "",
-    location: profile?.location ?? "",
+    email: profile?.email ?? "",
+    phone: profile?.phone ?? "",
+    location_city: profile?.location_city ?? "",
+    location_country: profile?.location_country ?? "",
   });
 
   const create = useInitializeProfile({
@@ -304,18 +306,33 @@ function ProfileStep({
             onChange={(e) => set("last_name", e.target.value)}
           />
         </FormField>
-        <FormField label="Contact (email/phone)" htmlFor="welcome-contact">
+        <FormField label="Email" htmlFor="welcome-email">
           <Input
-            id="welcome-contact"
-            value={draft.contact}
-            onChange={(e) => set("contact", e.target.value)}
+            id="welcome-email"
+            type="email"
+            value={draft.email}
+            onChange={(e) => set("email", e.target.value)}
           />
         </FormField>
-        <FormField label="Location" htmlFor="welcome-location">
+        <FormField label="Phone" htmlFor="welcome-phone">
           <Input
-            id="welcome-location"
-            value={draft.location}
-            onChange={(e) => set("location", e.target.value)}
+            id="welcome-phone"
+            value={draft.phone}
+            onChange={(e) => set("phone", e.target.value)}
+          />
+        </FormField>
+        <FormField label="City" htmlFor="welcome-city">
+          <Input
+            id="welcome-city"
+            value={draft.location_city}
+            onChange={(e) => set("location_city", e.target.value)}
+          />
+        </FormField>
+        <FormField label="Country" htmlFor="welcome-country">
+          <Input
+            id="welcome-country"
+            value={draft.location_country}
+            onChange={(e) => set("location_country", e.target.value)}
           />
         </FormField>
       </div>
@@ -378,8 +395,8 @@ function ResumeStep({
           ...profile,
           first_name: fill(suggestion.first_name, profile.first_name),
           last_name: fill(suggestion.last_name, profile.last_name),
-          contact: fill(suggestion.contact, profile.contact),
-          location: fill(suggestion.location, profile.location),
+          email: fill(suggestion.contact, profile.email),
+          location_city: fill(suggestion.location, profile.location_city),
           summary: fill(suggestion.summary, profile.summary),
           skills: fill(suggestion.skills.join(", "), profile.skills),
         });

@@ -702,6 +702,52 @@ func TestClient_ProfileRoundTrip(t *testing.T) {
 	require.Equal(t, "Pioneering computer programmer", updated.Summary)
 }
 
+// TestClient_ProfileRoundTripCarriesLinksAndAuthorizations covers the wire
+// shape the desktop depends on: links and work authorizations are nested
+// arrays on the candidate, not strings, since ADR-0015.
+//
+// It is here rather than only in the repository tests because the desktop
+// reads and writes this JSON directly — desktop/src/lib/types.ts mirrors
+// these structs by hand, so a change in nesting breaks the app silently.
+func TestClient_ProfileRoundTripCarriesLinksAndAuthorizations(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	notice := 30
+	profile := domain.Candidate{
+		FirstName:        "Ada",
+		LastName:         "Lovelace",
+		Email:            "ada@example.com",
+		Phone:            "+49 30 123456",
+		LocationCity:     "Berlin",
+		LocationCountry:  "Germany",
+		NoticePeriodDays: &notice,
+		Links: []domain.CandidateLink{
+			{Kind: domain.LinkKindLinkedIn, URL: "https://linkedin.com/in/ada"},
+			{Kind: domain.LinkKindGitHub, URL: "https://github.com/ada"},
+		},
+		WorkAuthorizations: []domain.WorkAuthorization{
+			{Country: "Germany", IsAuthorized: true},
+		},
+	}
+	require.NoError(t, client.InitializeProfile(ctx, &profile))
+
+	got, err := client.GetProfile(ctx)
+	require.NoError(t, err)
+
+	require.Equal(t, "ada@example.com", got.Email)
+	require.Equal(t, "+49 30 123456", got.Phone, "email and phone are separate over the wire too")
+	require.NotNil(t, got.NoticePeriodDays)
+	require.Equal(t, 30, *got.NoticePeriodDays)
+
+	linkedIn, ok := got.LinkOf(domain.LinkKindLinkedIn)
+	require.True(t, ok)
+	require.Equal(t, "https://linkedin.com/in/ada", linkedIn.URL)
+	require.Len(t, got.WorkAuthorizations, 1)
+	require.Equal(t, "Germany", got.WorkAuthorizations[0].Country)
+	require.True(t, got.WorkAuthorizations[0].IsAuthorized)
+}
+
 func TestClient_ResumeLifecycle(t *testing.T) {
 	client, _, _ := testServer(t)
 	ctx := context.Background()
@@ -788,7 +834,7 @@ func TestClient_ApplicationLifecycle(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{FirstName: "Ada", LastName: "Lovelace", Contact: "ada@example.com"}
+	candidate := domain.Candidate{FirstName: "Ada", LastName: "Lovelace", Email: "ada@example.com"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Engineer"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-1")
@@ -853,7 +899,7 @@ func TestClient_QuestionResolution(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
-	candidate := domain.Candidate{FirstName: "Alan", LastName: "Turing", Contact: "alan@example.com"}
+	candidate := domain.Candidate{FirstName: "Alan", LastName: "Turing", Email: "alan@example.com"}
 	require.NoError(t, candRepo.Save(ctx, &candidate))
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-3", Title: "Cryptanalyst"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-3")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -260,6 +261,17 @@ func (s *BrowserWorkerService) prepareField(ctx context.Context, worker ports.Br
 		return nil
 	}
 
+	if !answerFitsField(field, resolved.Answer) {
+		// A field that offers a fixed set of choices and an answer that is
+		// not one of them. Filling it anyway is not a near miss: the
+		// browser refuses an option a <select> does not have, and that
+		// error would stop the whole run over one field. Left blank, it
+		// joins the questions the user answers themselves.
+		s.recordEvent(ctx, run.ID, "skip_field", "form", "ok", field.Label,
+			fmt.Sprintf("%q is not one of the choices offered", resolved.Answer), 0)
+		return nil
+	}
+
 	start := time.Now()
 	fillErr := worker.Fill(ctx, field.Ref, resolved.Answer)
 	s.recordEvent(ctx, run.ID, "fill_field", "browser", statusFor(fillErr), field.Label, resolved.Answer, time.Since(start))
@@ -268,6 +280,24 @@ func (s *BrowserWorkerService) prepareField(ctx context.Context, worker ports.Br
 	}
 
 	return nil
+}
+
+// answerFitsField reports whether an answer can actually be given to a
+// field, which is only in question when the field constrains the choice.
+//
+// The match is exact, ignoring case and surrounding space. A looser one
+// would be guessing which option the user meant, on a form submitted under
+// their name — and "Yes" is not evidence for "Yes, I have a work visa".
+func answerFitsField(field ports.FormField, answer string) bool {
+	if len(field.Options) == 0 {
+		return true
+	}
+	for _, option := range field.Options {
+		if strings.EqualFold(strings.TrimSpace(option), strings.TrimSpace(answer)) {
+			return true
+		}
+	}
+	return false
 }
 
 // blockRun marks run blocked (a content-related stop: CAPTCHA, an

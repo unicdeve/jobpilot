@@ -95,19 +95,33 @@ func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobr
 			}
 			profile.LastName = lastName
 
-			contactPrompt := promptui.Prompt{Label: "Contact (Email/Phone)"}
-			contact, err := contactPrompt.Run()
+			emailPrompt := promptui.Prompt{Label: "Email"}
+			email, err := emailPrompt.Run()
 			if err != nil {
-				return fmt.Errorf("prompting for contact: %w", err)
+				return fmt.Errorf("prompting for email: %w", err)
 			}
-			profile.Contact = contact
+			profile.Email = email
 
-			locationPrompt := promptui.Prompt{Label: "Location"}
-			location, err := locationPrompt.Run()
+			phonePrompt := promptui.Prompt{Label: "Phone"}
+			phone, err := phonePrompt.Run()
 			if err != nil {
-				return fmt.Errorf("prompting for location: %w", err)
+				return fmt.Errorf("prompting for phone: %w", err)
 			}
-			profile.Location = location
+			profile.Phone = phone
+
+			cityPrompt := promptui.Prompt{Label: "City"}
+			city, err := cityPrompt.Run()
+			if err != nil {
+				return fmt.Errorf("prompting for city: %w", err)
+			}
+			profile.LocationCity = city
+
+			countryPrompt := promptui.Prompt{Label: "Country"}
+			country, err := countryPrompt.Run()
+			if err != nil {
+				return fmt.Errorf("prompting for country: %w", err)
+			}
+			profile.LocationCountry = country
 
 			if err := client.InitializeProfile(ctx, &profile); err != nil {
 				return fmt.Errorf("saving profile: %w", err)
@@ -179,8 +193,8 @@ func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resum
 
 	updateField("First Name", orCurrent(draft.FirstName, profile.FirstName), func(v string) { profile.FirstName = v })
 	updateField("Last Name", orCurrent(draft.LastName, profile.LastName), func(v string) { profile.LastName = v })
-	updateField("Contact", orCurrent(draft.Contact, profile.Contact), func(v string) { profile.Contact = v })
-	updateField("Location", orCurrent(draft.Location, profile.Location), func(v string) { profile.Location = v })
+	updateField("Email", orCurrent(draft.Contact, profile.Email), func(v string) { profile.Email = v })
+	updateField("City", orCurrent(draft.Location, profile.LocationCity), func(v string) { profile.LocationCity = v })
 	updateField("Summary", orCurrent(draft.Summary, profile.Summary), func(v string) { profile.Summary = v })
 	updateField("Skills", orCurrent(strings.Join(draft.Skills, ", "), profile.Skills), func(v string) { profile.Skills = v })
 
@@ -203,8 +217,16 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("First Name: %s\nLast Name: %s\nContact: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
-				profile.FirstName, profile.LastName, profile.Contact, profile.Location, profile.Summary, profile.Skills)
+			fmt.Printf("First Name: %s\nLast Name: %s\nEmail: %s\nPhone: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
+				profile.FirstName, profile.LastName, profile.Email, profile.Phone,
+				profile.LocationDisplay(), profile.Summary, profile.Skills)
+			for _, link := range profile.Links {
+				fmt.Printf("%s: %s\n", link.Kind, link.URL)
+			}
+			for _, auth := range profile.WorkAuthorizations {
+				fmt.Printf("Work authorization (%s): authorized=%t sponsorship required=%t\n",
+					auth.Country, auth.IsAuthorized, auth.RequiresSponsorship)
+			}
 			return nil
 		},
 	})
@@ -234,12 +256,13 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 
 			updateField("First Name", profile.FirstName, func(v string) { profile.FirstName = v })
 			updateField("Last Name", profile.LastName, func(v string) { profile.LastName = v })
-			updateField("Contact", profile.Contact, func(v string) { profile.Contact = v })
-			updateField("Location", profile.Location, func(v string) { profile.Location = v })
+			updateField("Email", profile.Email, func(v string) { profile.Email = v })
+			updateField("Phone", profile.Phone, func(v string) { profile.Phone = v })
+			updateField("City", profile.LocationCity, func(v string) { profile.LocationCity = v })
+			updateField("State/Region", profile.LocationRegion, func(v string) { profile.LocationRegion = v })
+			updateField("Country", profile.LocationCountry, func(v string) { profile.LocationCountry = v })
 			updateField("Summary", profile.Summary, func(v string) { profile.Summary = v })
 			updateField("Skills", profile.Skills, func(v string) { profile.Skills = v })
-			updateField("Salary Preferences", profile.SalaryPreferences, func(v string) { profile.SalaryPreferences = v })
-			updateField("Work Authorization", profile.WorkAuthorization, func(v string) { profile.WorkAuthorization = v })
 			updateField("Application Preferences", profile.ApplicationPreferences, func(v string) { profile.ApplicationPreferences = v })
 
 			if err := client.UpdateProfile(ctx, profile); err != nil {

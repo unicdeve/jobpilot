@@ -21,51 +21,15 @@ func newTestAnswerService(t *testing.T) (*AnswerService, *fakeApplicationQuestio
 	return NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), llm), questionRepo, appRepo, jobRepo, candRepo, llm
 }
 
-func TestProfileFactAnswer(t *testing.T) {
-	t.Parallel()
-
-	candidate := &domain.Candidate{
-		FirstName:         "Ada",
-		LastName:          "Lovelace",
-		Contact:           "ada@example.com",
-		Location:          "London, UK",
-		WorkAuthorization: "UK citizen",
-		SalaryPreferences: "£120k+",
-		Links:             "https://linkedin.com/in/ada",
-	}
-
-	tests := []struct {
-		label      string
-		wantSource string
-		wantAnswer string
-	}{
-		{"What is your full name?", "candidate.name", "Ada Lovelace"},
-		{"First name", "candidate.first_name", "Ada"},
-		{"Last name", "candidate.last_name", "Lovelace"},
-		{"Email address", "candidate.contact", "ada@example.com"},
-		{"Where are you based?", "candidate.location", "London, UK"},
-		{"Do you require visa sponsorship?", "candidate.work_authorization", "UK citizen"},
-		{"Expected salary/compensation", "candidate.salary_preferences", "£120k+"},
-		{"LinkedIn profile", "candidate.links", "https://linkedin.com/in/ada"},
-		{"Why do you want to work here?", "", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.label, func(t *testing.T) {
-			t.Parallel()
-			source, answer := profileFactAnswer(candidate, tt.label)
-			assert.Equal(t, tt.wantSource, source)
-			assert.Equal(t, tt.wantAnswer, answer)
-		})
-	}
-
-	t.Run("empty candidate field falls through instead of answering blank", func(t *testing.T) {
-		t.Parallel()
-		source, answer := profileFactAnswer(&domain.Candidate{}, "What is your full name?")
-		assert.Empty(t, source)
-		assert.Empty(t, answer)
-	})
-}
+// The label-by-label specification for profileFactAnswer now lives in
+// answers_forms_test.go, written against the question labels of real
+// recorded forms rather than invented ones.
+//
+// The test that stood here asserted the behaviour ADR-0015 removed: that a
+// visa question is answered with a prose work-authorization field, that
+// "Expected salary" is answered from the profile, and that any link
+// question is answered from one links string. Those are the defects, not a
+// contract to preserve.
 
 func TestDerivedAnswer(t *testing.T) {
 	t.Parallel()
@@ -99,7 +63,7 @@ func TestAnswerService_Resolve(t *testing.T) {
 		t.Helper()
 		svc, questionRepo, appRepo, jobRepo, candRepo, llm := newTestAnswerService(t)
 		require.NoError(t, jobRepo.Save(context.Background(), &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
-		require.NoError(t, candRepo.Save(context.Background(), &domain.Candidate{ID: "cand-1", Contact: "ada@example.com"}))
+		require.NoError(t, candRepo.Save(context.Background(), &domain.Candidate{ID: "cand-1", Email: "ada@example.com"}))
 		require.NoError(t, appRepo.Save(context.Background(), &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
 		return svc, questionRepo, llm
 	}
