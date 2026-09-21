@@ -204,6 +204,19 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   one of them — an answer a `<select>` does not have used to fail the whole
   run. `internal/core/services/answers_forms_test.go` asserts all of it
   against the recorded labels.
+- Candidate profile normalization, stage two (ADR-0015, migration
+  `00008_structured_experience_and_skills.sql`): the work history as dated
+  entries and skills as a list with optional durations, replacing two prose
+  columns.
+  This is what makes answers possible that could not be given at all:
+  "Current company", asked by two of the three recorded forms, and a years-of-experience
+  figure measured as a span rather than summed, so two jobs held at once are
+  not counted twice. A question naming a skill is answered only from what the
+  candidate said about that skill — answering "how many years of Rust?" with
+  the decade they spent writing Go is the kind of invented fact principle 6
+  forbids. Resume extraction was widened to propose all of it, review-gated
+  under ADR-0011, and is forbidden by its own prompt from estimating a
+  duration the resume does not state.
 - Application schema (`internal/adapters/secondary/sqlite/migrations/00002_application_schema.sql`):
   revised the Phase-0-era `applications`/`application_questions` tables —
   versioned `cover_letters` (replacing a single mutable column, so
@@ -341,23 +354,24 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   skills/experience/education remain text columns on `candidates`, jobs
   reference their source only by free-text ID, and there is no schema home
   yet for prompt customization or notifications.
-  ADR-0015 covers the candidate half and is half-built: stage one normalized
-  contact, location, links, work authorization and availability; stage two,
-  which is experiences/skills/education and the derivations they unlock, has
-  not started.
+  ADR-0015 covers the candidate half and is now built. Stage one normalized
+  contact, location, links, work authorization and availability; stage two
+  added dated work history and skills. Education and certifications stay
+  prose deliberately — no recorded form asks about them and nothing reads
+  them (ADR-0015 §3).
 - The LLM provider abstraction (`internal/core/ports/llm.go`) has no
   schema-constrained structured output support: matching, profile-draft, and
   cover-letter/answer generation all rely on prompt instructions plus
   post-hoc parsing, not provider-level schema constraints, despite
   `docs/01_architecture/05_llm.md` preferring the latter where supported.
-- `AnswerService`'s deterministic-derivation step is still a single rule
-  (remote-work preference). Computed years of experience and current employer
-  remain out of reach because `Candidate.Experiences` is prose rather than
-  dated entries — ADR-0015 stage two.
-- Nothing has repopulated the profile after ADR-0015 dropped the prose
-  columns. The "extract my profile" action the ADR specifies — reading the
-  stored resume and proposing structured values, review-gated under
-  ADR-0011 — is not built, so the structured fields are filled by hand.
+- The profile is empty until it is filled in. ADR-0015 dropped the prose
+  columns, so after upgrading JobPilot answers less than it used to until the
+  user enters their details or re-imports their resume. That is the intended
+  direction — an unanswered question is left for the user, a wrongly answered
+  one goes to an employer — but it is a real regression in the interim.
+- Per-skill durations are self-reported and never estimated. A question about
+  a skill the candidate has not given a duration for is left for them, rather
+  than answered from their career total.
 - No Scouts and no eligibility rules (Phase 8).
   Every state transition, including the ones the browser worker makes, is driven by the user through the CLI or the desktop; nothing runs unattended.
   `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
@@ -387,10 +401,6 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 
 ## Next
 
-1. ADR-0015 stage two: experiences, skills, education and certifications as
-   dated entries, plus the "extract my profile" action that fills them from
-   the stored resume. This is what makes years-of-experience and current-employer
-   questions answerable at all.
-2. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
-3. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback — and the Settings categories still open (prompt customization, notifications, data retention).
+1. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
+2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback — and the Settings categories still open (prompt customization, notifications, data retention).
    Salary is no longer among them: ADR-0015 §4 settled it, with the filter on the saved search and a form's salary question left for the user.

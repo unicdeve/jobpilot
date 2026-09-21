@@ -395,10 +395,47 @@ function ResumeStep({
           ...profile,
           first_name: fill(suggestion.first_name, profile.first_name),
           last_name: fill(suggestion.last_name, profile.last_name),
-          email: fill(suggestion.contact, profile.email),
-          location_city: fill(suggestion.location, profile.location_city),
+          email: fill(suggestion.email, profile.email),
+          phone: fill(suggestion.phone, profile.phone),
+          location_city: fill(suggestion.location_city, profile.location_city),
+          location_country: fill(suggestion.location_country, profile.location_country),
           summary: fill(suggestion.summary, profile.summary),
-          skills: fill(suggestion.skills.join(", "), profile.skills),
+          // Lists the user has already built are theirs; a suggestion only
+          // fills an empty one.
+          skills: profile.skills?.length
+            ? profile.skills
+            : (suggestion.skills ?? []).map((skill) => ({
+                id: "",
+                candidate_id: "",
+                name: skill.name,
+                years_experience: skill.years_experience ?? null,
+                created_at: "",
+                updated_at: "",
+              })),
+          experiences: profile.experiences?.length
+            ? profile.experiences
+            : (suggestion.experiences ?? []).map((experience) => ({
+                id: "",
+                candidate_id: "",
+                company: experience.company,
+                title: experience.title,
+                start_date: experience.start_date || null,
+                end_date: experience.is_current ? null : experience.end_date || null,
+                is_current: experience.is_current,
+                description: experience.description,
+                created_at: "",
+                updated_at: "",
+              })),
+          links: profile.links?.length
+            ? profile.links
+            : (suggestion.links ?? []).map((link) => ({
+                id: "",
+                candidate_id: "",
+                kind: link.kind,
+                url: link.url,
+                created_at: "",
+                updated_at: "",
+              })),
         });
         notify("Profile prefilled from your resume — review it on the Profile screen.", "success");
       } catch (err) {

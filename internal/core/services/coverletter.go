@@ -131,8 +131,8 @@ func (s *CoverLetterService) buildPrompt(c *domain.Candidate, j *domain.Job, res
 	sb.WriteString(wrapped)
 
 	sb.WriteString("\n### Candidate Profile\n")
-	fmt.Fprintf(&sb, "Name: %s\nSummary: %s\nSkills: %s\nExperience: %s\n",
-		c.FullName(), c.Summary, c.Skills, c.Experiences)
+	fmt.Fprintf(&sb, "Name: %s\nSummary: %s\nSkills: %s\nExperience:\n%s\n",
+		c.FullName(), c.Summary, c.RenderSkills(), c.RenderExperiences())
 	if c.ApplicationPreferences != "" {
 		fmt.Fprintf(&sb, "Tone/length preferences: %s\n", c.ApplicationPreferences)
 	}

@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -193,10 +194,29 @@ func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resum
 
 	updateField("First Name", orCurrent(draft.FirstName, profile.FirstName), func(v string) { profile.FirstName = v })
 	updateField("Last Name", orCurrent(draft.LastName, profile.LastName), func(v string) { profile.LastName = v })
-	updateField("Email", orCurrent(draft.Contact, profile.Email), func(v string) { profile.Email = v })
-	updateField("City", orCurrent(draft.Location, profile.LocationCity), func(v string) { profile.LocationCity = v })
+	updateField("Email", orCurrent(draft.Email, profile.Email), func(v string) { profile.Email = v })
+	updateField("Phone", orCurrent(draft.Phone, profile.Phone), func(v string) { profile.Phone = v })
+	updateField("City", orCurrent(draft.LocationCity, profile.LocationCity), func(v string) { profile.LocationCity = v })
+	updateField("Country", orCurrent(draft.LocationCountry, profile.LocationCountry), func(v string) { profile.LocationCountry = v })
 	updateField("Summary", orCurrent(draft.Summary, profile.Summary), func(v string) { profile.Summary = v })
-	updateField("Skills", orCurrent(strings.Join(draft.Skills, ", "), profile.Skills), func(v string) { profile.Skills = v })
+
+	proposedSkills := draft.ProposedSkills()
+	updateField("Skills (comma separated)", orCurrent(renderDraftSkills(proposedSkills), profile.RenderSkills()),
+		func(v string) { profile.Skills = parseSkills(v) })
+
+	// The work history and links are lists, which a prompt loop cannot
+	// edit sensibly. They are proposed wholesale only into an empty
+	// profile, and the user reviews them on the desktop's Profile screen —
+	// which is what the message below points at.
+	if len(profile.Experiences) == 0 && len(draft.Experiences) > 0 {
+		profile.Experiences = draft.ProposedExperiences()
+		fmt.Printf("   proposed %d roles from your resume — review them on the Profile screen\n",
+			len(profile.Experiences))
+	}
+	if len(profile.Links) == 0 && len(draft.Links) > 0 {
+		profile.Links = draft.ProposedLinks()
+		fmt.Printf("   proposed %d links from your resume\n", len(profile.Links))
+	}
 
 	if err := client.UpdateProfile(ctx, profile); err != nil {
 		fmt.Printf("⚠️  Could not save suggested profile updates: %v\n", err)
@@ -219,7 +239,13 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			}
 			fmt.Printf("First Name: %s\nLast Name: %s\nEmail: %s\nPhone: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
 				profile.FirstName, profile.LastName, profile.Email, profile.Phone,
-				profile.LocationDisplay(), profile.Summary, profile.Skills)
+				profile.LocationDisplay(), profile.Summary, profile.RenderSkills())
+			if experience, ok := profile.CurrentExperience(); ok {
+				fmt.Printf("Current role: %s at %s\n", experience.Title, experience.Company)
+			}
+			if years, ok := profile.TotalYearsOfExperience(time.Now()); ok {
+				fmt.Printf("Experience: %.1f years across %d roles\n", years, len(profile.Experiences))
+			}
 			for _, link := range profile.Links {
 				fmt.Printf("%s: %s\n", link.Kind, link.URL)
 			}
@@ -262,7 +288,8 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			updateField("State/Region", profile.LocationRegion, func(v string) { profile.LocationRegion = v })
 			updateField("Country", profile.LocationCountry, func(v string) { profile.LocationCountry = v })
 			updateField("Summary", profile.Summary, func(v string) { profile.Summary = v })
-			updateField("Skills", profile.Skills, func(v string) { profile.Skills = v })
+			updateField("Skills (comma separated)", profile.RenderSkills(),
+				func(v string) { profile.Skills = parseSkills(v) })
 			updateField("Application Preferences", profile.ApplicationPreferences, func(v string) { profile.ApplicationPreferences = v })
 
 			if err := client.UpdateProfile(ctx, profile); err != nil {
@@ -932,4 +959,27 @@ func configureSearchPreferences(ctx context.Context, client *httpapi.Client) err
 		fmt.Printf("✅ Saved search %q: %s\n", search.Name, describeCriteria(search.Criteria))
 		return nil
 	}
+}
+
+// parseSkills turns a comma-separated list into skills, which is all the
+// CLI offers: years per skill and dated work history are edited in the
+// desktop, where a list of entries has somewhere to live.
+func parseSkills(list string) []domain.CandidateSkill {
+	var skills []domain.CandidateSkill
+	for _, name := range strings.Split(list, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			skills = append(skills, domain.CandidateSkill{Name: name})
+		}
+	}
+	return skills
+}
+
+// renderDraftSkills is a proposed skill list as the comma-separated text
+// the CLI edits.
+func renderDraftSkills(skills []domain.CandidateSkill) string {
+	names := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		names = append(names, skill.Name)
+	}
+	return strings.Join(names, ", ")
 }

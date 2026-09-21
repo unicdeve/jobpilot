@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -318,6 +320,33 @@ var factRules = []factRule{
 		value:  func(c *domain.Candidate) string { return c.LocationDisplay() },
 	},
 	{
+		// Asked by two of the three recorded forms, and unanswerable
+		// before the work history had dates.
+		source: "candidate.experiences.current.company",
+		match: both(
+			labelMentions("current company", "current employer", "present employer", "current organisation", "current organization"),
+			labelAvoids("why", "how long"),
+		),
+		value: func(c *domain.Candidate) string {
+			experience, ok := c.CurrentExperience()
+			if !ok {
+				return ""
+			}
+			return experience.Company
+		},
+	},
+	{
+		source: "candidate.experiences.current.title",
+		match:  labelMentions("current title", "current role", "current position", "current job title"),
+		value: func(c *domain.Candidate) string {
+			experience, ok := c.CurrentExperience()
+			if !ok {
+				return ""
+			}
+			return experience.Title
+		},
+	},
+	{
 		source: "candidate.notice_period_days",
 		match:  labelMentions("notice period", "notice"),
 		value:  noticePeriodAnswer,
@@ -470,12 +499,12 @@ func both(a, b func(string) bool) func(string) bool {
 	return func(label string) bool { return a(label) && b(label) }
 }
 
-// derivedAnswer applies deterministic rules that compute an answer from
-// candidate data rather than looking up a single field directly.
+// derivedAnswer computes an answer from candidate data rather than looking
+// up a single field.
 //
-// It is still one rule. The derivations worth having — years of experience
-// with a skill, current employer — need Experiences to be dates rather than
-// prose, which is stage two of ADR-0015.
+// These are the answers ADR-0015 stage two exists to make possible: a
+// paragraph of work history cannot be counted, and until it had dates the
+// only rule here was about remote work.
 func derivedAnswer(c *domain.Candidate, label string) (source, answer string) {
 	l := normalizeLabel(label)
 
@@ -485,7 +514,96 @@ func derivedAnswer(c *domain.Candidate, label string) (source, answer string) {
 		}
 	}
 
+	if source, answer := yearsOfExperienceAnswer(c, l, time.Now()); answer != "" {
+		return source, answer
+	}
+
 	return "", ""
+}
+
+// yearsOfExperienceAnswer answers "how many years…", for a named skill when
+// the label names one, and otherwise for the candidate's career as a whole.
+//
+// A named skill is answered only from what the candidate said about that
+// skill. Falling back to their total career would answer "how many years of
+// Rust?" with the time they have spent writing Go, which is a fact invented
+// about a person for an employer to read.
+func yearsOfExperienceAnswer(c *domain.Candidate, normalizedLabel string, now time.Time) (source, answer string) {
+	if !strings.Contains(normalizedLabel, "years") && !strings.Contains(normalizedLabel, "how long") {
+		return "", ""
+	}
+	if !strings.Contains(normalizedLabel, "experience") && !strings.Contains(normalizedLabel, "worked") &&
+		!strings.Contains(normalizedLabel, "using") && !strings.Contains(normalizedLabel, "how long") {
+		return "", ""
+	}
+
+	if skill, ok := skillNamedInLabel(c, normalizedLabel); ok {
+		if skill.YearsExperience == nil {
+			// The skill is theirs but the duration is not recorded, and
+			// this is the one question where that distinction matters.
+			return "", ""
+		}
+		return "derived:skills." + strings.ToLower(skill.Name), formatYears(*skill.YearsExperience)
+	}
+
+	// The question named something, and it is not a skill the candidate
+	// claims. Their career total is not an answer to it: "how many years
+	// with Rust?" answered with the decade they spent writing Go is a fact
+	// invented about a person for an employer to read.
+	if asksAboutSomethingSpecific(normalizedLabel) {
+		return "", ""
+	}
+
+	years, ok := c.TotalYearsOfExperience(now)
+	if !ok {
+		return "", ""
+	}
+	return "derived:experiences", formatYears(years)
+}
+
+// asksAboutSomethingSpecific reports whether a duration question is
+// qualified — "years of experience *with* Kubernetes" — as opposed to
+// asking about the candidate's career as a whole.
+func asksAboutSomethingSpecific(normalizedLabel string) bool {
+	return strings.Contains(normalizedLabel, " with ") ||
+		strings.Contains(normalizedLabel, " using ") ||
+		strings.Contains(normalizedLabel, " of experience in ") ||
+		strings.Contains(normalizedLabel, " working with ")
+}
+
+// skillNamedInLabel finds the candidate's own skill that a question is
+// about, matching whole words so that "Go" does not match "Google" and "R"
+// does not match every other word on the form.
+func skillNamedInLabel(c *domain.Candidate, normalizedLabel string) (domain.CandidateSkill, bool) {
+	var best domain.CandidateSkill
+	found := false
+	for _, skill := range c.Skills {
+		name := strings.ToLower(strings.TrimSpace(skill.Name))
+		if name == "" || !strings.Contains(normalizedLabel, name) {
+			continue
+		}
+		if !isWholeWordMatch(normalizedLabel, name) {
+			continue
+		}
+		// The longest match wins, so "React Native" beats "React" on a
+		// question about React Native.
+		if !found || len(name) > len(strings.TrimSpace(best.Name)) {
+			best, found = skill, true
+		}
+	}
+	return best, found
+}
+
+// formatYears renders a duration the way a person writes it on a form.
+func formatYears(years float64) string {
+	rounded := math.Round(years*10) / 10
+	if rounded <= 0 {
+		return ""
+	}
+	if rounded == math.Trunc(rounded) {
+		return strconv.Itoa(int(rounded))
+	}
+	return strconv.FormatFloat(rounded, 'f', 1, 64)
 }
 
 // generateAnswer asks the LLM for a narrative answer, grounded the same
@@ -510,7 +628,7 @@ func (s *AnswerService) generateAnswer(ctx context.Context, question *domain.App
 	fmt.Fprintf(&sb, "Answer the following application question on behalf of the candidate: %q\n\n", question.Label)
 	sb.WriteString(wrapped)
 	sb.WriteString("\n### Candidate Profile\n")
-	fmt.Fprintf(&sb, "Summary: %s\nSkills: %s\nExperience: %s\n", candidate.Summary, candidate.Skills, candidate.Experiences)
+	fmt.Fprintf(&sb, "Summary: %s\nSkills: %s\nExperience:\n%s\n", candidate.Summary, candidate.RenderSkills(), candidate.RenderExperiences())
 
 	req := ports.Request{
 		SystemPrompt: "You are helping a candidate answer a job application question. " +

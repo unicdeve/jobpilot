@@ -26,7 +26,16 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { LINK_KINDS } from "../lib/types";
-import type { Candidate, CandidateLink, LinkKind, LLMHealth, ProfileDraft, WorkAuthorization } from "../lib/types";
+import type {
+  Candidate,
+  CandidateExperience,
+  CandidateLink,
+  CandidateSkill,
+  LinkKind,
+  LLMHealth,
+  ProfileDraft,
+  WorkAuthorization,
+} from "../lib/types";
 
 const emptyProfile: Candidate = {
   id: "",
@@ -42,8 +51,8 @@ const emptyProfile: Candidate = {
   summary: "",
   work_preferences: "",
   application_preferences: "",
-  skills: "",
-  experiences: "",
+  skills: [],
+  experiences: [],
   education: "",
   certifications: "",
   links: [],
@@ -130,14 +139,56 @@ export function Profile() {
       if (overwriteExisting) return suggested;
       return currentValue || suggested;
     };
+    // A list the user has already built is theirs. Merging entry by entry
+    // would need a notion of which proposed role is "the same" as one they
+    // typed, and getting that wrong silently rewrites their history — so a
+    // proposed list only fills an empty one.
+    const pickList = <T,>(suggested: T[] | null | undefined, currentValue: T[] | null) =>
+      currentValue?.length ? currentValue : (suggested ?? []);
+
     return {
       ...current,
       first_name: pick(suggestion.first_name, current.first_name),
       last_name: pick(suggestion.last_name, current.last_name),
-      email: pick(suggestion.contact, current.email),
-      location_city: pick(suggestion.location, current.location_city),
+      email: pick(suggestion.email, current.email),
+      phone: pick(suggestion.phone, current.phone),
+      location_city: pick(suggestion.location_city, current.location_city),
+      location_region: pick(suggestion.location_region, current.location_region),
+      location_country: pick(suggestion.location_country, current.location_country),
       summary: pick(suggestion.summary, current.summary),
-      skills: pick(suggestion.skills.join(", "), current.skills),
+      skills: pickList(
+        suggestion.skills?.map((skill) => ({
+          ...toSkill(skill.name),
+          years_experience: skill.years_experience ?? null,
+        })),
+        current.skills,
+      ),
+      experiences: pickList(
+        suggestion.experiences?.map((experience) => ({
+          id: "",
+          candidate_id: "",
+          company: experience.company,
+          title: experience.title,
+          start_date: experience.start_date || null,
+          end_date: experience.is_current ? null : experience.end_date || null,
+          is_current: experience.is_current,
+          description: experience.description,
+          created_at: "",
+          updated_at: "",
+        })),
+        current.experiences,
+      ),
+      links: pickList(
+        suggestion.links?.map((link) => ({
+          id: "",
+          candidate_id: "",
+          kind: link.kind,
+          url: link.url,
+          created_at: "",
+          updated_at: "",
+        })),
+        current.links,
+      ),
     };
   };
 
@@ -280,9 +331,15 @@ export function Profile() {
               onChange={(e) => set("summary", e.target.value)}
             />
           </FormField>
-          <FormField label="Skills" htmlFor="skills">
-            <Input id="skills" value={profile.skills} onChange={(e) => set("skills", e.target.value)} />
-          </FormField>
+          <SkillsEditor
+            skills={profile.skills ?? []}
+            onChange={(skills) => set("skills", skills)}
+          />
+
+          <ExperiencesEditor
+            experiences={profile.experiences ?? []}
+            onChange={(experiences) => set("experiences", experiences)}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label="Notice period (days)" htmlFor="notice_period_days">
               <Input
@@ -468,6 +525,212 @@ function WorkAuthorizationsEditor({
         }
       >
         Add a country
+      </Button>
+    </section>
+  );
+}
+
+function toSkill(name: string): CandidateSkill {
+  return { id: "", candidate_id: "", name, years_experience: null, created_at: "", updated_at: "" };
+}
+
+/// SkillsEditor keeps skills as a list with an optional duration each.
+///
+/// The years box is optional on purpose: "I know Go" and "I have used Go
+/// for four years" are different statements, and only the candidate can
+/// make the second. A skill with no duration is simply not used to answer a
+/// "how many years" question (ADR-0015).
+function SkillsEditor({
+  skills,
+  onChange,
+}: {
+  skills: CandidateSkill[];
+  onChange: (skills: CandidateSkill[]) => void;
+}) {
+  const update = (index: number, patch: Partial<CandidateSkill>) =>
+    onChange(skills.map((skill, i) => (i === index ? { ...skill, ...patch } : skill)));
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">Skills</h3>
+        <p className="text-xs text-slate-500">
+          Years are optional. A skill without them is never used to answer a "how many years"
+          question — you are asked instead.
+        </p>
+      </div>
+
+      {skills.length === 0 ? (
+        <p className="text-sm text-slate-500">No skills added yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {skills.map((skill, index) => (
+            <li key={skill.id || index} className="flex flex-wrap items-center gap-3">
+              <Input
+                aria-label="Skill"
+                className="w-56"
+                placeholder="e.g. Go"
+                value={skill.name}
+                onChange={(e) => update(index, { name: e.target.value })}
+              />
+              <Input
+                aria-label="Years of experience"
+                className="w-28"
+                type="number"
+                min={0}
+                step="0.5"
+                placeholder="Years"
+                value={skill.years_experience ?? ""}
+                onChange={(e) =>
+                  update(index, {
+                    years_experience: e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              />
+              <Button
+                variant="ghost"
+                className="ml-auto"
+                onClick={() => onChange(skills.filter((_, i) => i !== index))}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Button variant="secondary" onClick={() => onChange([...skills, toSkill("")])}>
+        Add a skill
+      </Button>
+    </section>
+  );
+}
+
+/// ExperiencesEditor keeps the work history as dated entries.
+///
+/// The dates are what make "Current company" answerable and a total years
+/// of experience countable — neither of which a paragraph could give.
+function ExperiencesEditor({
+  experiences,
+  onChange,
+}: {
+  experiences: CandidateExperience[];
+  onChange: (experiences: CandidateExperience[]) => void;
+}) {
+  const update = (index: number, patch: Partial<CandidateExperience>) =>
+    onChange(experiences.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">Work history</h3>
+        <p className="text-xs text-slate-500">
+          Dates are what let JobPilot answer "Current company" and count your years of
+          experience. An entry without them is still kept, it just is not counted.
+        </p>
+      </div>
+
+      {experiences.length === 0 ? (
+        <p className="text-sm text-slate-500">No roles added yet.</p>
+      ) : (
+        <ul className="space-y-4">
+          {experiences.map((experience, index) => (
+            <li
+              key={experience.id || index}
+              className="space-y-3 rounded-md border border-slate-200 p-3"
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Title" htmlFor={`experience-title-${index}`}>
+                  <Input
+                    id={`experience-title-${index}`}
+                    value={experience.title}
+                    onChange={(e) => update(index, { title: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Company" htmlFor={`experience-company-${index}`}>
+                  <Input
+                    id={`experience-company-${index}`}
+                    value={experience.company}
+                    onChange={(e) => update(index, { company: e.target.value })}
+                  />
+                </FormField>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Started" htmlFor={`experience-start-${index}`}>
+                  <Input
+                    id={`experience-start-${index}`}
+                    type="date"
+                    value={experience.start_date?.slice(0, 10) ?? ""}
+                    onChange={(e) => update(index, { start_date: e.target.value || null })}
+                  />
+                </FormField>
+                <FormField label="Ended" htmlFor={`experience-end-${index}`}>
+                  <Input
+                    id={`experience-end-${index}`}
+                    type="date"
+                    disabled={experience.is_current}
+                    value={experience.is_current ? "" : (experience.end_date?.slice(0, 10) ?? "")}
+                    onChange={(e) => update(index, { end_date: e.target.value || null })}
+                  />
+                </FormField>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={experience.is_current}
+                  onChange={(e) =>
+                    update(index, {
+                      is_current: e.target.checked,
+                      end_date: e.target.checked ? null : experience.end_date,
+                    })
+                  }
+                />
+                I work here now
+              </label>
+
+              <FormField label="What you did" htmlFor={`experience-description-${index}`}>
+                <Textarea
+                  id={`experience-description-${index}`}
+                  rows={2}
+                  value={experience.description}
+                  onChange={(e) => update(index, { description: e.target.value })}
+                />
+              </FormField>
+
+              <Button
+                variant="ghost"
+                onClick={() => onChange(experiences.filter((_, i) => i !== index))}
+              >
+                Remove this role
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Button
+        variant="secondary"
+        onClick={() =>
+          onChange([
+            ...experiences,
+            {
+              id: "",
+              candidate_id: "",
+              company: "",
+              title: "",
+              start_date: null,
+              end_date: null,
+              is_current: false,
+              description: "",
+              created_at: "",
+              updated_at: "",
+            },
+          ])
+        }
+      >
+        Add a role
       </Button>
     </section>
   );

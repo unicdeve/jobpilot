@@ -18,11 +18,14 @@ The shape below is what the recorded forms in `internal/adapters/secondary/brows
 - Links, one per kind: LinkedIn, GitHub, portfolio, website, Twitter, other
 - Work authorization, per country: whether the candidate may work there, and whether they need sponsorship
 - Work preferences
-- Skills
-- Experience
-- Education
-- Certifications
+- Skills, each with an optional number of years
+- Work history, as dated entries: company, title, start, end, whether it is current, and what they did
+- Education and certifications, as prose
 - Application preferences (tone and length for generated content)
+
+Education and certifications stay prose deliberately.
+No recorded form asks about a degree, an institution or a certification, and nothing in JobPilot reads them, so structuring them would be schema for a requirement nobody has stated.
+A recorded form that asks is the trigger to revisit.
 
 Salary is deliberately absent.
 A salary floor is a filter and belongs to the saved search, where `SearchCriteria` keeps it.
@@ -35,10 +38,19 @@ Every recorded form asks for it, it is optional on every one of them, and storin
 
 Candidate profile data is factual source material. The LLM must not invent missing values.
 
-First name, last name, email, phone, location, links, Summary, and Skills may be
-populated from an LLM-generated draft after resume import (see
-`03_resume_management.md`), but only through the same explicit review/edit
-step as manual entry — the LLM never writes to the profile directly.
+First name, last name, email, phone, location, links, Summary, Skills and the
+work history may be populated from an LLM-generated draft after resume import
+(see `03_resume_management.md`), but only through the same explicit
+review/edit step as manual entry — the LLM never writes to the profile
+directly.
+
+A proposed list only fills an empty one. Merging entry by entry would need a
+notion of which proposed role is the same as one the user typed, and getting
+that wrong silently rewrites their own history.
+
+The draft may not estimate how long someone has used a skill. A duration the
+resume does not state is left unstated, because a number nobody wrote down,
+given to an employer, is a fact invented about a person.
 
 Fields a resume wouldn't plausibly contain (work preferences, application
 preferences) are never drafted this way, and neither is work authorization.

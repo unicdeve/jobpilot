@@ -43,6 +43,28 @@ export interface WorkAuthorization {
   updated_at: string;
 }
 
+export interface CandidateSkill {
+  id: string;
+  candidate_id: string;
+  name: string;
+  years_experience?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateExperience {
+  id: string;
+  candidate_id: string;
+  company: string;
+  title: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_current: boolean;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Candidate {
   id: string;
   first_name: string;
@@ -57,23 +79,41 @@ export interface Candidate {
   summary: string;
   work_preferences: string;
   application_preferences: string;
-  skills: string;
-  experiences: string;
   education: string;
   certifications: string;
   links: CandidateLink[] | null;
   work_authorizations: WorkAuthorization[] | null;
+  skills: CandidateSkill[] | null;
+  experiences: CandidateExperience[] | null;
   created_at: string;
   updated_at: string;
 }
 
+// An LLM-proposed profile read from a resume, pending the user's review
+// before any of it is applied (ADR-0011). It proposes no work
+// authorization: a resume does not reliably say which countries someone may
+// work in, and a guess there becomes a claim about their right to work.
 export interface ProfileDraft {
   first_name: string;
   last_name: string;
-  contact: string;
-  location: string;
+  email: string;
+  phone: string;
+  location_city: string;
+  location_region: string;
+  location_country: string;
   summary: string;
-  skills: string[];
+  skills: { name: string; years_experience?: number | null }[] | null;
+  experiences:
+    | {
+        company: string;
+        title: string;
+        start_date: string;
+        end_date: string;
+        is_current: boolean;
+        description: string;
+      }[]
+    | null;
+  links: { kind: LinkKind; url: string }[] | null;
 }
 
 export interface Resume {

@@ -48,22 +48,39 @@ func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, fi
 	return resume, nil
 }
 
-// ProposeProfileDraft asks the LLM to extract candidate profile fields
-// (name, contact, location, a professional summary, and skills) from resume
-// content. The result is a draft for the user to review and edit — it is
-// never written to the candidate profile directly.
+// ProposeProfileDraft asks the LLM to read a resume into the structured
+// profile: name, email, phone, location, a summary, skills with durations,
+// dated work history and links.
+//
+// The result is a draft for the user to review and edit — it is never
+// written to the candidate profile directly (ADR-0011). It proposes no work
+// authorization: a resume does not reliably say which countries someone may
+// work in, and a guess there becomes a claim about their right to work,
+// made to an employer, under their name.
 func (s *ResumeService) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
 	wrapped, err := wrapUntrusted("resume", resumeMarkdown)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prompt: %w", err)
 	}
 
-	prompt := "Analyze the following resume and extract the candidate's profile details, plus propose a " +
-		"professional summary and a list of skills. Output the result in JSON format with these keys: " +
-		"first_name (string), last_name (string), contact (string - email and/or phone number as found in " +
-		"the resume), location (string), summary (string), skills (list of strings). " +
-		"Only extract facts actually present in the resume text below; if a field isn't present, use an " +
-		"empty string (or empty list for skills) rather than guessing.\n\n" + wrapped
+	prompt := "Read the following resume and extract the candidate's profile, plus propose a professional " +
+		"summary. Output ONLY JSON with these keys:\n" +
+		"  first_name (string)\n" +
+		"  last_name (string)\n" +
+		"  email (string)\n" +
+		"  phone (string)\n" +
+		"  location_city (string), location_region (string, state or province), location_country (string)\n" +
+		"  summary (string)\n" +
+		"  skills: list of {name (string), years_experience (number or null)}\n" +
+		"  experiences: list of {company, title, start_date, end_date, is_current (bool), description}\n" +
+		"  links: list of {kind, url} where kind is one of linkedin, github, portfolio, website, twitter, other\n\n" +
+		"Dates must be written as YYYY-MM or YYYY-MM-DD. For a role the candidate still holds, set " +
+		"is_current to true and leave end_date empty.\n" +
+		"years_experience must be null unless the resume actually states how long the candidate has used " +
+		"that skill. Do not estimate it from the work history — a number nobody wrote down is a fact " +
+		"invented about a person.\n" +
+		"Extract only what is actually present in the resume below. Use an empty string, empty list or " +
+		"null for anything absent rather than guessing.\n\n" + wrapped
 
 	req := ports.Request{
 		SystemPrompt: "You are an expert resume reviewer helping draft candidate profile fields. " +

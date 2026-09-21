@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -71,6 +72,41 @@ type WorkAuthorization struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
+// CandidateExperience is one job the candidate has held.
+//
+// Dates rather than prose is the whole point: a paragraph cannot say which
+// employer is the current one, and cannot be counted.
+type CandidateExperience struct {
+	ID          string `json:"id"`
+	CandidateID string `json:"candidate_id"`
+	Company     string `json:"company"`
+	Title       string `json:"title"`
+	// StartDate and EndDate are optional, because a half-remembered
+	// history is still worth storing. An entry without a start date simply
+	// does not contribute to a computed span.
+	StartDate *time.Time `json:"start_date,omitempty"`
+	EndDate   *time.Time `json:"end_date,omitempty"`
+	IsCurrent bool       `json:"is_current"`
+	// Description stays prose on purpose: it is read by a person, or by an
+	// LLM writing a cover letter, and structuring it would buy nothing.
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// CandidateSkill is one thing the candidate can do.
+type CandidateSkill struct {
+	ID          string `json:"id"`
+	CandidateID string `json:"candidate_id"`
+	Name        string `json:"name"`
+	// YearsExperience is optional: "I know Go" and "I have used Go for
+	// four years" are different statements, and only the candidate can
+	// make the second.
+	YearsExperience *float64  `json:"years_experience,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 // Candidate represents a job seeker's profile: identity, preferences, and
 // career history used to evaluate and apply to jobs.
 //
@@ -100,15 +136,19 @@ type Candidate struct {
 	Summary                string `json:"summary"`
 	WorkPreferences        string `json:"work_preferences"`
 	ApplicationPreferences string `json:"application_preferences"`
-	Skills                 string `json:"skills"`
-	Experiences            string `json:"experiences"`
-	Education              string `json:"education"`
-	Certifications         string `json:"certifications"`
 
-	// Links and WorkAuthorizations live in their own tables and are loaded
-	// with the candidate.
-	Links              []CandidateLink     `json:"links"`
-	WorkAuthorizations []WorkAuthorization `json:"work_authorizations"`
+	// Education and Certifications are still prose. No recorded form asks
+	// about a degree or a certification, and nothing reads these, so
+	// structuring them would be schema for a requirement nobody has stated
+	// (ADR-0015 §3).
+	Education      string `json:"education"`
+	Certifications string `json:"certifications"`
+
+	// These live in their own tables and are loaded with the candidate.
+	Links              []CandidateLink       `json:"links"`
+	WorkAuthorizations []WorkAuthorization   `json:"work_authorizations"`
+	Skills             []CandidateSkill      `json:"skills"`
+	Experiences        []CandidateExperience `json:"experiences"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -141,4 +181,128 @@ func (c Candidate) LocationDisplay() string {
 // single name string.
 func (c Candidate) FullName() string {
 	return strings.TrimSpace(c.FirstName + " " + c.LastName)
+}
+
+// CurrentExperience returns the job the candidate holds now, which is what
+// a form means by "Current company".
+//
+// The flag wins over the dates: a candidate who has said which job is
+// current has answered the question directly. Failing that, the entry with
+// no end date and the latest start is the best available reading.
+func (c Candidate) CurrentExperience() (CandidateExperience, bool) {
+	for _, experience := range c.Experiences {
+		if experience.IsCurrent {
+			return experience, true
+		}
+	}
+
+	var best CandidateExperience
+	found := false
+	for _, experience := range c.Experiences {
+		if experience.EndDate != nil || experience.StartDate == nil {
+			continue
+		}
+		if !found || experience.StartDate.After(*best.StartDate) {
+			best, found = experience, true
+		}
+	}
+	return best, found
+}
+
+// TotalYearsOfExperience is how long the candidate has been working,
+// measured from the earliest start date to the latest end — or to now,
+// while a job is still current.
+//
+// It measures the span rather than summing the entries, because two jobs
+// held at once are not twice the experience. It returns false when no entry
+// carries a start date, since a number invented from nothing is exactly
+// what principle 6 forbids.
+func (c Candidate) TotalYearsOfExperience(now time.Time) (float64, bool) {
+	var earliest, latest time.Time
+	for _, experience := range c.Experiences {
+		if experience.StartDate == nil {
+			continue
+		}
+		if earliest.IsZero() || experience.StartDate.Before(earliest) {
+			earliest = *experience.StartDate
+		}
+
+		end := now
+		if !experience.IsCurrent && experience.EndDate != nil {
+			end = *experience.EndDate
+		}
+		if latest.IsZero() || end.After(latest) {
+			latest = end
+		}
+	}
+	if earliest.IsZero() || !latest.After(earliest) {
+		return 0, false
+	}
+
+	return latest.Sub(earliest).Hours() / (24 * 365.25), true
+}
+
+// SkillNamed finds a skill by name, case-insensitively.
+func (c Candidate) SkillNamed(name string) (CandidateSkill, bool) {
+	for _, skill := range c.Skills {
+		if strings.EqualFold(strings.TrimSpace(skill.Name), strings.TrimSpace(name)) {
+			return skill, true
+		}
+	}
+	return CandidateSkill{}, false
+}
+
+// SkillNames lists the candidate's skills, for matching against a job's own
+// skill list and for prompts that want them as text.
+func (c Candidate) SkillNames() []string {
+	names := make([]string, 0, len(c.Skills))
+	for _, skill := range c.Skills {
+		if name := strings.TrimSpace(skill.Name); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// RenderSkills is the candidate's skills as one line, for a prompt.
+func (c Candidate) RenderSkills() string {
+	return strings.Join(c.SkillNames(), ", ")
+}
+
+// RenderExperiences is the candidate's work history as text, for a prompt.
+//
+// The model reading this wants prose, so the structure is rendered back
+// into it. That is not a round trip to nowhere: the rendering is
+// consistent, dated and ordered, where the blob it replaces was whatever
+// the user or an extraction happened to type.
+func (c Candidate) RenderExperiences() string {
+	var sb strings.Builder
+	for _, experience := range c.Experiences {
+		fmt.Fprintf(&sb, "- %s", strings.TrimSpace(experience.Title))
+		if experience.Company != "" {
+			fmt.Fprintf(&sb, " at %s", strings.TrimSpace(experience.Company))
+		}
+		if period := experience.Period(); period != "" {
+			fmt.Fprintf(&sb, " (%s)", period)
+		}
+		sb.WriteString("\n")
+		if description := strings.TrimSpace(experience.Description); description != "" {
+			fmt.Fprintf(&sb, "  %s\n", description)
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// Period renders an experience's dates the way a CV does.
+func (e CandidateExperience) Period() string {
+	switch {
+	case e.StartDate == nil && e.EndDate == nil:
+		return ""
+	case e.StartDate == nil:
+		return "until " + e.EndDate.Format("Jan 2006")
+	case e.IsCurrent || e.EndDate == nil:
+		return e.StartDate.Format("Jan 2006") + " – present"
+	default:
+		return e.StartDate.Format("Jan 2006") + " – " + e.EndDate.Format("Jan 2006")
+	}
 }

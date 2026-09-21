@@ -29,7 +29,7 @@ const candidateColumns = `id, first_name, last_name, email, phone,
 	location_city, location_region, location_country,
 	notice_period_days, earliest_start_date,
 	summary, work_preferences, application_preferences,
-	skills, experiences, education, certifications, created_at, updated_at`
+	education, certifications, created_at, updated_at`
 
 // Save inserts a new candidate, generating an ID and timestamps if unset.
 //
@@ -48,7 +48,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 	}
 
 	query := `INSERT INTO candidates (` + candidateColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, query,
@@ -56,7 +56,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
 			candidate.Summary, candidate.WorkPreferences, candidate.ApplicationPreferences,
-			candidate.Skills, candidate.Experiences, candidate.Education, candidate.Certifications,
+			candidate.Education, candidate.Certifications,
 			candidate.CreatedAt, candidate.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("failed to save candidate: %w", err)
@@ -94,7 +94,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 		location_city = ?, location_region = ?, location_country = ?,
 		notice_period_days = ?, earliest_start_date = ?,
 		summary = ?, work_preferences = ?, application_preferences = ?,
-		skills = ?, experiences = ?, education = ?, certifications = ?, updated_at = ?
+		education = ?, certifications = ?, updated_at = ?
 	WHERE id = ?`
 
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
@@ -103,7 +103,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
 			candidate.Summary, candidate.WorkPreferences, candidate.ApplicationPreferences,
-			candidate.Skills, candidate.Experiences, candidate.Education, candidate.Certifications,
+			candidate.Education, candidate.Certifications,
 			candidate.UpdatedAt, candidate.ID,
 		); err != nil {
 			return fmt.Errorf("failed to update candidate: %w", err)
@@ -120,7 +120,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 // it to and a silently orphaned row is worse than a redundant statement.
 func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
-		for _, table := range []string{"candidate_links", "candidate_work_authorizations"} {
+		for _, table := range candidateChildTables {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE candidate_id = ?`, id); err != nil {
 				return fmt.Errorf("failed to delete candidate's %s: %w", table, err)
 			}
@@ -160,7 +160,7 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 		&c.LocationCity, &c.LocationRegion, &c.LocationCountry,
 		&c.NoticePeriodDays, &c.EarliestStartDate,
 		&c.Summary, &c.WorkPreferences, &c.ApplicationPreferences,
-		&c.Skills, &c.Experiences, &c.Education, &c.Certifications,
+		&c.Education, &c.Certifications,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
@@ -169,7 +169,16 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 	return &c, nil
 }
 
-// loadChildren fills in the candidate's links and work authorizations.
+// candidateChildTables are the tables that belong to a candidate and are
+// written, read and deleted with them.
+var candidateChildTables = []string{
+	"candidate_links",
+	"candidate_work_authorizations",
+	"candidate_skills",
+	"candidate_experiences",
+}
+
+// loadChildren fills in everything that lives in its own table.
 func (r *CandidateRepository) loadChildren(ctx context.Context, candidate *domain.Candidate) error {
 	links, err := r.listLinks(ctx, candidate.ID)
 	if err != nil {
@@ -179,9 +188,69 @@ func (r *CandidateRepository) loadChildren(ctx context.Context, candidate *domai
 	if err != nil {
 		return err
 	}
+	skills, err := r.listSkills(ctx, candidate.ID)
+	if err != nil {
+		return err
+	}
+	experiences, err := r.listExperiences(ctx, candidate.ID)
+	if err != nil {
+		return err
+	}
 	candidate.Links = links
 	candidate.WorkAuthorizations = authorizations
+	candidate.Skills = skills
+	candidate.Experiences = experiences
 	return nil
+}
+
+func (r *CandidateRepository) listSkills(ctx context.Context, candidateID string) ([]domain.CandidateSkill, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, candidate_id, name, years_experience, created_at, updated_at
+		FROM candidate_skills WHERE candidate_id = ? ORDER BY name`, candidateID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list candidate skills: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var skills []domain.CandidateSkill
+	for rows.Next() {
+		var skill domain.CandidateSkill
+		if err := rows.Scan(&skill.ID, &skill.CandidateID, &skill.Name, &skill.YearsExperience,
+			&skill.CreatedAt, &skill.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan candidate skill: %w", err)
+		}
+		skills = append(skills, skill)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read candidate skills: %w", err)
+	}
+	return skills, nil
+}
+
+// listExperiences returns the work history newest first, the order a CV
+// uses and the order the current job should appear in.
+func (r *CandidateRepository) listExperiences(ctx context.Context, candidateID string) ([]domain.CandidateExperience, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, candidate_id, company, title, start_date, end_date,
+		is_current, description, created_at, updated_at
+		FROM candidate_experiences WHERE candidate_id = ?
+		ORDER BY is_current DESC, start_date DESC NULLS LAST, company`, candidateID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list candidate experiences: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var experiences []domain.CandidateExperience
+	for rows.Next() {
+		var e domain.CandidateExperience
+		if err := rows.Scan(&e.ID, &e.CandidateID, &e.Company, &e.Title, &e.StartDate, &e.EndDate,
+			&e.IsCurrent, &e.Description, &e.CreatedAt, &e.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan candidate experience: %w", err)
+		}
+		experiences = append(experiences, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read candidate experiences: %w", err)
+	}
+	return experiences, nil
 }
 
 func (r *CandidateRepository) listLinks(ctx context.Context, candidateID string) ([]domain.CandidateLink, error) {
@@ -282,6 +351,52 @@ func (r *CandidateRepository) replaceChildren(ctx context.Context, tx *sql.Tx, c
 			auth.ID, auth.CandidateID, auth.Country, auth.IsAuthorized, auth.RequiresSponsorship,
 			auth.CreatedAt, auth.UpdatedAt); err != nil {
 			return fmt.Errorf("failed to save work authorization for %q: %w", auth.Country, err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM candidate_skills WHERE candidate_id = ?`, candidate.ID); err != nil {
+		return fmt.Errorf("failed to clear candidate skills: %w", err)
+	}
+	for i := range candidate.Skills {
+		skill := &candidate.Skills[i]
+		if skill.ID == "" {
+			skill.ID = uuid.NewString()
+		}
+		skill.CandidateID = candidate.ID
+		if skill.CreatedAt.IsZero() {
+			skill.CreatedAt = now
+		}
+		skill.UpdatedAt = now
+
+		if _, err := tx.ExecContext(ctx, `INSERT INTO candidate_skills
+			(id, candidate_id, name, years_experience, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			skill.ID, skill.CandidateID, skill.Name, skill.YearsExperience,
+			skill.CreatedAt, skill.UpdatedAt); err != nil {
+			return fmt.Errorf("failed to save skill %q: %w", skill.Name, err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM candidate_experiences WHERE candidate_id = ?`, candidate.ID); err != nil {
+		return fmt.Errorf("failed to clear candidate experiences: %w", err)
+	}
+	for i := range candidate.Experiences {
+		experience := &candidate.Experiences[i]
+		if experience.ID == "" {
+			experience.ID = uuid.NewString()
+		}
+		experience.CandidateID = candidate.ID
+		if experience.CreatedAt.IsZero() {
+			experience.CreatedAt = now
+		}
+		experience.UpdatedAt = now
+
+		if _, err := tx.ExecContext(ctx, `INSERT INTO candidate_experiences
+			(id, candidate_id, company, title, start_date, end_date, is_current, description, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			experience.ID, experience.CandidateID, experience.Company, experience.Title,
+			experience.StartDate, experience.EndDate, experience.IsCurrent, experience.Description,
+			experience.CreatedAt, experience.UpdatedAt); err != nil {
+			return fmt.Errorf("failed to save experience at %q: %w", experience.Company, err)
 		}
 	}
 

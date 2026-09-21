@@ -76,11 +76,34 @@ On `candidates`:
 ### 3. Tables for facts a person has several of
 
 - `candidate_links` — `kind` (linkedin, github, portfolio, website, twitter, other), `url`
+- `candidate_work_authorizations` — `country`, `is_authorized`, `requires_sponsorship`
 - `candidate_skills` — `name`, `years_experience`
 - `candidate_experiences` — `company`, `title`, `start_date`, `end_date`, `is_current`, `description`
-- `candidate_education` — `institution`, `degree`, `field`, `start_date`, `end_date`
-- `candidate_certifications` — `name`, `issuer`, `issued_at`, `expires_at`
-- `candidate_work_authorizations` — `country`, `is_authorized`, `requires_sponsorship`
+
+Education and certifications stay prose, which is a narrowing of this list
+made while building stage two and recorded here rather than quietly.
+
+§1 says the recorded forms are the specification, and by that rule these do
+not qualify: no recorded form asks about a degree, an institution or a
+certification, and nothing in the codebase reads either field — they are
+written and never used. Structuring them would be schema built for a
+requirement nobody has stated, which principle 10 rules out. A recorded form
+that asks for them is the trigger to revisit, and adding such a fixture is
+the honest way to justify it.
+
+The two that stay have concrete, existing consumers:
+
+- **Experiences** because "Current company" is asked by two of the three
+  recorded forms and cannot be answered at all today, and because dated
+  entries give a total years of experience comparable with `jobs.experience_min`
+  and `jobs.experience_max`, which already exist and are currently unused.
+- **Skills** because `jobs.skills` is already a list, and matching compares
+  it against a prose blob.
+
+`candidate_skills.years_experience` is the one field here with no recorded
+form behind it. It is included because a per-skill years question is common
+in the wild and nothing else could answer one, and that gap in the evidence
+is worth stating rather than glossing.
 
 `candidate_experiences` is what makes "current company" and "years of experience" answerable at all, and `candidate_work_authorizations` is what turns a sponsorship question from a paragraph into a Yes or a No for the country being asked about.
 
@@ -145,7 +168,7 @@ Two stages, because they have different value and different size.
 These are the rows in the table above — small schema, immediate correctness.
 Salary needs no schema at all: dropping the prose field turns a wrong answer into an honest needs-user-input.
 
-**Stage two enables new ones.** Experiences, skills, education, certifications, and the extraction action that fills them.
+**Stage two enables new ones.** Experiences and skills, and the extraction action that fills them.
 Larger, and its payoff is derivations we cannot do at all today — current company, years of experience — rather than mistakes we are currently making.
 
 Stage one is worth doing even if stage two is deferred indefinitely.

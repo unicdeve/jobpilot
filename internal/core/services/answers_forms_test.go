@@ -49,7 +49,31 @@ func testCandidate() *domain.Candidate {
 			{Country: "Germany", IsAuthorized: true, RequiresSponsorship: false},
 			{Country: "United Kingdom", IsAuthorized: false, RequiresSponsorship: true},
 		},
+		Skills: []domain.CandidateSkill{
+			{Name: "Go", YearsExperience: ptr(4.0)},
+			{Name: "React Native", YearsExperience: ptr(2.0)},
+			// Deliberately no duration: the candidate has the skill but
+			// has not said for how long.
+			{Name: "TypeScript"},
+		},
+		Experiences: []domain.CandidateExperience{
+			{
+				Company: "Acme", Title: "Staff Engineer",
+				StartDate: date(2022, time.July, 1), IsCurrent: true,
+			},
+			{
+				Company: "Old Co", Title: "Engineer",
+				StartDate: date(2016, time.September, 21), EndDate: date(2022, time.June, 30),
+			},
+		},
 	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func date(year int, month time.Month, day int) *time.Time {
+	t := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	return &t
 }
 
 func germanJob() *domain.Job {
@@ -96,6 +120,11 @@ func TestProfileFactAnswer_OnRecordedFormLabels(t *testing.T) {
 
 		{"availability prefers the stated date", "When are you available", "2026-11-01"},
 
+		// Asked by the recorded Ashby and Lever forms, and unanswerable
+		// until the work history had dates (ADR-0015 stage two).
+		{"current company", "Current company", "Acme"},
+		{"current title", "Current title", "Staff Engineer"},
+
 		// Salary has no profile field at all now: the filter lives on the
 		// saved search, and telling an employer a search floor would state
 		// a number the candidate never gave (ADR-0015 §4).
@@ -116,7 +145,10 @@ func TestProfileFactAnswer_OnRecordedFormLabels(t *testing.T) {
 		{"an acknowledgement is not a fact", "By submitting my application, I acknowledge that I have read and understand the privacy notice", ""},
 
 		// Not every "name" on a form is the candidate's.
-		{"a company name field is not the candidate's name", "Current company name", ""},
+		// This used to return "Ada Lovelace", which is what the case was
+		// written to catch. It now returns the company, which is what the
+		// question actually asks for — so the expectation moves with it.
+		{"a company name field gets the company, never the candidate's name", "Current company name", "Acme"},
 		{"a school name field is not the candidate's name", "Name of university", ""},
 	}
 
@@ -263,4 +295,49 @@ func recordedFormLabels(t *testing.T, fixture string) []string {
 	}
 	require.NotEmpty(t, labels)
 	return labels
+}
+
+func TestYearsOfExperienceAnswer(t *testing.T) {
+	t.Parallel()
+
+	candidate := testCandidate()
+	now := time.Date(2026, time.September, 21, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name  string
+		label string
+		want  string
+	}{
+		{"a named skill is answered from what was said about it", "How many years of experience do you have with Go?", "4"},
+		{"the longest matching skill wins", "Years of experience with React Native", "2"},
+		{"a whole career when no skill is named", "How many years of experience do you have?", "10"},
+
+		// The one that matters: the candidate has never said how long they
+		// have used TypeScript, and their total career is not an answer to
+		// a question about TypeScript.
+		{"a skill with no stated duration is not answered from the career total", "How many years of experience do you have with TypeScript?", ""},
+		{"a skill they do not have is not answered at all", "How many years of experience do you have with Rust?", ""},
+
+		{"not a duration question", "What is your current company?", ""},
+		// "Go" must not match "Google", and the career total must not stand
+		// in for a skill the candidate never claimed.
+		{"a word that merely contains a skill name is not that skill", "How many years of experience do you have with Google Cloud?", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, got := yearsOfExperienceAnswer(candidate, normalizeLabel(tt.label), now)
+			assert.Equal(t, tt.want, got, "label %q", tt.label)
+		})
+	}
+
+	t.Run("a candidate with no dated history says nothing", func(t *testing.T) {
+		t.Parallel()
+		bare := &domain.Candidate{Experiences: []domain.CandidateExperience{{Company: "Acme"}}}
+
+		_, got := yearsOfExperienceAnswer(bare, "how many years of experience do you have?", now)
+
+		assert.Empty(t, got)
+	})
 }

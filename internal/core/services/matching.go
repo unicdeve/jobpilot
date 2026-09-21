@@ -109,7 +109,7 @@ func (s *MatchingService) buildPrompt(c *domain.Candidate, j *domain.Job) (strin
 	sb.WriteString(wrapped)
 
 	sb.WriteString("\n### Candidate Profile\n")
-	fmt.Fprintf(&sb, "Summary: %s\nSkills: %s\nExperience: %s\n", c.Summary, c.Skills, c.Experiences)
+	fmt.Fprintf(&sb, "Summary: %s\nSkills: %s\nExperience:\n%s\n", c.Summary, c.RenderSkills(), c.RenderExperiences())
 
 	return sb.String(), nil
 }

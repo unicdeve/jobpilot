@@ -5,6 +5,7 @@ package sqlite
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,4 +206,62 @@ func TestCandidateRepository_LinksAndWorkAuthorizations(t *testing.T) {
 			assert.Zero(t, count, "%s left an orphaned row", table)
 		}
 	})
+}
+
+// TestCandidateRepository_SkillsAndExperiences covers the two tables
+// ADR-0015 stage two added, which exist to make "Current company" and a
+// countable years of experience possible at all.
+func TestCandidateRepository_SkillsAndExperiences(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	years := 4.0
+	start := time.Date(2022, time.July, 1, 0, 0, 0, 0, time.UTC)
+	oldStart := time.Date(2016, time.September, 21, 0, 0, 0, 0, time.UTC)
+	oldEnd := time.Date(2022, time.June, 30, 0, 0, 0, 0, time.UTC)
+
+	db := newTestDB(t)
+	repo := NewCandidateRepository(db.Conn())
+
+	candidate := &domain.Candidate{
+		FirstName: "Ada",
+		Skills: []domain.CandidateSkill{
+			{Name: "Go", YearsExperience: &years},
+			{Name: "TypeScript"},
+		},
+		Experiences: []domain.CandidateExperience{
+			{Company: "Old Co", Title: "Engineer", StartDate: &oldStart, EndDate: &oldEnd},
+			{Company: "Acme", Title: "Staff Engineer", StartDate: &start, IsCurrent: true,
+				Description: "Led the payments rewrite."},
+		},
+	}
+	require.NoError(t, repo.Save(ctx, candidate))
+
+	got, err := repo.GetByID(ctx, candidate.ID)
+	require.NoError(t, err)
+
+	require.Len(t, got.Skills, 2)
+	goSkill, ok := got.SkillNamed("Go")
+	require.True(t, ok)
+	require.NotNil(t, goSkill.YearsExperience)
+	assert.Equal(t, 4.0, *goSkill.YearsExperience)
+	typescript, ok := got.SkillNamed("TypeScript")
+	require.True(t, ok)
+	assert.Nil(t, typescript.YearsExperience, "an unstated duration must stay unstated, not become zero")
+
+	require.Len(t, got.Experiences, 2)
+	assert.Equal(t, "Acme", got.Experiences[0].Company, "the current role comes first")
+	assert.True(t, got.Experiences[0].IsCurrent)
+	require.NotNil(t, got.Experiences[0].StartDate)
+	assert.Equal(t, 2022, got.Experiences[0].StartDate.Year())
+	assert.Nil(t, got.Experiences[0].EndDate)
+	assert.Equal(t, "Led the payments rewrite.", got.Experiences[0].Description)
+
+	current, ok := got.CurrentExperience()
+	require.True(t, ok)
+	assert.Equal(t, "Acme", current.Company)
+
+	total, ok := got.TotalYearsOfExperience(time.Date(2026, time.September, 21, 0, 0, 0, 0, time.UTC))
+	require.True(t, ok)
+	assert.InDelta(t, 10.0, total, 0.05)
 }
