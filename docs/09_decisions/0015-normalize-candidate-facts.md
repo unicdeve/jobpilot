@@ -70,8 +70,12 @@ On `candidates`:
 
 - `email`, `phone` — replacing `contact`
 - `location_city`, `location_region`, `location_country` — replacing `location`, because Greenhouse asks for Country and City as separate fields
-- `remote_preference` — the same vocabulary as `jobs.remote_type`, so a match can compare rather than read
-- `notice_period_days`, `earliest_start_date`, `willing_to_relocate`
+- `remote_preference` — the same vocabulary as `jobs.remote_type`, so a preference can be compared with a posting rather than searched for a word inside a paragraph
+- `notice_period_days`, `earliest_start_date`
+
+`willing_to_relocate` was listed here and is not built.
+By §1's rule it does not qualify: no recorded form asks it, and nothing would read it.
+It is dropped rather than deferred, on the same reasoning that removed education and certifications.
 
 ### 3. Tables for facts a person has several of
 
@@ -195,6 +199,15 @@ Principle 10 is explicit that infrastructure needs a documented requirement, and
 
 **Keep the blobs and ask an LLM to extract a fact per question at resolve time.**
 Turns every form field into a model call, makes the same question answerable differently on two runs, and puts an LLM in the path of factual answers — which `Resolve` deliberately prevents today, by construction rather than by prompt (principle 7, and AC-003).
+
+## Closing change
+
+Normalization worked from the defect table and walked past three prose columns that no interface had ever written.
+
+- `work_preferences` was read by exactly one thing, a substring check for "remote" in `derivedAnswer`. Neither the desktop nor the CLI offered a field for it, so that rule had never fired for anybody and could not. It is replaced by the structured `remote_preference` above, which makes the rule reachable for the first time — and lets it tell "prefers onsite" from "has not said", which the prose version could not. An onsite candidate now answers honestly instead of falling silent.
+- `education` and `certifications` were read by nothing and written by nothing. They are dropped. Keeping them would be storing data for a consumer that does not exist, which is what principle 10 rules out, and no recorded form asks about a degree or a certification.
+
+A form that asks about education is the trigger to bring it back, and the honest way to justify that is to record such a form as a fixture first.
 
 ## Open questions
 

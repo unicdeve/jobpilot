@@ -39,7 +39,7 @@ func testCandidate() *domain.Candidate {
 		// A date and a notice period together: the date is the better
 		// answer to "when are you available", so it wins.
 		EarliestStartDate: &start,
-		WorkPreferences:   "Remote or hybrid in Berlin.",
+		RemotePreference:  domain.RemotePreferenceRemote,
 		Links: []domain.CandidateLink{
 			{Kind: domain.LinkKindLinkedIn, URL: "https://linkedin.com/in/ada"},
 			{Kind: domain.LinkKindGitHub, URL: "https://github.com/ada"},

@@ -36,21 +36,32 @@ func TestDerivedAnswer(t *testing.T) {
 
 	t.Run("remote-open candidate", func(t *testing.T) {
 		t.Parallel()
-		source, answer := derivedAnswer(&domain.Candidate{WorkPreferences: "remote only"}, "Are you open to remote work?")
-		assert.Equal(t, "derived:work_preferences", source)
-		assert.Equal(t, "Yes, open to remote work.", answer)
+		source, answer := derivedAnswer(&domain.Candidate{RemotePreference: domain.RemotePreferenceRemote}, "Are you open to remote work?")
+		assert.Equal(t, "candidate.remote_preference", source)
+		assert.Equal(t, "Yes, I am looking for remote work.", answer)
 	})
 
-	t.Run("no signal falls through", func(t *testing.T) {
+	t.Run("an onsite candidate answers honestly rather than falling through", func(t *testing.T) {
 		t.Parallel()
-		source, answer := derivedAnswer(&domain.Candidate{WorkPreferences: "onsite only"}, "Are you open to remote work?")
+		// This case used to assert no answer, because the rule read a
+		// prose field and could not tell "prefers onsite" from "has not
+		// said". A structured preference can, and an honest no is worth as
+		// much to the user as an honest yes.
+		source, answer := derivedAnswer(&domain.Candidate{RemotePreference: domain.RemotePreferenceOnsite}, "Are you open to remote work?")
+		assert.Equal(t, "candidate.remote_preference", source)
+		assert.Equal(t, "I am looking for onsite work.", answer)
+	})
+
+	t.Run("a candidate who has not said falls through to the user", func(t *testing.T) {
+		t.Parallel()
+		source, answer := derivedAnswer(&domain.Candidate{}, "Are you open to remote work?")
 		assert.Empty(t, source)
-		assert.Empty(t, answer)
+		assert.Empty(t, answer, "not having said is a state of its own, and is not a No")
 	})
 
 	t.Run("unrelated question falls through", func(t *testing.T) {
 		t.Parallel()
-		source, answer := derivedAnswer(&domain.Candidate{WorkPreferences: "remote only"}, "How many years of Go experience do you have?")
+		source, answer := derivedAnswer(&domain.Candidate{RemotePreference: domain.RemotePreferenceRemote}, "How many years of Go experience do you have?")
 		assert.Empty(t, source)
 		assert.Empty(t, answer)
 	})

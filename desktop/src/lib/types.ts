@@ -65,6 +65,8 @@ export interface CandidateExperience {
   updated_at: string;
 }
 
+export type RemotePreference = "" | "remote" | "hybrid" | "onsite";
+
 export interface Candidate {
   id: string;
   first_name: string;
@@ -77,10 +79,8 @@ export interface Candidate {
   notice_period_days?: number | null;
   earliest_start_date?: string | null;
   summary: string;
-  work_preferences: string;
+  remote_preference: RemotePreference;
   application_preferences: string;
-  education: string;
-  certifications: string;
   links: CandidateLink[] | null;
   work_authorizations: WorkAuthorization[] | null;
   skills: CandidateSkill[] | null;

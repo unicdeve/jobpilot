@@ -508,10 +508,8 @@ func both(a, b func(string) bool) func(string) bool {
 func derivedAnswer(c *domain.Candidate, label string) (source, answer string) {
 	l := normalizeLabel(label)
 
-	if strings.Contains(l, "remote") && (strings.Contains(l, "open") || strings.Contains(l, "willing") || strings.Contains(l, "able") || strings.Contains(l, "comfortable")) {
-		if strings.Contains(strings.ToLower(c.WorkPreferences), "remote") {
-			return "derived:work_preferences", "Yes, open to remote work."
-		}
+	if source, answer := remoteWorkAnswer(c, l); answer != "" {
+		return source, answer
 	}
 
 	if source, answer := yearsOfExperienceAnswer(c, l, time.Now()); answer != "" {
@@ -519,6 +517,34 @@ func derivedAnswer(c *domain.Candidate, label string) (source, answer string) {
 	}
 
 	return "", ""
+}
+
+// remoteWorkAnswer answers a question about working remotely.
+//
+// This rule existed before ADR-0015 and had never fired for anybody: it
+// read Candidate.WorkPreferences, a prose column no interface ever offered
+// a field for, so it was always empty. A structured preference is what
+// makes it reachable.
+func remoteWorkAnswer(c *domain.Candidate, normalizedLabel string) (source, answer string) {
+	if c.RemotePreference == "" || !strings.Contains(normalizedLabel, "remote") {
+		return "", ""
+	}
+	if !labelMentions("open", "willing", "able", "comfortable", "interested", "happy")(normalizedLabel) {
+		return "", ""
+	}
+
+	switch c.RemotePreference {
+	case domain.RemotePreferenceRemote:
+		return "candidate.remote_preference", "Yes, I am looking for remote work."
+	case domain.RemotePreferenceHybrid:
+		return "candidate.remote_preference", "Yes, I am open to remote work, and prefer hybrid."
+	case domain.RemotePreferenceOnsite:
+		// An honest no is worth as much as an honest yes, and is not the
+		// same as leaving the question blank.
+		return "candidate.remote_preference", "I am looking for onsite work."
+	default:
+		return "", ""
+	}
 }
 
 // yearsOfExperienceAnswer answers "how many years…", for a named skill when

@@ -72,6 +72,41 @@ type WorkAuthorization struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
+// RemotePreference is how the candidate wants to work, in the same
+// vocabulary Job.RemoteType uses.
+//
+// Education and certifications used to sit beside this as prose. They were
+// removed in ADR-0015's closing change: nothing read them and no interface
+// ever wrote them, so they held no data for a consumer that did not exist.
+type RemotePreference string
+
+// Remote preferences. The empty value means the candidate has not said.
+const (
+	RemotePreferenceRemote RemotePreference = "remote"
+	RemotePreferenceHybrid RemotePreference = "hybrid"
+	RemotePreferenceOnsite RemotePreference = "onsite"
+)
+
+// RemotePreferences lists every value, for UI that offers a choice.
+func RemotePreferences() []RemotePreference {
+	return []RemotePreference{RemotePreferenceRemote, RemotePreferenceHybrid, RemotePreferenceOnsite}
+}
+
+// IsValid reports whether a preference is one we have. The empty value is
+// valid: not having said is a normal state, and different from every
+// answer.
+func (p RemotePreference) IsValid() bool {
+	if p == "" {
+		return true
+	}
+	for _, known := range RemotePreferences() {
+		if p == known {
+			return true
+		}
+	}
+	return false
+}
+
 // CandidateExperience is one job the candidate has held.
 //
 // Dates rather than prose is the whole point: a paragraph cannot say which
@@ -133,16 +168,12 @@ type Candidate struct {
 	NoticePeriodDays  *int       `json:"notice_period_days,omitempty"`
 	EarliestStartDate *time.Time `json:"earliest_start_date,omitempty"`
 
-	Summary                string `json:"summary"`
-	WorkPreferences        string `json:"work_preferences"`
-	ApplicationPreferences string `json:"application_preferences"`
-
-	// Education and Certifications are still prose. No recorded form asks
-	// about a degree or a certification, and nothing reads these, so
-	// structuring them would be schema for a requirement nobody has stated
-	// (ADR-0015 §3).
-	Education      string `json:"education"`
-	Certifications string `json:"certifications"`
+	Summary string `json:"summary"`
+	// RemotePreference uses the same vocabulary as Job.RemoteType, so a
+	// preference can be compared with a posting rather than searched for a
+	// word inside a paragraph.
+	RemotePreference       RemotePreference `json:"remote_preference"`
+	ApplicationPreferences string           `json:"application_preferences"`
 
 	// These live in their own tables and are loaded with the candidate.
 	Links              []CandidateLink       `json:"links"`

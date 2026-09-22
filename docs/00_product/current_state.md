@@ -354,11 +354,11 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   skills/experience/education remain text columns on `candidates`, jobs
   reference their source only by free-text ID, and there is no schema home
   yet for prompt customization or notifications.
-  ADR-0015 covers the candidate half and is now built. Stage one normalized
+  ADR-0015 covers the candidate half and is complete. Stage one normalized
   contact, location, links, work authorization and availability; stage two
-  added dated work history and skills. Education and certifications stay
-  prose deliberately — no recorded form asks about them and nothing reads
-  them (ADR-0015 §3).
+  added dated work history and skills; the closing change made work
+  preference structured and removed education and certifications, which no
+  interface ever wrote and nothing ever read.
 - The LLM provider abstraction (`internal/core/ports/llm.go`) has no
   schema-constrained structured output support: matching, profile-draft, and
   cover-letter/answer generation all rely on prompt instructions plus
@@ -369,6 +369,8 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   user enters their details or re-imports their resume. That is the intended
   direction — an unanswered question is left for the user, a wrongly answered
   one goes to an employer — but it is a real regression in the interim.
+- Education and certifications are not stored at all. No recorded form asks
+  about them, so bringing them back should start with a fixture that does.
 - Per-skill durations are self-reported and never estimated. A question about
   a skill the candidate has not given a duration for is left for them, rather
   than answered from their career total.

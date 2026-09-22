@@ -17,15 +17,14 @@ The shape below is what the recorded forms in `internal/adapters/secondary/brows
 - Availability: notice period in days, earliest start date
 - Links, one per kind: LinkedIn, GitHub, portfolio, website, Twitter, other
 - Work authorization, per country: whether the candidate may work there, and whether they need sponsorship
-- Work preferences
+- Remote preference: remote, hybrid or onsite, in the same vocabulary a job posting uses — or unsaid, which is a state of its own and is not a No
 - Skills, each with an optional number of years
 - Work history, as dated entries: company, title, start, end, whether it is current, and what they did
-- Education and certifications, as prose
 - Application preferences (tone and length for generated content)
 
-Education and certifications stay prose deliberately.
-No recorded form asks about a degree, an institution or a certification, and nothing in JobPilot reads them, so structuring them would be schema for a requirement nobody has stated.
-A recorded form that asks is the trigger to revisit.
+Education and certifications are not stored.
+No recorded form asks about a degree, an institution or a certification, and nothing in JobPilot read the columns that used to hold them.
+A recorded form that asks is the trigger to bring them back.
 
 Salary is deliberately absent.
 A salary floor is a filter and belongs to the saved search, where `SearchCriteria` keeps it.

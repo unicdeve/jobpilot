@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,8 +29,15 @@ func NewCandidateRepository(db *sql.DB) *CandidateRepository {
 const candidateColumns = `id, first_name, last_name, email, phone,
 	location_city, location_region, location_country,
 	notice_period_days, earliest_start_date,
-	summary, work_preferences, application_preferences,
-	education, certifications, created_at, updated_at`
+	summary, remote_preference, application_preferences, created_at, updated_at`
+
+// candidatePlaceholders is one bind marker per candidateColumns entry,
+// derived rather than written out: the two drifted apart the moment a
+// column was removed, and SQLite only says so at runtime.
+var candidatePlaceholders = strings.TrimSuffix(strings.Repeat("?, ", candidateColumnCount), ", ")
+
+// candidateColumnCount is how many columns candidateColumns names.
+var candidateColumnCount = len(strings.Split(strings.ReplaceAll(candidateColumns, "\n", ""), ","))
 
 // Save inserts a new candidate, generating an ID and timestamps if unset.
 //
@@ -48,15 +56,14 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 	}
 
 	query := `INSERT INTO candidates (` + candidateColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (` + candidatePlaceholders + `)`
 
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, query,
 			candidate.ID, candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
-			candidate.Summary, candidate.WorkPreferences, candidate.ApplicationPreferences,
-			candidate.Education, candidate.Certifications,
+			candidate.Summary, candidate.RemotePreference, candidate.ApplicationPreferences,
 			candidate.CreatedAt, candidate.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("failed to save candidate: %w", err)
@@ -93,8 +100,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 		first_name = ?, last_name = ?, email = ?, phone = ?,
 		location_city = ?, location_region = ?, location_country = ?,
 		notice_period_days = ?, earliest_start_date = ?,
-		summary = ?, work_preferences = ?, application_preferences = ?,
-		education = ?, certifications = ?, updated_at = ?
+		summary = ?, remote_preference = ?, application_preferences = ?, updated_at = ?
 	WHERE id = ?`
 
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
@@ -102,8 +108,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 			candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
-			candidate.Summary, candidate.WorkPreferences, candidate.ApplicationPreferences,
-			candidate.Education, candidate.Certifications,
+			candidate.Summary, candidate.RemotePreference, candidate.ApplicationPreferences,
 			candidate.UpdatedAt, candidate.ID,
 		); err != nil {
 			return fmt.Errorf("failed to update candidate: %w", err)
@@ -159,8 +164,7 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 		&c.ID, &c.FirstName, &c.LastName, &c.Email, &c.Phone,
 		&c.LocationCity, &c.LocationRegion, &c.LocationCountry,
 		&c.NoticePeriodDays, &c.EarliestStartDate,
-		&c.Summary, &c.WorkPreferences, &c.ApplicationPreferences,
-		&c.Education, &c.Certifications,
+		&c.Summary, &c.RemotePreference, &c.ApplicationPreferences,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {

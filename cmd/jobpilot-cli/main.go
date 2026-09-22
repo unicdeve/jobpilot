@@ -290,6 +290,14 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			updateField("Summary", profile.Summary, func(v string) { profile.Summary = v })
 			updateField("Skills (comma separated)", profile.RenderSkills(),
 				func(v string) { profile.Skills = parseSkills(v) })
+			updateField("Remote preference (remote|hybrid|onsite, blank to leave unsaid)",
+				string(profile.RemotePreference), func(v string) {
+					if preference := domain.RemotePreference(strings.ToLower(strings.TrimSpace(v))); preference.IsValid() {
+						profile.RemotePreference = preference
+						return
+					}
+					fmt.Printf("⚠️  %q is not a remote preference — leaving it unchanged\n", v)
+				})
 			updateField("Application Preferences", profile.ApplicationPreferences, func(v string) { profile.ApplicationPreferences = v })
 
 			if err := client.UpdateProfile(ctx, profile); err != nil {

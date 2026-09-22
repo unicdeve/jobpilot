@@ -33,6 +33,7 @@ import type {
   CandidateSkill,
   LinkKind,
   LLMHealth,
+  RemotePreference,
   ProfileDraft,
   WorkAuthorization,
 } from "../lib/types";
@@ -49,12 +50,10 @@ const emptyProfile: Candidate = {
   notice_period_days: null,
   earliest_start_date: null,
   summary: "",
-  work_preferences: "",
+  remote_preference: "",
   application_preferences: "",
   skills: [],
   experiences: [],
-  education: "",
-  certifications: "",
   links: [],
   work_authorizations: [],
   created_at: "",
@@ -331,6 +330,20 @@ export function Profile() {
               onChange={(e) => set("summary", e.target.value)}
             />
           </FormField>
+          <FormField label="How do you want to work?" htmlFor="remote_preference">
+            <select
+              id="remote_preference"
+              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+              value={profile.remote_preference}
+              onChange={(e) => set("remote_preference", e.target.value as RemotePreference)}
+            >
+              <option value="">No preference stated</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="onsite">Onsite</option>
+            </select>
+          </FormField>
+
           <SkillsEditor
             skills={profile.skills ?? []}
             onChange={(skills) => set("skills", skills)}
