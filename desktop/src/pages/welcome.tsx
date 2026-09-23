@@ -1,4 +1,3 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FormField } from "../components/form-field";
@@ -21,6 +20,7 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { Candidate, LLMSettings } from "../lib/types";
+import { pickResumeFile } from "../lib/resume-file";
 
 /// skipKey records that the user dismissed first-run setup. It lives in
 /// sessionStorage, not the database: skipping is a decision about this
@@ -373,8 +373,8 @@ function ResumeStep({
   const busy = importResume.isPending || proposeDraft.isPending || updateProfile.isPending;
 
   const pick = async () => {
-    const path = await open({ multiple: false, title: "Select a resume file" });
-    if (!path || Array.isArray(path) || !profile) return;
+    const path = await pickResumeFile();
+    if (!path || !profile) return;
 
     try {
       const resume = await importResume.mutateAsync({
@@ -409,8 +409,6 @@ function ResumeStep({
                 candidate_id: "",
                 name: skill.name,
                 years_experience: skill.years_experience ?? null,
-                created_at: "",
-                updated_at: "",
               })),
           experiences: profile.experiences?.length
             ? profile.experiences
@@ -423,8 +421,6 @@ function ResumeStep({
                 end_date: experience.is_current ? null : experience.end_date || null,
                 is_current: experience.is_current,
                 description: experience.description,
-                created_at: "",
-                updated_at: "",
               })),
           links: profile.links?.length
             ? profile.links
@@ -433,8 +429,6 @@ function ResumeStep({
                 candidate_id: "",
                 kind: link.kind,
                 url: link.url,
-                created_at: "",
-                updated_at: "",
               })),
         });
         notify("Profile prefilled from your resume — review it on the Profile screen.", "success");

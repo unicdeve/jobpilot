@@ -38,6 +38,14 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   full name into both a form's "first name" and "last name" fields;
   `Candidate.FullName()` is used wherever a single display string is
   wanted (cover letters, CLI summaries).
+- Calendar dates (work history start/end, earliest start date) are a
+  `domain.Date`, spelled `YYYY-MM-DD` everywhere — JSON, SQLite, and the
+  UI. They were `time.Time`, which accepts only RFC 3339, so the desktop's
+  date inputs could not save a work history at all; see ADR-0015's
+  "Correction: a date is not an instant". Rows written in the old format
+  still read, so no migration was needed.
+- The desktop's resume picker offers only the formats that convert (PDF,
+  DOCX, TXT, MD, HTML) rather than accepting any file and failing later.
 - Document conversion is a port (`ports.DocumentConverter`, ADR-0016), so
   core no longer constructs a conversion library and `ResumeService` is
   testable without a PDF engine. The adapter

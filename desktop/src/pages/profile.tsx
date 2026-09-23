@@ -1,4 +1,3 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
@@ -26,6 +25,7 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { LINK_KINDS } from "../lib/types";
+import { pickResumeFile } from "../lib/resume-file";
 import type {
   Candidate,
   CandidateExperience,
@@ -56,8 +56,6 @@ const emptyProfile: Candidate = {
   experiences: [],
   links: [],
   work_authorizations: [],
-  created_at: "",
-  updated_at: "",
 };
 
 // LINK_LABELS names each kind the way the forms that ask for it do.
@@ -155,14 +153,14 @@ export function Profile() {
       location_region: pick(suggestion.location_region, current.location_region),
       location_country: pick(suggestion.location_country, current.location_country),
       summary: pick(suggestion.summary, current.summary),
-      skills: pickList(
+      skills: pickList<CandidateSkill>(
         suggestion.skills?.map((skill) => ({
           ...toSkill(skill.name),
           years_experience: skill.years_experience ?? null,
         })),
         current.skills,
       ),
-      experiences: pickList(
+      experiences: pickList<CandidateExperience>(
         suggestion.experiences?.map((experience) => ({
           id: "",
           candidate_id: "",
@@ -172,19 +170,15 @@ export function Profile() {
           end_date: experience.is_current ? null : experience.end_date || null,
           is_current: experience.is_current,
           description: experience.description,
-          created_at: "",
-          updated_at: "",
         })),
         current.experiences,
       ),
-      links: pickList(
+      links: pickList<CandidateLink>(
         suggestion.links?.map((link) => ({
           id: "",
           candidate_id: "",
           kind: link.kind,
           url: link.url,
-          created_at: "",
-          updated_at: "",
         })),
         current.links,
       ),
@@ -204,8 +198,8 @@ export function Profile() {
       return;
     }
 
-    const path = await open({ multiple: false, title: "Select a resume file" });
-    if (!path || Array.isArray(path)) return;
+    const path = await pickResumeFile();
+    if (!path) return;
 
     try {
       // A resume can only be associated with a candidate that already has an
@@ -369,7 +363,7 @@ export function Profile() {
               <Input
                 id="earliest_start_date"
                 type="date"
-                value={profile.earliest_start_date?.slice(0, 10) ?? ""}
+                value={profile.earliest_start_date ?? ""}
                 onChange={(e) => set("earliest_start_date", e.target.value || null)}
               />
             </FormField>
@@ -449,7 +443,7 @@ function LinksEditor({
 }
 
 function emptyLink(kind: LinkKind): CandidateLink {
-  return { id: "", candidate_id: "", kind, url: "", created_at: "", updated_at: "" };
+  return { id: "", candidate_id: "", kind, url: "" };
 }
 
 /// WorkAuthorizationsEditor edits the right to work, per country.
@@ -531,8 +525,6 @@ function WorkAuthorizationsEditor({
               country: "",
               is_authorized: false,
               requires_sponsorship: false,
-              created_at: "",
-              updated_at: "",
             },
           ])
         }
@@ -544,7 +536,7 @@ function WorkAuthorizationsEditor({
 }
 
 function toSkill(name: string): CandidateSkill {
-  return { id: "", candidate_id: "", name, years_experience: null, created_at: "", updated_at: "" };
+  return { id: "", candidate_id: "", name, years_experience: null };
 }
 
 /// SkillsEditor keeps skills as a list with an optional duration each.
@@ -674,7 +666,7 @@ function ExperiencesEditor({
                   <Input
                     id={`experience-start-${index}`}
                     type="date"
-                    value={experience.start_date?.slice(0, 10) ?? ""}
+                    value={experience.start_date ?? ""}
                     onChange={(e) => update(index, { start_date: e.target.value || null })}
                   />
                 </FormField>
@@ -683,7 +675,7 @@ function ExperiencesEditor({
                     id={`experience-end-${index}`}
                     type="date"
                     disabled={experience.is_current}
-                    value={experience.is_current ? "" : (experience.end_date?.slice(0, 10) ?? "")}
+                    value={experience.is_current ? "" : (experience.end_date ?? "")}
                     onChange={(e) => update(index, { end_date: e.target.value || null })}
                   />
                 </FormField>
@@ -737,8 +729,6 @@ function ExperiencesEditor({
               end_date: null,
               is_current: false,
               description: "",
-              created_at: "",
-              updated_at: "",
             },
           ])
         }

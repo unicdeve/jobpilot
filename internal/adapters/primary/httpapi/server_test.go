@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1301,4 +1302,98 @@ func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (por
 
 func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {
 	return ports.Document{Markdown: html}, nil
+}
+
+// TestUpdateProfile_AcceptsWhatTheDesktopSends posts the payload the
+// Profile screen actually produces, rather than one built from Go structs.
+//
+// Every test above went through the typed client, so the JSON boundary was
+// never exercised — and it was broken in two ways at once. A work history
+// could not be saved at all: an HTML date input sends "2022-07-01" and
+// time.Time accepts only RFC 3339. A prefilled row could not be saved
+// either: the form filled in created_at as "", which is not a timestamp.
+// Both surfaced to the user as "invalid request body" with a Go layout
+// string in it, on a screen where nothing they could type would help.
+func TestUpdateProfile_AcceptsWhatTheDesktopSends(t *testing.T) {
+	client, candRepo, _ := testServer(t)
+	ctx := context.Background()
+
+	profile := domain.Candidate{FirstName: "Ada"}
+	require.NoError(t, client.InitializeProfile(ctx, &profile))
+
+	body := `{
+		"id": "` + profile.ID + `",
+		"first_name": "Ada",
+		"last_name": "Lovelace",
+		"email": "ada@example.com",
+		"earliest_start_date": "2026-11-01",
+		"remote_preference": "remote",
+		"experiences": [
+			{"id": "", "candidate_id": "", "company": "Acme", "title": "Staff Engineer",
+			 "start_date": "2022-07-01", "end_date": null, "is_current": true, "description": ""},
+			{"id": "", "candidate_id": "", "company": "Old Co", "title": "Engineer",
+			 "start_date": "2019-03-01", "end_date": "2022-06-30", "is_current": false, "description": ""}
+		],
+		"skills": [{"id": "", "candidate_id": "", "name": "Go", "years_experience": 4}],
+		"links": [{"id": "", "candidate_id": "", "kind": "github", "url": "https://github.com/ada"}],
+		"work_authorizations": []
+	}`
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, client.baseURL+"/v1/profile",
+		strings.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	responseBody, _ := io.ReadAll(resp.Body)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", responseBody)
+
+	saved, err := candRepo.GetByID(ctx, profile.ID)
+	require.NoError(t, err)
+	require.Len(t, saved.Experiences, 2)
+	require.NotNil(t, saved.Experiences[0].StartDate)
+	require.Equal(t, "2022-07-01", saved.Experiences[0].StartDate.String())
+	require.Nil(t, saved.Experiences[0].EndDate)
+	require.NotNil(t, saved.Experiences[1].EndDate)
+	require.Equal(t, "2022-06-30", saved.Experiences[1].EndDate.String())
+	require.NotNil(t, saved.EarliestStartDate)
+	require.Equal(t, "2026-11-01", saved.EarliestStartDate.String())
+
+	// And what comes back is what a date input can display, without the
+	// caller slicing a timestamp apart.
+	require.Contains(t, string(responseBody), `"start_date":"2022-07-01"`)
+	require.Contains(t, string(responseBody), `"earliest_start_date":"2026-11-01"`)
+}
+
+// TestUpdateProfile_BlankDatesAreNotAnError covers the other half: a form
+// sends "" for every field the user left empty.
+func TestUpdateProfile_BlankDatesAreNotAnError(t *testing.T) {
+	client, candRepo, _ := testServer(t)
+	ctx := context.Background()
+
+	profile := domain.Candidate{FirstName: "Ada"}
+	require.NoError(t, client.InitializeProfile(ctx, &profile))
+
+	body := `{"id": "` + profile.ID + `", "first_name": "Ada", "earliest_start_date": "",
+		"experiences": [{"company": "Acme", "title": "Engineer", "start_date": "", "end_date": ""}]}`
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, client.baseURL+"/v1/profile",
+		strings.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	responseBody, _ := io.ReadAll(resp.Body)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", responseBody)
+
+	saved, err := candRepo.GetByID(ctx, profile.ID)
+	require.NoError(t, err)
+	require.Len(t, saved.Experiences, 1)
+	require.True(t, saved.Experiences[0].StartDate.IsZero(), "a blank date is no date")
 }

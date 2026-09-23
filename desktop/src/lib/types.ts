@@ -29,8 +29,10 @@ export interface CandidateLink {
   candidate_id: string;
   kind: LinkKind;
   url: string;
-  created_at: string;
-  updated_at: string;
+  // Server-assigned. A row the UI has just created has neither, and
+  // sending an empty string for one is rejected outright.
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface WorkAuthorization {
@@ -39,8 +41,10 @@ export interface WorkAuthorization {
   country: string;
   is_authorized: boolean;
   requires_sponsorship: boolean;
-  created_at: string;
-  updated_at: string;
+  // Server-assigned. A row the UI has just created has neither, and
+  // sending an empty string for one is rejected outright.
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CandidateSkill {
@@ -48,8 +52,10 @@ export interface CandidateSkill {
   candidate_id: string;
   name: string;
   years_experience?: number | null;
-  created_at: string;
-  updated_at: string;
+  // Server-assigned. A row the UI has just created has neither, and
+  // sending an empty string for one is rejected outright.
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CandidateExperience {
@@ -61,8 +67,10 @@ export interface CandidateExperience {
   end_date?: string | null;
   is_current: boolean;
   description: string;
-  created_at: string;
-  updated_at: string;
+  // Server-assigned. A row the UI has just created has neither, and
+  // sending an empty string for one is rejected outright.
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type RemotePreference = "" | "remote" | "hybrid" | "onsite";
@@ -85,8 +93,9 @@ export interface Candidate {
   work_authorizations: WorkAuthorization[] | null;
   skills: CandidateSkill[] | null;
   experiences: CandidateExperience[] | null;
-  created_at: string;
-  updated_at: string;
+  // Server-assigned, like the rows above.
+  created_at?: string;
+  updated_at?: string;
 }
 
 // An LLM-proposed profile read from a resume, pending the user's review

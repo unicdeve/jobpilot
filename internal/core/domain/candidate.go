@@ -119,9 +119,9 @@ type CandidateExperience struct {
 	// StartDate and EndDate are optional, because a half-remembered
 	// history is still worth storing. An entry without a start date simply
 	// does not contribute to a computed span.
-	StartDate *time.Time `json:"start_date,omitempty"`
-	EndDate   *time.Time `json:"end_date,omitempty"`
-	IsCurrent bool       `json:"is_current"`
+	StartDate *Date `json:"start_date,omitempty"`
+	EndDate   *Date `json:"end_date,omitempty"`
+	IsCurrent bool  `json:"is_current"`
 	// Description stays prose on purpose: it is read by a person, or by an
 	// LLM writing a cover letter, and structuring it would buy nothing.
 	Description string    `json:"description"`
@@ -165,8 +165,8 @@ type Candidate struct {
 	// NoticePeriodDays and EarliestStartDate answer "when are you
 	// available". Both are pointers because zero is an answer —
 	// "immediately" — and not the same as unsaid.
-	NoticePeriodDays  *int       `json:"notice_period_days,omitempty"`
-	EarliestStartDate *time.Time `json:"earliest_start_date,omitempty"`
+	NoticePeriodDays  *int  `json:"notice_period_days,omitempty"`
+	EarliestStartDate *Date `json:"earliest_start_date,omitempty"`
 
 	Summary string `json:"summary"`
 	// RemotePreference uses the same vocabulary as Job.RemoteType, so a
@@ -254,13 +254,14 @@ func (c Candidate) TotalYearsOfExperience(now time.Time) (float64, bool) {
 		if experience.StartDate == nil {
 			continue
 		}
-		if earliest.IsZero() || experience.StartDate.Before(earliest) {
-			earliest = *experience.StartDate
+		start := experience.StartDate.Time()
+		if earliest.IsZero() || start.Before(earliest) {
+			earliest = start
 		}
 
 		end := now
 		if !experience.IsCurrent && experience.EndDate != nil {
-			end = *experience.EndDate
+			end = experience.EndDate.Time()
 		}
 		if latest.IsZero() || end.After(latest) {
 			latest = end

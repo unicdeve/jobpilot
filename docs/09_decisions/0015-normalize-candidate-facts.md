@@ -209,6 +209,25 @@ Normalization worked from the defect table and walked past three prose columns t
 
 A form that asks about education is the trigger to bring it back, and the honest way to justify that is to record such a form as a fixture first.
 
+## Correction: a date is not an instant
+
+§3 gave work history `start_date` and `end_date` as `*time.Time`, and availability an `earliest_start_date` of the same type.
+That was wrong, and it made the entire Profile screen unsaveable — a defect the user hit, not a hypothetical one.
+
+An HTML date input sends `2022-07-01`.
+Go's `time.Time` unmarshals RFC 3339 and nothing else, so every save of a work history was rejected with `parsing time "2022-07-01" as "2006-01-02T15:04:05Z07:00"`, a message about a Go layout string on a screen where nothing the user could type would help.
+The same request also carried `created_at: ""` on rows the resume prefill had just built, which fails for the same reason.
+So the dated work history added by this ADR could not be entered from the desktop at all.
+
+Dates are now a `domain.Date`: a calendar day, spelled `YYYY-MM-DD` in JSON, in SQLite and on screen.
+This is the honest type as well as the working one — a job started in July 2022, not at midnight UTC on the 1st, and storing the instant is how a date becomes the day before for anyone east or west of UTC.
+`Date.Scan` still reads the timestamps earlier rows contain, so no migration was needed; verified against the real database.
+
+Two things this exposed, both worth keeping in mind beyond dates:
+
+- **Nothing tested the JSON boundary.** Every test went through the typed Go client or the repository, both of which build `time.Time` values directly, so the one place the desktop actually talks to the daemon was never exercised. The tests added with this fix post the payload the Profile screen really sends.
+- **The draft's dates were raw model output.** `ProposeProfileDraft` returned whatever the model wrote — `July 2022`, `03/2019` — straight to the desktop, where a date input cannot display it and a save would reject it. The CLI never saw this because it applies `ProposedExperiences`, which parses. Normalization now happens in the service, so both callers get the same dates.
+
 ## Open questions
 
 - **The stopgap.** The email-in-the-phone-box defect is live now and the schema change is not small.

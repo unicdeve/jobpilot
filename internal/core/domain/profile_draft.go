@@ -57,6 +57,39 @@ type DraftLink struct {
 	URL  string `json:"url"`
 }
 
+// Normalize rewrites the draft's dates into the one spelling the rest of
+// the system uses, so that what a model read off a resume — "July 2022",
+// "03/2019", "Present" — becomes what a date field can hold.
+//
+// Without this the draft's raw strings travel to the desktop, land in an
+// HTML date input that cannot display them, and are rejected when saved.
+// The CLI never saw this because it applies ProposedExperiences, which
+// parses. Doing it here means both callers get the same dates.
+func (d *ProfileDraft) Normalize() {
+	for i := range d.Experiences {
+		experience := &d.Experiences[i]
+		if isPresent(experience.EndDate) {
+			// "Present" is a claim that the role is current, and resumes
+			// write it far more often than they set a flag.
+			experience.IsCurrent = true
+		}
+		experience.StartDate = normalizedDraftDate(experience.StartDate)
+		experience.EndDate = normalizedDraftDate(experience.EndDate)
+		if experience.IsCurrent {
+			experience.EndDate = ""
+		}
+	}
+}
+
+// normalizedDraftDate returns a date as YYYY-MM-DD, or empty when it could
+// not be read. An unreadable date is dropped rather than guessed at.
+func normalizedDraftDate(value string) string {
+	if parsed := ParseDraftDate(value); parsed != nil {
+		return parsed.String()
+	}
+	return ""
+}
+
 // ProposedSkills converts the draft's skills, dropping unnamed ones and
 // keeping the first of any duplicate name — the profile holds one entry per
 // skill, and a model listing "Go" twice should not become two rows.
@@ -234,28 +267,35 @@ func hasScheme(raw string) bool {
 	return false
 }
 
-// draftDateLayouts are how a resume writes a date, most precise first.
-var draftDateLayouts = []string{
-	"2006-01-02", "2006-01", "2006",
-	"January 2006", "Jan 2006", "01/2006", "2006/01",
-}
-
 // ParseDraftDate reads a date from a resume, or returns nil when it cannot.
 //
 // Nil is a normal outcome, not a failure: an entry whose dates could not be
 // read is still worth keeping, it simply does not contribute to a computed
 // span. A date guessed from an unreadable string would.
-func ParseDraftDate(value string) *time.Time {
+func ParseDraftDate(value string) *Date {
 	value = strings.TrimSpace(value)
 	if value == "" || isPresent(value) {
 		return nil
 	}
-	for _, layout := range draftDateLayouts {
+	if parsed, ok := ParseDate(value); ok {
+		return &parsed
+	}
+	// The layouts above are the ones the API speaks. A resume is not an
+	// API, and writes "Jan 2022" or "03/2019" as readily as an ISO date,
+	// so those are read here rather than widened into the wire format.
+	for _, layout := range resumeDateLayouts {
 		if parsed, err := time.Parse(layout, value); err == nil {
-			return &parsed
+			date := DateOf(parsed)
+			return &date
 		}
 	}
 	return nil
+}
+
+// resumeDateLayouts are the human spellings a resume uses.
+var resumeDateLayouts = []string{
+	"January 2006", "Jan 2006", "01/2006", "2006/01",
+	"January 2, 2006", "Jan 2, 2006", "02/01/2006",
 }
 
 func isPresent(value string) bool {

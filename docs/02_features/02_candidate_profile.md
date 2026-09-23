@@ -22,6 +22,9 @@ The shape below is what the recorded forms in `internal/adapters/secondary/brows
 - Work history, as dated entries: company, title, start, end, whether it is current, and what they did
 - Application preferences (tone and length for generated content)
 
+Every date here is a calendar day, written `YYYY-MM-DD`, not a timestamp.
+A job started in July 2022; it did not start at an instant, and storing one is how a date shows as the day before for anyone east or west of UTC.
+
 Education and certifications are not stored.
 No recorded form asks about a degree, an institution or a certification, and nothing in JobPilot read the columns that used to hold them.
 A recorded form that asks is the trigger to bring them back.

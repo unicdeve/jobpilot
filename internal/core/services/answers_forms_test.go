@@ -27,7 +27,7 @@ import (
 // testCandidate is a filled-in profile in the shape ADR-0015 gives it.
 func testCandidate() *domain.Candidate {
 	notice := 30
-	start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	start := domain.NewDate(2026, time.November, 1)
 	return &domain.Candidate{
 		FirstName:        "Ada",
 		LastName:         "Lovelace",
@@ -71,8 +71,8 @@ func testCandidate() *domain.Candidate {
 
 func ptr[T any](v T) *T { return &v }
 
-func date(year int, month time.Month, day int) *time.Time {
-	t := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+func date(year int, month time.Month, day int) *domain.Date {
+	t := domain.NewDate(year, month, day)
 	return &t
 }
 

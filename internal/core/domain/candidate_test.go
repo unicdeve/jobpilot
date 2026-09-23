@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func day(year int, month time.Month, dayOfMonth int) *time.Time {
-	t := time.Date(year, month, dayOfMonth, 0, 0, 0, 0, time.UTC)
-	return &t
+func day(year int, month time.Month, dayOfMonth int) *Date {
+	d := NewDate(year, month, dayOfMonth)
+	return &d
 }
 
 func TestCandidate_CurrentExperience(t *testing.T) {

@@ -216,9 +216,9 @@ func TestCandidateRepository_SkillsAndExperiences(t *testing.T) {
 
 	ctx := context.Background()
 	years := 4.0
-	start := time.Date(2022, time.July, 1, 0, 0, 0, 0, time.UTC)
-	oldStart := time.Date(2016, time.September, 21, 0, 0, 0, 0, time.UTC)
-	oldEnd := time.Date(2022, time.June, 30, 0, 0, 0, 0, time.UTC)
+	start := domain.NewDate(2022, time.July, 1)
+	oldStart := domain.NewDate(2016, time.September, 21)
+	oldEnd := domain.NewDate(2022, time.June, 30)
 
 	db := newTestDB(t)
 	repo := NewCandidateRepository(db.Conn())

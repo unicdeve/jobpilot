@@ -1,9 +1,9 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { EmptyState } from "../components/empty-state";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { useCandidateId, useDeleteResume, useImportResume, useResumes } from "../lib/queries";
 import { useToast } from "../lib/toast";
+import { pickResumeFile } from "../lib/resume-file";
 
 export function Resumes() {
   const { notify } = useToast();
@@ -20,8 +20,8 @@ export function Resumes() {
 
   const importResume = async () => {
     if (!candidateId) return;
-    const path = await open({ multiple: false, title: "Select a resume file" });
-    if (!path || Array.isArray(path)) return;
+    const path = await pickResumeFile();
+    if (!path) return;
     importMutation.mutate({ candidateId, filePath: path });
   };
 

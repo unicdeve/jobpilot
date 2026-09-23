@@ -107,6 +107,10 @@ func (s *ResumeService) ProposeProfileDraft(ctx context.Context, resumeMarkdown 
 	if err := json.Unmarshal([]byte(stripJSONFence(resp.Content)), &draft); err != nil {
 		return nil, fmt.Errorf("failed to parse profile draft: %w", err)
 	}
+	// A model asked for YYYY-MM writes "July 2022" anyway. Canonicalize
+	// here so every caller receives dates a date field can hold.
+	draft.Normalize()
+
 	return &draft, nil
 }
 
