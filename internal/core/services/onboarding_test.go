@@ -17,7 +17,7 @@ import (
 // port — it's already covered indirectly by every sqlite integration test's
 // setup helper.
 func newTestOnboardingService(candRepo *fakeCandidateRepository, llm *fakeLLMProvider) *OnboardingService {
-	resumeSvc := NewResumeService(newFakeResumeRepository(), llm)
+	resumeSvc := NewResumeService(newFakeResumeRepository(), llm, &fakeDocumentConverter{})
 	return NewOnboardingService(candRepo, resumeSvc, NewSavedSearchService(newFakeSavedSearchRepository()), llm, nil)
 }
 

@@ -761,3 +761,38 @@ func (f *fakeBrowserWorker) Close(_ context.Context) error {
 	f.closed = true
 	return nil
 }
+
+// fakeDocumentConverter stands in for the PDF and markdown engines.
+//
+// Its existence is the point of ports.DocumentConverter: before ADR-0016,
+// ResumeService built a converter itself, so testing ImportResume meant
+// having a real PDF on disk and a WebAssembly engine to read it with.
+//
+// With markdown unset it echoes what it was given, so a test about what
+// reaches a prompt still sees its own input arrive there.
+type fakeDocumentConverter struct {
+	markdown string
+	err      error
+	// converted records the paths and HTML passed in, so a test can assert
+	// what was handed to conversion.
+	converted []string
+}
+
+func (f *fakeDocumentConverter) convert(input string) (ports.Document, error) {
+	f.converted = append(f.converted, input)
+	if f.err != nil {
+		return ports.Document{}, f.err
+	}
+	if f.markdown != "" {
+		return ports.Document{Markdown: f.markdown}, nil
+	}
+	return ports.Document{Markdown: input}, nil
+}
+
+func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (ports.Document, error) {
+	return f.convert(path)
+}
+
+func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {
+	return f.convert(html)
+}

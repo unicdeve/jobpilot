@@ -22,6 +22,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/documents"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
@@ -165,11 +166,15 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	chrome := browser.NewChromeSession(browserProfileDir, false)
 	newBrowserWorker := chrome.NewWorker
 
-	resumeSvc := services.NewResumeService(resRepo, llmProv)
+	// One converter for the process: Go MarkItDown for most formats, and
+	// PDFium for PDFs, whose engine starts on first use (ADR-0016).
+	docConverter := documents.NewConverter()
+
+	resumeSvc := services.NewResumeService(resRepo, llmProv, docConverter)
 	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, savedSearchSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
-	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker)
+	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 	applicationSvc := services.NewApplicationService(appRepo)
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)

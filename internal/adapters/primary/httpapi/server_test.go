@@ -599,14 +599,15 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 
 	savedSearchSvc := services.NewSavedSearchService(newFakeSavedSearchRepository())
 	appSvc := services.NewApplicationService(appRepo)
+	docConverter := &fakeDocumentConverter{}
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 
 	svc := Services{
 		Candidates:  candRepo,
-		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv), savedSearchSvc, llmProv, nil),
+		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv, docConverter), savedSearchSvc, llmProv, nil),
 		Profile:     services.NewProfileService(candRepo),
-		Resume:      services.NewResumeService(resRepo, llmProv),
-		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil),
+		Resume:      services.NewResumeService(resRepo, llmProv, docConverter),
+		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil, docConverter),
 		Searches:    savedSearchSvc,
 		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
 		Settings:    services.NewSettingsService(settingsRepo),
@@ -752,13 +753,30 @@ func TestClient_ResumeLifecycle(t *testing.T) {
 	client, _, _ := testServer(t)
 	ctx := context.Background()
 
-	// ImportResume shells out to markitdown for real file conversion, which
-	// is exercised by internal/core/services' own tests; here we only need
-	// to verify the HTTP plumbing, so we exercise list/delete against a
-	// resume created directly through the fake repo... but the client has
-	// no direct repo access, so we instead assert the "no resumes yet" and
-	// "not found" paths, which don't require a real file on disk.
+	// Conversion is a port (ADR-0016), so the whole lifecycle goes over
+	// HTTP here without a real PDF or a PDF engine. Before that it could
+	// not: import needed a file on disk, so this test asserted only the
+	// empty and not-found paths.
 	resumes, err := client.ListResumes(ctx, "cand-1")
+	require.NoError(t, err)
+	require.Empty(t, resumes)
+
+	imported, err := client.ImportResume(ctx, "cand-1", "/home/ada/cv.pdf")
+	require.NoError(t, err)
+	require.NotEmpty(t, imported.ID)
+	require.Equal(t, "cv.pdf", imported.Name)
+	require.Contains(t, imported.MarkdownContent, "Converted from /home/ada/cv.pdf")
+
+	resumes, err = client.ListResumes(ctx, "cand-1")
+	require.NoError(t, err)
+	require.Len(t, resumes, 1)
+	require.Equal(t, imported.ID, resumes[0].ID)
+
+	require.Contains(t, resumes[0].MarkdownContent, "Converted from",
+		"the stored markdown is what every later step reads")
+
+	require.NoError(t, client.DeleteResume(ctx, imported.ID))
+	resumes, err = client.ListResumes(ctx, "cand-1")
 	require.NoError(t, err)
 	require.Empty(t, resumes)
 
@@ -1270,4 +1288,17 @@ func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
 		domain.ApplicationStateNoResponse,
 		domain.ApplicationStateWithdrawn,
 	}, next)
+}
+
+// fakeDocumentConverter converts nothing: it echoes the path or HTML it is
+// given. The HTTP layer's job is to carry a file path to the service and a
+// resume back, and that is what these tests are about.
+type fakeDocumentConverter struct{}
+
+func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (ports.Document, error) {
+	return ports.Document{Markdown: "# Resume\n\nConverted from " + path}, nil
+}
+
+func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {
+	return ports.Document{Markdown: html}, nil
 }

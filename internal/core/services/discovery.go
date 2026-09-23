@@ -4,14 +4,11 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-
-	"github.com/conductor-oss/markitdown"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -27,6 +24,7 @@ type JobDiscoveryService struct {
 	sources          []ports.JobSource
 	llmProvider      ports.LLMProvider
 	newBrowserWorker ports.BrowserWorkerFactory
+	converter        ports.DocumentConverter
 }
 
 // NewJobDiscoveryService constructs a JobDiscoveryService backed by the given
@@ -34,12 +32,13 @@ type JobDiscoveryService struct {
 // fallback when no registered source recognizes a URL (see
 // importViaBrowser) — pass nil to disable the fallback, e.g. in tests that
 // don't exercise it.
-func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource, llmProvider ports.LLMProvider, newBrowserWorker ports.BrowserWorkerFactory) *JobDiscoveryService {
+func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource, llmProvider ports.LLMProvider, newBrowserWorker ports.BrowserWorkerFactory, converter ports.DocumentConverter) *JobDiscoveryService {
 	return &JobDiscoveryService{
 		repo:             repo,
 		sources:          sources,
 		llmProvider:      llmProvider,
 		newBrowserWorker: newBrowserWorker,
+		converter:        converter,
 	}
 }
 
@@ -251,8 +250,7 @@ func (s *JobDiscoveryService) importViaBrowser(ctx context.Context, url string) 
 		return nil, fmt.Errorf("failed to read the page: %w", err)
 	}
 
-	md := markitdown.New()
-	result, err := md.ConvertReader(bytes.NewReader([]byte(html)), markitdown.StreamInfo{MIMEType: "text/html"})
+	result, err := s.converter.ConvertHTML(ctx, html)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert the page to markdown: %w", err)
 	}

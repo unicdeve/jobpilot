@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/conductor-oss/markitdown"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
@@ -15,21 +14,22 @@ import (
 type ResumeService struct {
 	resumeRepo  ports.ResumeRepository
 	llmProvider ports.LLMProvider
+	converter   ports.DocumentConverter
 }
 
 // NewResumeService constructs a ResumeService backed by the given resume
-// repository and LLM provider.
-func NewResumeService(repo ports.ResumeRepository, llmProvider ports.LLMProvider) *ResumeService {
+// repository, LLM provider and document converter.
+func NewResumeService(repo ports.ResumeRepository, llmProvider ports.LLMProvider, converter ports.DocumentConverter) *ResumeService {
 	return &ResumeService{
 		resumeRepo:  repo,
 		llmProvider: llmProvider,
+		converter:   converter,
 	}
 }
 
 // ImportResume converts a document to markdown and stores it.
 func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, filePath string) (*domain.Resume, error) {
-	md := markitdown.New()
-	content, err := md.Convert(filePath)
+	content, err := s.converter.ConvertFile(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert resume to markdown: %w", err)
 	}
@@ -79,6 +79,11 @@ func (s *ResumeService) ProposeProfileDraft(ctx context.Context, resumeMarkdown 
 		"years_experience must be null unless the resume actually states how long the candidate has used " +
 		"that skill. Do not estimate it from the work history — a number nobody wrote down is a fact " +
 		"invented about a person.\n" +
+		"If the resume ends with a list of hyperlinks, that list holds the document's real link " +
+		"targets: the text before each arrow is what a reader sees, and the address after it is where " +
+		"it leads. Take link URLs from there rather than from the body text, which shows only the " +
+		"visible label. Include a link only if it is the candidate's own — a resume also links to " +
+		"employers, to projects it merely contributed to, and to certificates.\n" +
 		"Extract only what is actually present in the resume below. Use an empty string, empty list or " +
 		"null for anything absent rather than guessing.\n\n" + wrapped
 
@@ -102,7 +107,6 @@ func (s *ResumeService) ProposeProfileDraft(ctx context.Context, resumeMarkdown 
 	if err := json.Unmarshal([]byte(stripJSONFence(resp.Content)), &draft); err != nil {
 		return nil, fmt.Errorf("failed to parse profile draft: %w", err)
 	}
-
 	return &draft, nil
 }
 

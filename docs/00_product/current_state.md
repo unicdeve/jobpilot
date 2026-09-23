@@ -21,7 +21,7 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 - Ollama as initial local LLM agreed
 - Tauri + React desktop direction agreed
 - Go Playwright direction agreed
-- Go MarkItDown direction agreed
+- Go MarkItDown direction agreed, narrowed by ADR-0016: PDFs are extracted by JobPilot, everything else stays with MarkItDown
 - Assist/Review modes agreed; Autopilot removed by ADR-0014, with unattended work moved to a Scout
 - Review is default
 - Cross-platform target agreed
@@ -38,7 +38,20 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   full name into both a form's "first name" and "last name" fields;
   `Candidate.FullName()` is used wherever a single display string is
   wanted (cover letters, CLI summaries).
-- Resume management: import (via Go MarkItDown), list, delete, with an
+- Document conversion is a port (`ports.DocumentConverter`, ADR-0016), so
+  core no longer constructs a conversion library and `ResumeService` is
+  testable without a PDF engine. The adapter
+  (`internal/adapters/secondary/documents`) sends PDFs to PDFium's
+  page text and everything else to Go MarkItDown, routing by file
+  signature rather than by extension. MarkItDown's own PDF converter reads
+  text out of text rectangles, which both duplicates and deletes
+  characters: measured on a real resume it agreed with a reference
+  extraction on 61% of tokens against 96% for the path now used, and it
+  broke the candidate's name and email address. PDF hyperlinks — which are
+  annotations, not text — are recovered and paired with the text they sit
+  on, so a link to an employer or an open-source project is not read as the
+  candidate's own.
+- Resume management: import, list, delete, with an
   optional review-gated LLM suggestion step (first/last name, contact,
   location, Summary, Skills draft — `ResumeService.ProposeProfileDraft`)
   applied to the candidate profile after import. Two entry points share
@@ -56,7 +69,7 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   listing in memory (15 min for Arbeitnow, 4 hours for Remotive) matching
   that API's own stated update cadence, so repeated searches don't poll
   faster than their data actually changes; job descriptions (HTML) are
-  converted via the same MarkItDown engine resume import uses. Filtering
+  converted through the same document converter resume import uses. Filtering
   happens client-side (neither API's own search parameter proved reliable)
   and now lives in `JobDiscoveryService`, not the connectors — see the saved
   searches entry below for the term-matching rule that replaced the naive

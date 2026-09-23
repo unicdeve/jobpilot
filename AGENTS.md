@@ -47,7 +47,9 @@ Before modifying code:
 11. Prefer Go for core runtime functionality.
 12. Prefer Go Playwright for browser automation unless an approved ADR changes
     this.
-13. Prefer the Go MarkItDown implementation for document conversion.
+13. Prefer the Go MarkItDown implementation for document conversion, except
+    PDF, which JobPilot extracts itself (ADR-0016). Core reaches conversion
+    through `ports.DocumentConverter` and never a library directly.
 14. Core logic must be testable independently from UI and external services.
 
 ## Architecture constraints
@@ -59,7 +61,7 @@ Before modifying code:
 - LLM access: provider abstraction, with Ollama as the initial/default local
   provider.
 - Browser automation: Go Playwright.
-- Document conversion: Go MarkItDown.
+- Document conversion: Go MarkItDown, except PDF (ADR-0016).
 - Authentication: no application account/authentication system. The application
   is local.
 - Secrets: use OS-native secure credential storage where credentials are

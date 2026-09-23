@@ -7,7 +7,10 @@ Import and manage resume documents locally.
 ## Requirements
 
 - Import supported document formats, initially PDF.
-- Convert PDF/document content into Markdown where supported.
+- Convert document content into Markdown.
+  PDFs are extracted by JobPilot itself and everything else by Go
+  MarkItDown (ADR-0016); a PDF's hyperlinks, which are annotations rather
+  than text, are recovered along with the text they sit on.
 - Preserve original document.
 - Store parsed Markdown locally.
 - Associate resumes with candidate profile.
