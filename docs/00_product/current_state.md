@@ -369,12 +369,14 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
-- Some core entities from `docs/01_architecture/04_database.md`
-  (`CandidateExperience`/`CandidateEducation`/`CandidateSkill`, `JobSource`,
-  `Prompt`, `Notification`) are still not separate tables — candidate
-  skills/experience/education remain text columns on `candidates`, jobs
-  reference their source only by free-text ID, and there is no schema home
-  yet for prompt customization or notifications.
+- Some core entities from `docs/01_architecture/04_database.md` are still
+  not separate tables: `JobSource` (jobs reference their source only by
+  free-text ID), `Prompt` and `Notification` (no schema home yet for prompt
+  customization or notifications).
+  The candidate half is done — `candidate_skills`, `candidate_experiences`,
+  `candidate_links` and `candidate_work_authorizations` are real tables.
+  `CandidateEducation` is deliberately not among them; see the education
+  entry below.
   ADR-0015 covers the candidate half and is complete. Stage one normalized
   contact, location, links, work authorization and availability; stage two
   added dated work history and skills; the closing change made work
