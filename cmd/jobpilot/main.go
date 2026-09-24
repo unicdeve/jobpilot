@@ -150,9 +150,18 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		return *settings, nil
 	})
 
+	// Every source here is a public API that needs no credentials, which
+	// is what keeps discovery working on a fresh install with nothing
+	// configured. Google Search is deliberately absent: it returns a
+	// JavaScript gate rather than results to anything but a browser, and
+	// getting past that is the one thing ADR-0013 and ADR-0014 say the
+	// product never does. See docs/02_features/04_job_discovery.md.
 	sources := []ports.JobSource{
 		discovery.NewArbeitnowSource(discovery.DefaultArbeitnowBaseURL),
 		discovery.NewRemotiveSource(discovery.DefaultRemotiveBaseURL),
+		discovery.NewRemoteOKSource(discovery.DefaultRemoteOKBaseURL),
+		discovery.NewHimalayasSource(discovery.DefaultHimalayasBaseURL),
+		discovery.NewHackerNewsSource(discovery.DefaultHackerNewsBaseURL),
 	}
 
 	// headless: false — real use always shows a visible window so the user

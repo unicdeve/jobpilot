@@ -71,10 +71,21 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   toggle, default off, that only fills currently-empty fields unless
   checked). A draft field the LLM didn't find in the resume is left blank
   rather than guessed.
-- Job discovery: search and list against two real, no-auth public job-board
-  APIs (`internal/adapters/secondary/discovery/arbeitnow.go`, `remotive.go`),
-  with canonical-URL deduplication. Each connector caches its fetched
-  listing in memory (15 min for Arbeitnow, 4 hours for Remotive) matching
+- Job discovery: search and list against five real, no-auth public sources —
+  Arbeitnow, Remotive, RemoteOK, Himalayas and Hacker News's monthly
+  "Who is hiring?" thread — with canonical-URL deduplication. All five need
+  no credentials, so discovery works on a fresh install with nothing
+  configured. Himalayas is the only one that reliably reports a salary range
+  with its currency and period; Hacker News carries postings that exist on
+  no job board, read from a convention nothing enforces, where a comment
+  that does not fit is skipped rather than guessed at.
+  Google is deliberately not among them: a request to google.com/search
+  returns a JavaScript gate and zero result links, and getting past it is
+  the one thing ADR-0013 and ADR-0014 say the product never does. The
+  legitimate Programmable Search API needs a stored credential, and there is
+  no OS keychain integration yet. See `docs/02_features/04_job_discovery.md`. Each connector caches its fetched
+  listing in memory (15 min for Arbeitnow, 4 hours for Remotive, 30 min for
+  RemoteOK and Himalayas, 1 hour for Hacker News) matching
   that API's own stated update cadence, so repeated searches don't poll
   faster than their data actually changes; job descriptions (HTML) are
   converted through the same document converter resume import uses. Filtering
@@ -130,7 +141,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   history and searching sources agree about what a query means.
 
 - Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
-  neither Arbeitnow nor Remotive's public API can fetch an arbitrary job by
+  none of the five public APIs can fetch an arbitrary job by
   URL, so `JobDiscoveryService.ImportJob` falls back to
   `importViaBrowser` — opening the URL in the same Playwright worker Phase 6
   built for application prep, reading the rendered page (handles

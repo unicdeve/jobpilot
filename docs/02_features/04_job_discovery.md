@@ -22,6 +22,40 @@ Discovery is connector-driven, not scraper-first.
 
 Initial public source implementations should prioritize stable APIs/feeds/public ATS pages where practical.
 
+Five sources are registered, all public APIs needing no credentials, so discovery works on a fresh install with nothing configured:
+
+| source | what it adds |
+| --- | --- |
+| Arbeitnow | European board, many German listings |
+| Remotive | remote roles, tagged by category |
+| RemoteOK | remote roles, a large single feed |
+| Himalayas | remote roles, and the only source that reliably reports a salary range with its currency and period |
+| Hacker News, "Who is hiring?" | postings that exist on no job board, written by the hiring team |
+
+### Why Google is not a source
+
+Searching Google by hand finds jobs no board lists, and it was asked for on those grounds.
+It is not available to this product, for a reason that is practical before it is legal.
+
+Measured: a request to `google.com/search` returns HTTP 200 and a JavaScript gate — **zero result links**, no job URLs of any kind.
+Getting results would mean driving the browser worker through that gate, and ADR-0013 and ADR-0014 both state that JobPilot never defeats an anti-bot measure.
+Google's terms also prohibit automated querying.
+
+The legitimate route is Google's Programmable Search JSON API, which is official and free up to 100 queries a day.
+It is not built because it needs an API key, and a stored credential needs OS-native secure storage, which the product does not yet have.
+That is a decision with its own cost, not a connector.
+
+The Hacker News source exists partly to serve the same need: those postings are written by the people hiring and appear on no board.
+
+### Reading a source that has a convention instead of a schema
+
+Hacker News postings follow a convention — `Company | Role | Location | Type | Salary | URL` — that nothing enforces.
+Measured on the September 2026 thread, 92% of 257 top-level comments carry at least two pipes and 80% carry both pipes and a link.
+
+A comment that does not fit is skipped rather than guessed at, and so is one with no link: a job nobody can apply to is a comment, and storing it would put an unusable row in front of the user and hand the browser worker a discussion thread to fill in.
+Within a posting, an ambiguous field is dropped rather than assigned. A wrong location silently hides a job from the user's filter; a missing one leaves it visible.
+Salary is deliberately not parsed from these postings: the formats vary too much to read without occasionally inventing a figure, and the raw text is kept in the description.
+
 ## Acceptance Criteria
 
 ### AC-001
