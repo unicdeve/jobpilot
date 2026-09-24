@@ -341,3 +341,49 @@ export interface AgentRunWithEvents {
   run: AgentRun;
   events: AgentEvent[];
 }
+
+export type ScoutSource = "local" | "sources";
+
+/**
+ * A Scout is a standing instruction: run a saved search, judge what it
+ * finds against the candidate, and create applications to review.
+ *
+ * It carries no salary floor, company blocklist or location rule — its
+ * saved search holds those already (ADR-0018). It never contacts an
+ * employer and never submits, and there is no field here that could
+ * change that.
+ */
+export interface Scout {
+  id: string;
+  name: string;
+  saved_search_id: string;
+  min_match_score: number;
+  max_applications_per_run: number;
+  source: ScoutSource;
+  is_enabled: boolean;
+  last_run_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** What a Scout decided about one job, and why. */
+export interface ScoutVerdict {
+  job_id: string;
+  job_title: string;
+  eligible: boolean;
+  reason: string;
+  score: number;
+  has_score: boolean;
+  considered: boolean;
+}
+
+/** The outcome of one Scout run. */
+export interface ScoutRunReport {
+  scout_id: string;
+  run_id: string;
+  considered: number;
+  created: number;
+  verdicts: ScoutVerdict[] | null;
+  ceiling_hit: boolean;
+  error?: string;
+}

@@ -6,6 +6,7 @@ import { DaemonProvider } from "./lib/daemon";
 import { ToastProvider } from "./lib/toast";
 import { ApplicationDetail } from "./pages/application-detail";
 import { Applications } from "./pages/applications";
+import { Scouts } from "./pages/scouts";
 import { Dashboard } from "./pages/dashboard";
 import { JobDetail } from "./pages/job-detail";
 import { Jobs } from "./pages/jobs";
@@ -55,6 +56,7 @@ function App() {
                 <Route path="jobs" element={<Jobs />} />
                 <Route path="jobs/:id" element={<JobDetail />} />
                 <Route path="matches" element={<Matches />} />
+                <Route path="scouts" element={<Scouts />} />
                 <Route path="applications" element={<Applications />} />
                 <Route path="applications/:id" element={<ApplicationDetail />} />
                 <Route path="settings" element={<Settings />} />

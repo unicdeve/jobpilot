@@ -2,7 +2,9 @@
 
 ## Status
 
-Post-MVP. Roadmap Phase 8.
+Implemented. Roadmap Phase 8.
+
+The data model is ADR-0018. A scout is a saved search plus a match-score floor and a per-run ceiling: the other rules below live on the saved search, which already expresses and applies them.
 
 Replaces the Autopilot feature, per
 `docs/09_decisions/0014-scouts-and-no-unattended-submission.md`.
@@ -50,11 +52,17 @@ The second was declined — see "Why nothing submits" below.
 
 What a Scout acts on, configured by the user:
 
-- a minimum match score
-- companies never to apply to
-- a salary floor
-- locations or work arrangements to include or exclude
-- a ceiling on applications created per run
+- a minimum match score — on the Scout
+- a ceiling on applications created per run — on the Scout
+- companies never to apply to — on the saved search
+- a salary floor — on the saved search
+- locations or work arrangements to include or exclude — on the saved search
+
+The last three are not duplicated onto the Scout.
+`SearchCriteria` already holds them and `SearchCriteria.Matches` already applies them everywhere else in the product, so a copy would be a second place to change one rule with no answer for which wins (ADR-0018 §1, following ADR-0015 §4).
+
+The checks run cheapest first, and the expensive one last: scoring calls the model once per job, so a job the saved search already excludes is never scored.
+Measured on a real run over 50 stored jobs, one job matched and exactly one model call was made.
 
 ## Why nothing submits
 

@@ -515,6 +515,16 @@ func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.
 	return run, nil
 }
 
+func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, _ int) ([]*domain.AgentRun, error) {
+	var out []*domain.AgentRun
+	for _, run := range f.runs {
+		if run.ApplicationID == "" {
+			out = append(out, run)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.AgentRun, error) {
 	var out []*domain.AgentRun
 	for _, r := range f.runs {

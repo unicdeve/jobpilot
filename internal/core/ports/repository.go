@@ -62,3 +62,14 @@ type SettingsRepository interface {
 	Get(ctx context.Context, key string) (value string, found bool, err error)
 	Set(ctx context.Context, key, value string) error
 }
+
+// ScoutRepository persists and retrieves Scouts — the standing
+// instructions that run a saved search and create applications to review
+// (ADR-0018).
+type ScoutRepository interface {
+	Save(ctx context.Context, scout *domain.Scout) error
+	GetByID(ctx context.Context, id string) (*domain.Scout, error)
+	Update(ctx context.Context, scout *domain.Scout) error
+	List(ctx context.Context) ([]*domain.Scout, error)
+	Delete(ctx context.Context, id string) error
+}

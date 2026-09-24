@@ -180,6 +180,9 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
 	applyChooser := services.NewApplyControlChooser(llmProv)
+	scoutSvc := services.NewScoutService(
+		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),
+		candRepo, appRepo, agentRunRepo, agentEventRepo, discoverySvc, matchingSvc)
 	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
 
 	return httpapi.Services{
@@ -195,5 +198,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		CoverLetter: coverLetterSvc,
 		Answers:     answerSvc,
 		Browser:     browserSvc,
+		Scouts:      scoutSvc,
 	}, nil
 }

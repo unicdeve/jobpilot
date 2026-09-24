@@ -34,8 +34,14 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 		id, application_id, task_type, status, started_at, completed_at, error
 	) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
+	// application_id is a foreign key and foreign keys are on, so an
+	// empty string is rejected outright — it names an application that
+	// does not exist. A scout run creates several applications and
+	// belongs to none of them, which is the first run that needs NULL
+	// here (ADR-0018 §4).
 	_, err := r.db.ExecContext(ctx, query,
-		run.ID, run.ApplicationID, run.TaskType, run.Status, run.StartedAt, run.CompletedAt, nullableString(run.Error),
+		run.ID, nullableString(run.ApplicationID), run.TaskType, run.Status,
+		run.StartedAt, run.CompletedAt, nullableString(run.Error),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save agent run: %w", err)
@@ -112,5 +118,37 @@ func (r *AgentRunRepository) ListByApplication(ctx context.Context, applicationI
 		return nil, fmt.Errorf("error iterating agent runs: %w", err)
 	}
 
+	return runs, nil
+}
+
+// ListUnattached returns runs belonging to no single application, newest
+// first — scout runs, which create several applications rather than
+// serving one.
+func (r *AgentRunRepository) ListUnattached(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `SELECT` + agentRunColumns + `
+		FROM agent_runs WHERE application_id IS NULL
+		ORDER BY started_at DESC LIMIT ?`
+
+	rows, err := r.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list unattached agent runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var runs []*domain.AgentRun
+	for rows.Next() {
+		run, err := scanAgentRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan agent run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read agent runs: %w", err)
+	}
 	return runs, nil
 }

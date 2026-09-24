@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -419,6 +420,10 @@ type fakeApplicationRepository struct {
 	transitions   map[string][]*domain.ApplicationStateTransition
 	saveErr       error
 	transitionErr error
+	// saveErrAfter makes Save fail once this many rows exist, so a test
+	// can fail a run partway and check what survives.
+	saveErrAfter int
+	saveCalls    int
 }
 
 func newFakeApplicationRepository() *fakeApplicationRepository {
@@ -431,6 +436,10 @@ func newFakeApplicationRepository() *fakeApplicationRepository {
 func (f *fakeApplicationRepository) Save(_ context.Context, a *domain.Application) error {
 	if f.saveErr != nil {
 		return f.saveErr
+	}
+	f.saveCalls++
+	if f.saveErrAfter > 0 && f.saveCalls > f.saveErrAfter {
+		return fmt.Errorf("the database is unavailable")
 	}
 	if a.ID == "" {
 		a.ID = fmt.Sprintf("app-%d", len(f.applications)+1)
@@ -653,6 +662,20 @@ func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicatio
 			out = append(out, r)
 		}
 	}
+	return out, nil
+}
+
+func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, limit int) ([]*domain.AgentRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var out []*domain.AgentRun
+	for _, run := range f.runs {
+		if run.ApplicationID == "" && len(out) < limit {
+			out = append(out, run)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].StartedAt.After(out[b].StartedAt) })
 	return out, nil
 }
 

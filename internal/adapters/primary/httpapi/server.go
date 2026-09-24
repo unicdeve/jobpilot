@@ -36,6 +36,7 @@ type Services struct {
 	CoverLetter *services.CoverLetterService
 	Answers     *services.AnswerService
 	Browser     *services.BrowserWorkerService
+	Scouts      *services.ScoutService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -68,6 +69,15 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("DELETE /v1/searches/{id}", handleDeleteSavedSearch(svc.Searches))
 	mux.HandleFunc("POST /v1/searches/{id}/default", handleSetDefaultSavedSearch(svc.Searches))
 	mux.HandleFunc("POST /v1/searches/{id}/run", handleRunSavedSearch(svc.Searches, svc.Discovery))
+
+	mux.HandleFunc("GET /v1/scouts", handleListScouts(svc.Scouts))
+	mux.HandleFunc("POST /v1/scouts", handleCreateScout(svc.Scouts))
+	mux.HandleFunc("GET /v1/scouts/{id}", handleGetScout(svc.Scouts))
+	mux.HandleFunc("PUT /v1/scouts/{id}", handleUpdateScout(svc.Scouts))
+	mux.HandleFunc("DELETE /v1/scouts/{id}", handleDeleteScout(svc.Scouts))
+	mux.HandleFunc("POST /v1/scouts/{id}/run", handleRunScout(svc.Scouts))
+	mux.HandleFunc("GET /v1/scout-runs", handleListScoutRuns(svc.Scouts))
+	mux.HandleFunc("GET /v1/scout-runs/{id}/events", handleListScoutRunEvents(svc.Scouts))
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))
@@ -633,4 +643,130 @@ func readJSON(r *http.Request, dest any) error {
 		return fmt.Errorf("invalid request body: %w", err)
 	}
 	return nil
+}
+
+// scoutRequest is the body for creating or updating a scout.
+//
+// It carries no salary floor, company blocklist or location rule: the
+// scout's saved search holds those, and SearchCriteria.Matches applies
+// them (ADR-0018 §1).
+type scoutRequest struct {
+	Name                  string             `json:"name"`
+	SavedSearchID         string             `json:"saved_search_id"`
+	MinMatchScore         int                `json:"min_match_score"`
+	MaxApplicationsPerRun int                `json:"max_applications_per_run"`
+	Source                domain.ScoutSource `json:"source"`
+	IsEnabled             bool               `json:"is_enabled"`
+}
+
+func (r scoutRequest) toScout(id string) *domain.Scout {
+	return &domain.Scout{
+		ID:                    id,
+		Name:                  r.Name,
+		SavedSearchID:         r.SavedSearchID,
+		MinMatchScore:         r.MinMatchScore,
+		MaxApplicationsPerRun: r.MaxApplicationsPerRun,
+		Source:                r.Source,
+		IsEnabled:             r.IsEnabled,
+	}
+}
+
+func handleListScouts(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scouts, err := svc.ListScouts(r.Context())
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, scouts)
+	}
+}
+
+func handleCreateScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req scoutRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		scout := req.toScout("")
+		if err := svc.CreateScout(r.Context(), scout); err != nil {
+			// A bad score, an impossible ceiling or a missing search is
+			// the caller's to fix.
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, scout)
+	}
+}
+
+func handleGetScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scout, err := svc.GetScout(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, scout)
+	}
+}
+
+func handleUpdateScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req scoutRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		scout := req.toScout(r.PathValue("id"))
+		if err := svc.UpdateScout(r.Context(), scout); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, scout)
+	}
+}
+
+func handleDeleteScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := svc.DeleteScout(r.Context(), r.PathValue("id")); writeErrIfAny(w, err) {
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleRunScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// A run that fails partway keeps the applications it created, so
+		// the report is returned either way and the error travels inside
+		// it (AC-006).
+		report, err := svc.Run(r.Context(), r.PathValue("id"))
+		if report == nil {
+			writeErrIfAny(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func handleListScoutRuns(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		runs, err := svc.ListRuns(r.Context(), limit)
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, runs)
+	}
+}
+
+func handleListScoutRunEvents(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		events, err := svc.ListRunEvents(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, events)
+	}
 }

@@ -470,3 +470,80 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (*h
 
 	return resp, nil
 }
+
+// ListScouts returns every configured scout.
+func (c *Client) ListScouts(ctx context.Context) ([]*domain.Scout, error) {
+	var scouts []*domain.Scout
+	_, err := c.do(ctx, http.MethodGet, "/v1/scouts", nil, &scouts)
+	return scouts, err
+}
+
+// GetScout returns one scout.
+func (c *Client) GetScout(ctx context.Context, id string) (*domain.Scout, error) {
+	var scout domain.Scout
+	_, err := c.do(ctx, http.MethodGet, "/v1/scouts/"+url.PathEscape(id), nil, &scout)
+	return &scout, err
+}
+
+// CreateScout stores a new scout.
+func (c *Client) CreateScout(ctx context.Context, scout *domain.Scout) (*domain.Scout, error) {
+	var created domain.Scout
+	_, err := c.do(ctx, http.MethodPost, "/v1/scouts", scoutRequestFrom(scout), &created)
+	return &created, err
+}
+
+// UpdateScout persists changes to a scout.
+func (c *Client) UpdateScout(ctx context.Context, scout *domain.Scout) (*domain.Scout, error) {
+	var updated domain.Scout
+	_, err := c.do(ctx, http.MethodPut, "/v1/scouts/"+url.PathEscape(scout.ID),
+		scoutRequestFrom(scout), &updated)
+	return &updated, err
+}
+
+// DeleteScout removes a scout.
+func (c *Client) DeleteScout(ctx context.Context, id string) error {
+	_, err := c.do(ctx, http.MethodDelete, "/v1/scouts/"+url.PathEscape(id), nil, nil)
+	return err
+}
+
+// RunScout runs a scout once and returns what it did.
+//
+// A run that fails partway still returns a report, because the
+// applications it created before failing are real and the user can act on
+// them (AC-006).
+func (c *Client) RunScout(ctx context.Context, id string) (*domain.ScoutRunReport, error) {
+	var report domain.ScoutRunReport
+	_, err := c.do(ctx, http.MethodPost, "/v1/scouts/"+url.PathEscape(id)+"/run", nil, &report)
+	return &report, err
+}
+
+// ListScoutRuns returns recent scout runs, newest first.
+func (c *Client) ListScoutRuns(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
+	var runs []*domain.AgentRun
+	path := "/v1/scout-runs"
+	if limit > 0 {
+		path += "?" + url.Values{"limit": {strconv.Itoa(limit)}}.Encode()
+	}
+	_, err := c.do(ctx, http.MethodGet, path, nil, &runs)
+	return runs, err
+}
+
+// ListScoutRunEvents returns what one run did, in order.
+func (c *Client) ListScoutRunEvents(ctx context.Context, runID string) ([]*domain.AgentEvent, error) {
+	var events []*domain.AgentEvent
+	_, err := c.do(ctx, http.MethodGet, "/v1/scout-runs/"+url.PathEscape(runID)+"/events", nil, &events)
+	return events, err
+}
+
+// scoutRequestFrom converts a scout to the wire shape, which carries only
+// the fields a caller owns — the server assigns identity and timestamps.
+func scoutRequestFrom(scout *domain.Scout) scoutRequest {
+	return scoutRequest{
+		Name:                  scout.Name,
+		SavedSearchID:         scout.SavedSearchID,
+		MinMatchScore:         scout.MinMatchScore,
+		MaxApplicationsPerRun: scout.MaxApplicationsPerRun,
+		Source:                scout.Source,
+		IsEnabled:             scout.IsEnabled,
+	}
+}

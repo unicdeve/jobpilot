@@ -7,7 +7,7 @@ implemented — foundation, candidate profile, job discovery, matching,
 application generation, a desktop app, and a browser automation worker —
 with explicit gaps noted below.
 Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
-Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Autopilot by ADR-0014.
+Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from the desktop or the CLI. Scheduling remains deferred by ADR-0009.
 
 ## Implemented
 
@@ -402,8 +402,20 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 - Per-skill durations are self-reported and never estimated. A question about
   a skill the candidate has not given a duration for is left for them, rather
   than answered from their career total.
-- No Scouts and no eligibility rules (Phase 8).
-  Every state transition, including the ones the browser worker makes, is driven by the user through the CLI or the desktop; nothing runs unattended.
+- Scouts are implemented (ADR-0014, ADR-0018): a scout runs a saved search,
+  scores what it finds through the existing match service, and creates
+  applications in Review state for the user to read. It stops before the
+  browser — `ScoutJobFinder` exposes only search and list, so no scout code
+  path can reach `ImportJob`, which can open one. Eligibility is one
+  deterministic function in core that returns the reason with the decision,
+  because the run's trail has to record why something was rejected.
+  Three of ADR-0014's five rules were already built: salary floor, excluded
+  companies and location/work-arrangement live on the saved search and are
+  applied by `SearchCriteria.Matches`. A scout adds only a match-score floor
+  and a per-run ceiling.
+  A scout is still started by the user. Scheduling needs its own decision
+  under ADR-0009 and is deferred, as is unattended preparation in the
+  browser.
   `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
 - The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
   It now asks whether a challenge is being posed rather than whether a vendor's script is present: a CAPTCHA iframe blocks only when it is visible and tall enough to cover the form, and the interstitial phrases are matched against rendered text rather than page source.
@@ -431,6 +443,6 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
 
 ## Next
 
-1. Phase 8 (scouts and eligibility rules), the last unstarted roadmap phase, now scoped by ADR-0014 and `docs/02_features/10_scouts.md`.
+1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
 2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback — and the Settings categories still open (prompt customization, notifications, data retention).
    Salary is no longer among them: ADR-0015 §4 settled it, with the filter on the saved search and a form's salary question left for the user.

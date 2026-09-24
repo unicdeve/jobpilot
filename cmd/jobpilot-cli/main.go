@@ -47,6 +47,7 @@ func main() {
 	rootCmd.AddCommand(newMatchCmd(client))
 	rootCmd.AddCommand(newSettingsCmd(client))
 	rootCmd.AddCommand(newApplicationCmd(client))
+	rootCmd.AddCommand(newScoutCmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
@@ -990,4 +991,175 @@ func renderDraftSkills(skills []domain.CandidateSkill) string {
 		names = append(names, skill.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+// newScoutCmd builds the `scout` command tree.
+//
+// A scout runs a saved search, judges what it finds, and creates
+// applications for review. It never contacts an employer and never
+// submits (ADR-0014), so there is no flag here that could make it.
+func newScoutCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "scout", Short: "Manage scouts that shortlist jobs for review"}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List scouts",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			scouts, err := client.ListScouts(context.Background())
+			if err != nil {
+				return fmt.Errorf("listing scouts: %w", err)
+			}
+			if len(scouts) == 0 {
+				fmt.Println("No scouts yet. Add one with 'scout add <name> --search <saved search id>'.")
+				return nil
+			}
+			for _, scout := range scouts {
+				state := "enabled"
+				if !scout.IsEnabled {
+					state = "disabled"
+				}
+				fmt.Printf("  %s (%s)\n    score ≥ %d, up to %d per run, from %s\n    ID: %s\n",
+					scout.Name, state, scout.MinMatchScore, scout.MaxApplicationsPerRun,
+					scout.Source, scout.ID)
+				if scout.LastRunAt != nil {
+					fmt.Printf("    last run: %s\n", scout.LastRunAt.Format(time.RFC1123))
+				}
+			}
+			return nil
+		},
+	})
+
+	addCmd := &cobra.Command{
+		Use:   "add [name]",
+		Short: "Create a scout over a saved search",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			searchID, _ := cmd.Flags().GetString("search")
+			minScore, _ := cmd.Flags().GetInt("min-score")
+			perRun, _ := cmd.Flags().GetInt("max-per-run")
+			source, _ := cmd.Flags().GetString("source")
+
+			scout, err := client.CreateScout(context.Background(), &domain.Scout{
+				Name:                  args[0],
+				SavedSearchID:         searchID,
+				MinMatchScore:         minScore,
+				MaxApplicationsPerRun: perRun,
+				Source:                domain.ScoutSource(source),
+				IsEnabled:             true,
+			})
+			if err != nil {
+				return fmt.Errorf("creating scout: %w", err)
+			}
+
+			fmt.Printf("✅ Scout %q created.\n   Run it with 'scout run %s'.\n", scout.Name, scout.ID)
+			return nil
+		},
+	}
+	addCmd.Flags().String("search", "", "ID of the saved search this scout runs (required)")
+	addCmd.Flags().Int("min-score", 70, "lowest match score that earns an application")
+	addCmd.Flags().Int("max-per-run", 10, "most applications one run may create")
+	addCmd.Flags().String("source", string(domain.ScoutSourceLocal),
+		"'local' to consider stored jobs, 'sources' to fetch from the job boards first")
+	_ = addCmd.MarkFlagRequired("search")
+	cmd.AddCommand(addCmd)
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "run [scout-id]",
+		Short: "Run a scout once",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			report, err := client.RunScout(context.Background(), args[0])
+			// A run that fails partway still created real applications,
+			// so the report is printed before the error is returned.
+			if report != nil && report.RunID != "" {
+				printScoutReport(report)
+			}
+			if err != nil {
+				return fmt.Errorf("running scout: %w", err)
+			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "runs",
+		Short: "Show recent scout runs",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			runs, err := client.ListScoutRuns(context.Background(), 10)
+			if err != nil {
+				return fmt.Errorf("listing scout runs: %w", err)
+			}
+			if len(runs) == 0 {
+				fmt.Println("No scout runs yet.")
+				return nil
+			}
+			for _, run := range runs {
+				fmt.Printf("  %s  %s  %s\n", run.StartedAt.Format(time.RFC1123), run.Status, run.ID)
+				if run.Error != "" {
+					fmt.Printf("    %s\n", run.Error)
+				}
+			}
+			fmt.Println("\nSee what one did with 'scout trail <run-id>'.")
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "trail [run-id]",
+		Short: "Show what one scout run considered, rejected and created",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			events, err := client.ListScoutRunEvents(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("reading the run's trail: %w", err)
+			}
+			for _, event := range events {
+				line := event.Action
+				if event.InputSummary != "" {
+					line += ": " + event.InputSummary
+				}
+				if event.OutputSummary != "" {
+					line += " — " + event.OutputSummary
+				}
+				fmt.Printf("  %s\n", line)
+			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "delete [scout-id]",
+		Short: "Delete a scout",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := client.DeleteScout(context.Background(), args[0]); err != nil {
+				return fmt.Errorf("deleting scout: %w", err)
+			}
+			fmt.Println("✅ Scout deleted.")
+			return nil
+		},
+	})
+
+	return cmd
+}
+
+// printScoutReport summarizes a run, listing what was rejected and why.
+func printScoutReport(report *domain.ScoutRunReport) {
+	fmt.Printf("Considered %d job(s), created %d application(s).\n",
+		report.Considered, report.Created)
+	if report.CeilingHit {
+		fmt.Println("Stopped at this scout's per-run limit; run it again for more.")
+	}
+
+	for _, verdict := range report.Verdicts {
+		mark := "–"
+		if verdict.Eligible {
+			mark = "✅"
+		}
+		fmt.Printf("  %s %s — %s\n", mark, verdict.JobTitle, verdict.Reason)
+	}
+
+	if report.Created > 0 {
+		fmt.Println("\nThese are waiting for your review. Nothing has been sent.")
+	}
 }

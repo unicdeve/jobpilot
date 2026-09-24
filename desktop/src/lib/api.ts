@@ -22,7 +22,17 @@ import type {
   SavedSearch,
   SaveLLMSettingsResult,
   SearchCriteria,
+  Scout,
+  ScoutRunReport,
+  AgentRun,
+  AgentEvent,
 } from "./types";
+
+/**
+ * ScoutInput is the part of a Scout a caller owns. Identity, timestamps
+ * and the last-run time are the daemon's.
+ */
+export type ScoutInput = Omit<Scout, "id" | "last_run_at" | "created_at" | "updated_at">;
 
 export class ApiError extends Error {}
 
@@ -55,6 +65,16 @@ export interface ApiClient {
   /// post them back — the shape that allowed an empty search to be sent.
   runSavedSearch(id: string): Promise<Job[]>;
   importJob(url: string): Promise<Job>;
+
+  listScouts(): Promise<Scout[]>;
+  createScout(scout: ScoutInput): Promise<Scout>;
+  updateScout(id: string, scout: ScoutInput): Promise<Scout>;
+  deleteScout(id: string): Promise<void>;
+  /// runScout runs a scout once. A run that fails partway still returns a
+  /// report, because the applications it created before failing are real.
+  runScout(id: string): Promise<ScoutRunReport>;
+  listScoutRuns(limit: number): Promise<AgentRun[]>;
+  listScoutRunEvents(runId: string): Promise<AgentEvent[]>;
 
   analyzeMatch(candidateId: string, jobId: string): Promise<JobMatch>;
   listMatches(candidateId: string): Promise<JobMatch[]>;
@@ -177,6 +197,18 @@ export function createApiClient(port: number): ApiClient {
       }),
     deleteSavedSearch: (id) =>
       request<void>(baseUrl, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
+    listScouts: () => request<Scout[]>(baseUrl, "GET", "/v1/scouts"),
+    createScout: (scout) => request<Scout>(baseUrl, "POST", "/v1/scouts", scout),
+    updateScout: (id, scout) =>
+      request<Scout>(baseUrl, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
+    deleteScout: (id) => request<void>(baseUrl, "DELETE", `/v1/scouts/${encodeURIComponent(id)}`),
+    runScout: (id) =>
+      request<ScoutRunReport>(baseUrl, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
+    listScoutRuns: (limit) =>
+      request<AgentRun[]>(baseUrl, "GET", `/v1/scout-runs?limit=${limit}`),
+    listScoutRunEvents: (runId) =>
+      request<AgentEvent[]>(baseUrl, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
+
     setDefaultSavedSearch: (id) =>
       request<SavedSearch>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
     runSavedSearch: (id) =>

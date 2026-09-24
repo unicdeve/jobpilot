@@ -16,7 +16,10 @@ import {
   type UseMutationOptions,
 } from "@tanstack/react-query";
 import { useApi } from "./daemon";
+import type { ScoutInput } from "./api";
 import type {
+  AgentEvent,
+  AgentRun,
   AgentRunWithEvents,
   Application,
   ApplicationMode,
@@ -35,6 +38,8 @@ import type {
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
+  Scout,
+  ScoutRunReport,
   SearchCriteria,
 } from "./types";
 
@@ -52,6 +57,9 @@ export const keys = {
       ["jobs", "infinite", { keywords, pageSize }] as const,
   },
   savedSearches: ["saved-searches"] as const,
+  scouts: ["scouts"] as const,
+  scoutRuns: ["scout-runs"] as const,
+  scoutRunEvents: (runId: string) => ["scout-run-events", runId] as const,
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
   matches: (candidateId: string) => ["matches", candidateId] as const,
   applications: {
@@ -635,5 +643,91 @@ export function usePrepareInBrowser(opts?: MutationOpts<Application, string>) {
       void queryClient.invalidateQueries({ queryKey: keys.applications.all });
       opts?.onSettled?.(application, error, applicationId, ...rest);
     },
+  });
+}
+
+
+/// useScouts loads the standing instructions that shortlist jobs for
+/// review. An empty list is where every installation starts.
+export function useScouts() {
+  const api = useApi();
+  return useQuery<Scout[]>({
+    queryKey: keys.scouts,
+    queryFn: () => api.listScouts(),
+  });
+}
+
+export function useCreateScout(opts?: MutationOpts<Scout, ScoutInput>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (scout: ScoutInput) => api.createScout(scout),
+    ...opts,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: keys.scouts });
+      opts?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+export function useUpdateScout(opts?: MutationOpts<Scout, { id: string; scout: ScoutInput }>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, scout }: { id: string; scout: ScoutInput }) => api.updateScout(id, scout),
+    ...opts,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: keys.scouts });
+      opts?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+export function useDeleteScout(opts?: MutationOpts<void, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteScout(id),
+    ...opts,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: keys.scouts });
+      opts?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+/// useRunScout runs a scout once.
+///
+/// It invalidates applications as well as scouts, because a run's whole
+/// point is that new applications are waiting.
+export function useRunScout(opts?: MutationOpts<ScoutRunReport, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.runScout(id),
+    ...opts,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: keys.scouts });
+      void queryClient.invalidateQueries({ queryKey: keys.scoutRuns });
+      void queryClient.invalidateQueries({ queryKey: ["applications"] });
+      opts?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+export function useScoutRuns(limit = 10) {
+  const api = useApi();
+  return useQuery<AgentRun[]>({
+    queryKey: keys.scoutRuns,
+    queryFn: () => api.listScoutRuns(limit),
+  });
+}
+
+export function useScoutRunEvents(runId: string | null) {
+  const api = useApi();
+  return useQuery<AgentEvent[]>({
+    queryKey: keys.scoutRunEvents(runId ?? ""),
+    queryFn: () => api.listScoutRunEvents(runId!),
+    enabled: runId !== null,
   });
 }
