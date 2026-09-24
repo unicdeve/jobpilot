@@ -444,5 +444,6 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 ## Next
 
 1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
-2. The remaining documented gaps — structured LLM output, richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback — and the Settings categories still open (prompt customization, notifications, data retention).
-   Salary is no longer among them: ADR-0015 §4 settled it, with the filter on the saved search and a form's salary question left for the user.
+2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
+   Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
+3. The desktop has no Agent Activity screen, so the trail a scout writes is readable on the Scouts page and by `scout trail` in the CLI, but nowhere else.
