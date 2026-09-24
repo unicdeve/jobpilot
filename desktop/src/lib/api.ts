@@ -3,6 +3,9 @@
 // docs/09_decisions/0012-loopback-http-ipc.md.
 
 import type {
+  AgentRunDetail,
+  AgentRunFilter,
+  AgentRunPage,
   AgentRunWithEvents,
   Application,
   ApplicationMode,
@@ -83,6 +86,12 @@ export interface ApiClient {
   runScout(id: string): Promise<ScoutRunReport>;
   listScoutRuns(limit: number): Promise<AgentRun[]>;
   listScoutRunEvents(runId: string): Promise<AgentEvent[]>;
+
+  /// listActivity pages through every agent run, newest first: browser
+  /// preparation and scout runs alike. A limit of 0 means the daemon's
+  /// default page size.
+  listActivity(filter: AgentRunFilter, limit: number, offset: number): Promise<AgentRunPage>;
+  getActivityRun(id: string): Promise<AgentRunDetail>;
 
   analyzeMatch(candidateId: string, jobId: string): Promise<JobMatch>;
   listMatches(candidateId: string): Promise<JobMatch[]>;
@@ -229,6 +238,18 @@ export function createApiClient(port: number): ApiClient {
       request<AgentRun[]>(baseUrl, "GET", `/v1/scout-runs?limit=${limit}`),
     listScoutRunEvents: (runId) =>
       request<AgentEvent[]>(baseUrl, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
+
+    listActivity: (filter, limit, offset) => {
+      const params: Record<string, string> = {};
+      if (filter.task_type) params.task_type = filter.task_type;
+      if (filter.status) params.status = filter.status;
+      if (limit > 0) params.limit = String(limit);
+      if (offset > 0) params.offset = String(offset);
+      const query = new URLSearchParams(params).toString();
+      return request<AgentRunPage>(baseUrl, "GET", "/v1/agent-runs" + (query ? `?${query}` : ""));
+    },
+    getActivityRun: (id) =>
+      request<AgentRunDetail>(baseUrl, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
 
     setDefaultSavedSearch: (id) =>
       request<SavedSearch>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),

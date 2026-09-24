@@ -38,6 +38,7 @@ type Services struct {
 	Browser     *services.BrowserWorkerService
 	Scouts      *services.ScoutService
 	Credentials *services.CredentialService
+	Activity    *services.AgentActivityService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -81,6 +82,9 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("POST /v1/scouts/{id}/run", handleRunScout(svc.Scouts))
 	mux.HandleFunc("GET /v1/scout-runs", handleListScoutRuns(svc.Scouts))
 	mux.HandleFunc("GET /v1/scout-runs/{id}/events", handleListScoutRunEvents(svc.Scouts))
+
+	mux.HandleFunc("GET /v1/agent-runs", handleListActivity(svc.Activity))
+	mux.HandleFunc("GET /v1/agent-runs/{id}", handleGetActivityRun(svc.Activity))
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))

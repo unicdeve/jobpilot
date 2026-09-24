@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { Badge } from "./ui/badge";
 
 const stateColors: Record<string, string> = {
@@ -23,11 +24,16 @@ const stateColors: Record<string, string> = {
   completed: "bg-emerald-100 text-emerald-700",
   blocked: "bg-amber-100 text-amber-700",
   failed: "bg-red-600 text-white",
+  error: "bg-red-100 text-red-700",
+  // Policy results on an agent step: a deterministic rule let it through,
+  // or stopped it.
+  allowed: "bg-emerald-100 text-emerald-700",
+  denied: "bg-amber-100 text-amber-700",
 };
 
-export function StatusBadge({ value }: { value: string }) {
+export function StatusBadge({ value, className }: { value: string; className?: string }) {
   return (
-    <Badge variant="outline" className={stateColors[value] ?? "bg-slate-100 text-slate-700"}>
+    <Badge variant="outline" className={cn(stateColors[value] ?? "bg-slate-100 text-slate-700", className)}>
       {value || "—"}
     </Badge>
   );

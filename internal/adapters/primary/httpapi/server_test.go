@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -535,6 +536,37 @@ func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicatio
 	return out, nil
 }
 
+// ListSummaries filters and pages the stored runs. It names nothing, since
+// the fake has no scouts or jobs to join against.
+func (f *fakeAgentRunRepository) ListSummaries(_ context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
+	var matched []*domain.AgentRunSummary
+	for _, run := range f.runs {
+		if filter.TaskType != "" && run.TaskType != filter.TaskType {
+			continue
+		}
+		if filter.Status != "" && run.Status != filter.Status {
+			continue
+		}
+		matched = append(matched, &domain.AgentRunSummary{AgentRun: *run})
+	}
+	sort.Slice(matched, func(a, b int) bool { return matched[a].StartedAt.After(matched[b].StartedAt) })
+
+	page := &domain.AgentRunPage{Runs: []*domain.AgentRunSummary{}, Total: len(matched)}
+	if filter.Offset < len(matched) {
+		matched = matched[filter.Offset:]
+		page.Runs = matched[:min(filter.Limit, len(matched))]
+	}
+	return page, nil
+}
+
+func (f *fakeAgentRunRepository) GetSummary(_ context.Context, id string) (*domain.AgentRunSummary, error) {
+	run, ok := f.runs[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ports.ErrAgentRunNotFound, id)
+	}
+	return &domain.AgentRunSummary{AgentRun: *run}, nil
+}
+
 // fakeAgentEventRepository is an in-memory ports.AgentEventRepository for
 // tests.
 type fakeAgentEventRepository struct {
@@ -669,6 +701,9 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	appSvc := services.NewApplicationService(appRepo)
 	docConverter := &fakeDocumentConverter{}
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
+	// One trail, written by the browser worker and read by Agent Activity.
+	runRepo := newFakeAgentRunRepository()
+	eventRepo := newFakeAgentEventRepository()
 
 	svc := Services{
 		Candidates:  candRepo,
@@ -682,10 +717,11 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Application: appSvc,
 		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
 		Answers:     answerSvc,
-		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, newFakeAgentRunRepository(), newFakeAgentEventRepository(), answerSvc, func() (ports.BrowserWorker, error) {
+		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answerSvc, func() (ports.BrowserWorker, error) {
 			return &fakeBrowserWorker{}, nil
 		}, nil),
 		Credentials: services.NewCredentialService(credentialStore, &fakeCredentialNames{}),
+		Activity:    services.NewAgentActivityService(runRepo, eventRepo),
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))
@@ -1053,6 +1089,86 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	require.Len(t, runs, 1)
 	require.Equal(t, domain.AgentRunStatusBlocked, runs[0].Run.Status)
 	require.NotEmpty(t, runs[0].Events)
+}
+
+// TestClient_AgentActivity covers the activity endpoints over a run the
+// browser worker really recorded: the same trail the application's own
+// panel reads, listed across every run and read back one at a time.
+func TestClient_AgentActivity(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-5", Title: "Mathematician"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-5")
+	require.NoError(t, err)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+	for _, state := range []domain.ApplicationState{domain.ApplicationStateMatched, domain.ApplicationStatePreparing} {
+		_, err = client.TransitionApplication(ctx, app.ID, state, "")
+		require.NoError(t, err)
+	}
+	_, err = client.PrepareInBrowser(ctx, app.ID)
+	require.Error(t, err, "the fake page has no form, so the run is blocked")
+
+	page, err := client.ListActivity(ctx, domain.AgentRunFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, page.Total)
+	require.Len(t, page.Runs, 1)
+	run := page.Runs[0]
+	assert.Equal(t, domain.AgentTaskPrepareApplication, run.TaskType)
+	assert.Equal(t, app.ID, run.ApplicationID)
+	assert.Equal(t, domain.AgentRunStatusBlocked, run.Status)
+
+	filtered, err := client.ListActivity(ctx, domain.AgentRunFilter{TaskType: domain.AgentTaskScoutRun})
+	require.NoError(t, err)
+	assert.Empty(t, filtered.Runs)
+	assert.NotNil(t, filtered.Runs, "an empty page is a list, not null")
+
+	detail, err := client.GetActivityRun(ctx, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, run.ID, detail.Run.ID)
+	require.NotEmpty(t, detail.Events)
+	assert.Equal(t, "navigate", detail.Events[0].Action)
+	var policies []string
+	for _, event := range detail.Events {
+		if event.PolicyResult != "" {
+			policies = append(policies, event.Action+"="+event.PolicyResult)
+		}
+	}
+	assert.Contains(t, policies, "extract_form=denied", "the page was refused by the application-form gate")
+}
+
+func TestServer_AgentActivity_Errors(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	tests := []struct {
+		name   string
+		path   string
+		status int
+		want   string
+	}{
+		{"unknown kind", "/v1/agent-runs?task_type=autopilot", http.StatusBadRequest, `unknown task type "autopilot"`},
+		{"unknown status", "/v1/agent-runs?status=done", http.StatusBadRequest, `unknown status "done"`},
+		{"non-numeric limit", "/v1/agent-runs?limit=all", http.StatusBadRequest, `invalid limit "all"`},
+		{"missing run", "/v1/agent-runs/does-not-exist", http.StatusNotFound, "agent run not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := http.Get(client.baseURL + tt.path)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = res.Body.Close() })
+
+			assert.Equal(t, tt.status, res.StatusCode)
+			var body struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+			assert.Contains(t, body.Error, tt.want)
+		})
+	}
 }
 
 func TestClient_ListJobs(t *testing.T) {

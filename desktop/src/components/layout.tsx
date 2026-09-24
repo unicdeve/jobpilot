@@ -15,6 +15,7 @@ const navItems = [
   { to: "/matches", label: "Matches" },
   { to: "/scouts", label: "Scouts" },
   { to: "/applications", label: "Applications" },
+  { to: "/activity", label: "Activity" },
   { to: "/settings", label: "Settings" },
 ];
 

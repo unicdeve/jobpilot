@@ -582,6 +582,42 @@ func (c *Client) ListScoutRunEvents(ctx context.Context, runID string) ([]*domai
 	return events, err
 }
 
+// ListActivity returns one page of agent runs of every kind, newest first.
+func (c *Client) ListActivity(ctx context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
+	query := url.Values{}
+	if filter.TaskType != "" {
+		query.Set("task_type", filter.TaskType)
+	}
+	if filter.Status != "" {
+		query.Set("status", string(filter.Status))
+	}
+	if filter.Limit > 0 {
+		query.Set("limit", strconv.Itoa(filter.Limit))
+	}
+	if filter.Offset > 0 {
+		query.Set("offset", strconv.Itoa(filter.Offset))
+	}
+	path := "/v1/agent-runs"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+
+	var page domain.AgentRunPage
+	if _, err := c.do(ctx, http.MethodGet, path, nil, &page); err != nil {
+		return nil, err
+	}
+	return &page, nil
+}
+
+// GetActivityRun returns one agent run with every step it recorded.
+func (c *Client) GetActivityRun(ctx context.Context, id string) (*domain.AgentRunDetail, error) {
+	var detail domain.AgentRunDetail
+	if _, err := c.do(ctx, http.MethodGet, "/v1/agent-runs/"+url.PathEscape(id), nil, &detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
+
 // scoutRequestFrom converts a scout to the wire shape, which carries only
 // the fields a caller owns — the server assigns identity and timestamps.
 func scoutRequestFrom(scout *domain.Scout) scoutRequest {

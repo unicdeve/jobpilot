@@ -20,6 +20,8 @@ import type { ScoutInput } from "./api";
 import type {
   AgentEvent,
   AgentRun,
+  AgentRunDetail,
+  AgentRunFilter,
   AgentRunWithEvents,
   Application,
   ApplicationMode,
@@ -64,6 +66,12 @@ export const keys = {
   scouts: ["scouts"] as const,
   scoutRuns: ["scout-runs"] as const,
   scoutRunEvents: (runId: string) => ["scout-run-events", runId] as const,
+  activity: {
+    all: ["activity"] as const,
+    infinite: (filter: AgentRunFilter, pageSize: number) =>
+      ["activity", "infinite", { ...filter, pageSize }] as const,
+    detail: (id: string) => ["activity", "detail", id] as const,
+  },
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
   matches: (candidateId: string) => ["matches", candidateId] as const,
   applications: {
@@ -129,6 +137,31 @@ export function useInfiniteJobs(keywords: string, pageSize: number) {
       const loaded = allPages.reduce((count, page) => count + page.jobs.length, 0);
       return loaded < lastPage.total ? loaded : undefined;
     },
+  });
+}
+
+/// useInfiniteActivity pages through every agent run, newest first, the
+/// same way useInfiniteJobs pages through stored jobs.
+export function useInfiniteActivity(filter: AgentRunFilter, pageSize: number) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: keys.activity.infinite(filter, pageSize),
+    queryFn: ({ pageParam }) => api.listActivity(filter, pageSize, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((count, page) => count + page.runs.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+  });
+}
+
+/// useActivityRun loads one run with every step it recorded.
+export function useActivityRun(id: string | undefined) {
+  const api = useApi();
+  return useQuery<AgentRunDetail>({
+    queryKey: keys.activity.detail(id ?? ""),
+    queryFn: () => api.getActivityRun(id!),
+    enabled: !!id,
   });
 }
 
@@ -713,6 +746,7 @@ export function usePrepareInBrowser(opts?: MutationOpts<Application, string>) {
       void queryClient.invalidateQueries({ queryKey: keys.applications.agentRuns(applicationId) });
       void queryClient.invalidateQueries({ queryKey: keys.applications.history(applicationId) });
       void queryClient.invalidateQueries({ queryKey: keys.applications.all });
+      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
       opts?.onSettled?.(application, error, applicationId, ...rest);
     },
   });
@@ -778,11 +812,14 @@ export function useRunScout(opts?: MutationOpts<ScoutRunReport, string>) {
   return useMutation({
     mutationFn: (id: string) => api.runScout(id),
     ...opts,
-    onSuccess: (data, variables, ...rest) => {
+    // On settle, not success: a run that fails partway is still recorded,
+    // and may already have created applications (AC-006).
+    onSettled: (data, error, variables, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: keys.scouts });
       void queryClient.invalidateQueries({ queryKey: keys.scoutRuns });
       void queryClient.invalidateQueries({ queryKey: ["applications"] });
-      opts?.onSuccess?.(data, variables, ...rest);
+      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
+      opts?.onSettled?.(data, error, variables, ...rest);
     },
   });
 }

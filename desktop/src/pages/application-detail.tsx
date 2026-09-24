@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { runDuration } from "../lib/activity";
 import {
   useAddQuestion,
   useAgentRuns,
@@ -267,26 +268,29 @@ function BrowserAutomationPanel({
         </div>
 
         {runs.length > 0 && (
-          <div className="mt-3 space-y-3">
-            {runs.map(({ run, events }) => (
-              <div key={run.id} className="rounded-md border border-slate-200 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{run.task_type}</span>
-                  <StatusBadge value={run.status} />
-                </div>
-                {run.error && <p className="mt-1 text-sm text-red-700">{run.error}</p>}
-                {events.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-slate-500">
-                    {events.map((e) => (
-                      <li key={e.id}>
-                        {e.action} ({e.status}){e.output_summary && <> — {e.output_summary}</>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </div>
+          <ul className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+            {runs.map(({ run, events }) => {
+              const duration = runDuration(run);
+              return (
+                <li key={run.id} className="px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm">
+                      {new Date(run.started_at).toLocaleString()}
+                      <span className="text-slate-500">
+                        {duration && <> · took {duration}</>} · {events.length}{" "}
+                        {events.length === 1 ? "step" : "steps"} ·{" "}
+                        <Link to={`/activity/${run.id}`} className="underline">
+                          What it did
+                        </Link>
+                      </span>
+                    </span>
+                    <StatusBadge value={run.status} />
+                  </div>
+                  {run.error && <p className="mt-1 text-sm text-red-700">{run.error}</p>}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </CardContent>
     </Card>

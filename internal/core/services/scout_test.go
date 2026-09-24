@@ -279,15 +279,22 @@ func TestScoutRun_RecordsWhatItDid(t *testing.T) {
 	assert.Equal(t, domain.AgentRunStatusCompleted, run.Status)
 	assert.Empty(t, run.ApplicationID,
 		"a scout run creates several applications and belongs to none of them")
+	assert.Equal(t, f.scout.ID, run.ScoutID, "so it names the scout instead")
 	require.NotNil(t, run.CompletedAt)
 
 	events, err := f.events.ListByRun(ctx, report.RunID)
 	require.NoError(t, err)
 
 	actions := map[string]string{}
+	policies := map[string]string{}
 	for _, event := range events {
 		actions[event.Action] = event.OutputSummary
+		policies[event.Action] = event.PolicyResult
 	}
+	assert.Equal(t, domain.PolicyDenied, policies["job_rejected"],
+		"an eligibility decision is recorded as the step's policy result")
+	assert.Equal(t, domain.PolicyAllowed, policies["application_created"])
+	assert.Empty(t, policies["jobs_collected"], "a step no rule decided has none")
 	assert.Contains(t, actions, "scout_started")
 	assert.Contains(t, actions, "jobs_collected")
 	assert.Contains(t, actions, "application_created")

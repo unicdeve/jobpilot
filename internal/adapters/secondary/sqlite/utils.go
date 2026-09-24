@@ -13,6 +13,23 @@ func nullableString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
 }
 
+// nullStringInto is a scan destination that reads a nullable TEXT column
+// straight into a Go string, NULL becoming "".
+func nullStringInto(dest *string) sql.Scanner {
+	return nullStringScanner{dest}
+}
+
+type nullStringScanner struct{ dest *string }
+
+func (s nullStringScanner) Scan(value any) error {
+	var ns sql.NullString
+	if err := ns.Scan(value); err != nil {
+		return err
+	}
+	*s.dest = ns.String
+	return nil
+}
+
 // joinStrings encodes s as a JSON array for storage in a TEXT column.
 // Encoding a []string can never fail, so the error is safely ignored.
 func joinStrings(s []string) string {

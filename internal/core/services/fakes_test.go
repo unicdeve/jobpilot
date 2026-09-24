@@ -679,6 +679,37 @@ func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, limit int) ([
 	return out, nil
 }
 
+// ListSummaries filters and pages the stored runs. It names nothing, since
+// the fake has no scouts or jobs to join against.
+func (f *fakeAgentRunRepository) ListSummaries(_ context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
+	var matched []*domain.AgentRunSummary
+	for _, run := range f.runs {
+		if filter.TaskType != "" && run.TaskType != filter.TaskType {
+			continue
+		}
+		if filter.Status != "" && run.Status != filter.Status {
+			continue
+		}
+		matched = append(matched, &domain.AgentRunSummary{AgentRun: *run})
+	}
+	sort.Slice(matched, func(a, b int) bool { return matched[a].StartedAt.After(matched[b].StartedAt) })
+
+	page := &domain.AgentRunPage{Runs: []*domain.AgentRunSummary{}, Total: len(matched)}
+	if filter.Offset < len(matched) {
+		matched = matched[filter.Offset:]
+		page.Runs = matched[:min(filter.Limit, len(matched))]
+	}
+	return page, nil
+}
+
+func (f *fakeAgentRunRepository) GetSummary(_ context.Context, id string) (*domain.AgentRunSummary, error) {
+	run, ok := f.runs[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ports.ErrAgentRunNotFound, id)
+	}
+	return &domain.AgentRunSummary{AgentRun: *run}, nil
+}
+
 // fakeAgentEventRepository is an in-memory ports.AgentEventRepository for
 // tests.
 type fakeAgentEventRepository struct {

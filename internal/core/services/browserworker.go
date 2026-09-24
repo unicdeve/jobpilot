@@ -11,7 +11,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
-const taskTypePrepareApplication = "prepare_application"
+const taskTypePrepareApplication = domain.AgentTaskPrepareApplication
 
 // BrowserWorkerService drives a ports.BrowserWorker to navigate to an
 // application's job posting, extract its form, and fill in resolved
@@ -143,17 +143,30 @@ func (s *BrowserWorkerService) reachApplicationForm(
 ) ([]ports.FormField, error) {
 	for hop := 0; ; hop++ {
 		if reason, blocked := worker.DetectBlocker(ctx); blocked {
-			s.recordEvent(ctx, run.ID, "detect_blocker", "browser", "blocked", "", reason, 0)
+			// JobPilot never gets past an anti-bot measure (ADR-0013,
+			// ADR-0014), so a blocker is a policy stop, not a failure.
+			s.recordPolicy(ctx, run.ID, "detect_blocker", "browser", "blocked", domain.PolicyDenied, "", reason)
 			return nil, s.blockRun(ctx, run, applicationID, reason)
 		}
 
 		start := time.Now()
 		fields, err := worker.ExtractForm(ctx)
-		s.recordEvent(ctx, run.ID, "extract_form", "browser", statusFor(err), worker.CurrentURL(ctx), fmt.Sprintf("%d fields found", len(fields)), time.Since(start))
+		elapsed := time.Since(start)
 		if err != nil {
+			s.recordEvent(ctx, run.ID, "extract_form", "browser", statusFor(err), worker.CurrentURL(ctx), err.Error(), elapsed)
 			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to read the application form: %v", err))
 		}
-		if LooksLikeApplicationForm(fields) {
+
+		// The application-form gate decides whether this page is filled,
+		// so its answer is recorded as the step's policy result.
+		isForm := LooksLikeApplicationForm(fields)
+		policy, verdict := domain.PolicyDenied, "not an application form"
+		if isForm {
+			policy, verdict = domain.PolicyAllowed, "an application form"
+		}
+		s.recordTimedPolicy(ctx, run.ID, "extract_form", "browser", "ok", policy, worker.CurrentURL(ctx),
+			fmt.Sprintf("%s found, %s", pluralize(len(fields), "field"), verdict), elapsed)
+		if isForm {
 			return fields, nil
 		}
 
@@ -219,6 +232,14 @@ func (s *BrowserWorkerService) chooseApplyControl(
 	}
 }
 
+// pluralize renders a count with its noun: "1 field", "3 fields".
+func pluralize(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
 // hopSummary records where a hop went and how it was decided, so the
 // activity trail answers "why did it go there" and "was a model involved"
 // after the fact (ADR-0013 §2), including when the hop left the origin —
@@ -267,14 +288,19 @@ func (s *BrowserWorkerService) prepareField(ctx context.Context, worker ports.Br
 		// browser refuses an option a <select> does not have, and that
 		// error would stop the whole run over one field. Left blank, it
 		// joins the questions the user answers themselves.
-		s.recordEvent(ctx, run.ID, "skip_field", "form", "ok", field.Label,
-			fmt.Sprintf("%q is not one of the choices offered", resolved.Answer), 0)
+		//
+		// The answer itself is not recorded: it is stored on the question,
+		// and the trail is shown on its own screen, where candidate data
+		// has no reason to appear (docs/02_features/12_agent_activity.md).
+		s.recordPolicy(ctx, run.ID, "skip_field", "form", "ok", domain.PolicyDenied, field.Label,
+			"the answer is not one of the choices offered")
 		return nil
 	}
 
 	start := time.Now()
 	fillErr := worker.Fill(ctx, field.Ref, resolved.Answer)
-	s.recordEvent(ctx, run.ID, "fill_field", "browser", statusFor(fillErr), field.Label, resolved.Answer, time.Since(start))
+	// No output, and in particular not the answer: see skip_field above.
+	s.recordEvent(ctx, run.ID, "fill_field", "browser", statusFor(fillErr), field.Label, "", time.Since(start))
 	if fillErr != nil {
 		return s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to fill %q: %v", field.Label, fillErr))
 	}
@@ -336,6 +362,16 @@ func (s *BrowserWorkerService) stopRun(ctx context.Context, run *domain.AgentRun
 // the write itself fails: losing one activity-log entry shouldn't abort an
 // otherwise-successful preparation.
 func (s *BrowserWorkerService) recordEvent(ctx context.Context, runID, action, tool, status, input, output string, duration time.Duration) {
+	s.recordTimedPolicy(ctx, runID, action, tool, status, "", input, output, duration)
+}
+
+// recordPolicy records a step whose outcome was decided by a deterministic
+// rule, with that rule's verdict as the policy result.
+func (s *BrowserWorkerService) recordPolicy(ctx context.Context, runID, action, tool, status, policy, input, output string) {
+	s.recordTimedPolicy(ctx, runID, action, tool, status, policy, input, output, 0)
+}
+
+func (s *BrowserWorkerService) recordTimedPolicy(ctx context.Context, runID, action, tool, status, policy, input, output string, duration time.Duration) {
 	event := &domain.AgentEvent{
 		RunID:         runID,
 		Action:        action,
@@ -343,6 +379,7 @@ func (s *BrowserWorkerService) recordEvent(ctx context.Context, runID, action, t
 		Status:        status,
 		InputSummary:  input,
 		OutputSummary: output,
+		PolicyResult:  policy,
 		DurationMs:    duration.Milliseconds(),
 	}
 	if err := s.eventRepo.Save(ctx, event); err != nil {

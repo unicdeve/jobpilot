@@ -4,6 +4,8 @@ import { Layout } from "./components/layout";
 import { RequireDaemon } from "./components/require-daemon";
 import { DaemonProvider } from "./lib/daemon";
 import { ToastProvider } from "./lib/toast";
+import { Activity } from "./pages/activity";
+import { ActivityRun } from "./pages/activity-run";
 import { ApplicationDetail } from "./pages/application-detail";
 import { Applications } from "./pages/applications";
 import { Scouts } from "./pages/scouts";
@@ -59,6 +61,8 @@ function App() {
                 <Route path="scouts" element={<Scouts />} />
                 <Route path="applications" element={<Applications />} />
                 <Route path="applications/:id" element={<ApplicationDetail />} />
+                <Route path="activity" element={<Activity />} />
+                <Route path="activity/:id" element={<ActivityRun />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Routes>

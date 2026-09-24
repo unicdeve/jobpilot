@@ -347,10 +347,19 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   the shadcn/ui CLI (Button, Card, Badge, Input, Textarea, Label, Select,
   Checkbox), per `02_desktop.md`; a small `StatusBadge`/`FormField` wrapper
   in `desktop/src/components/` layers the app's per-state colors and
-  label+control pairing on top of those primitives. Not built: Agent
-  Activity nav screen (see below — a per-application activity panel exists
-  instead) and any settings category beyond LLM provider/model (same
-  reason — unimplemented backend).
+  label+control pairing on top of those primitives. Not built: any
+  settings category beyond LLM provider/model (unimplemented backend).
+
+- Agent Activity (`docs/02_features/12_agent_activity.md`): the desktop's
+  Activity screen lists every agent run — browser preparation and scout runs
+  alike — newest first, filterable by kind and status, and opens each one to
+  show its steps with their policy results. `GET /v1/agent-runs` and
+  `GET /v1/agent-runs/{id}` serve it, read by `AgentActivityService`, and
+  `jobpilot-cli activity list` / `activity show` read the same trail.
+  A scout run now records its scout (migration `00012_agent_activity.sql`),
+  and steps decided by a deterministic rule record its verdict as their
+  policy result. A filled field's step no longer records the answer typed
+  into it; the same migration removed the answers already stored.
 
 - Desktop server state (`desktop/src/lib/queries.ts`,
   `docs/01_architecture/02_desktop.md`): every screen reads the daemon
@@ -444,8 +453,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
   USAJOBS and The Muse all refuse an unauthenticated request.
 - No user-configurable prompt customization for matching (Phase 3).
-- The Desktop app has no Agent Activity screen (see above) and no import
-  progress/loading polish beyond basic "Loading…" text.
+- The Desktop app has no import progress/loading polish beyond basic
+  "Loading…" text.
 - Some core entities from `docs/01_architecture/04_database.md` are still
   not separate tables: `JobSource` (jobs reference their source only by
   free-text ID), `Prompt` and `Notification` (no schema home yet for prompt
@@ -523,6 +532,5 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-3. The desktop has no Agent Activity screen, so the trail a scout writes is readable on the Scouts page and by `scout trail` in the CLI, but nowhere else.
-4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+4. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.

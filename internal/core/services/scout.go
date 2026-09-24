@@ -10,7 +10,7 @@ import (
 )
 
 // ScoutTaskType labels a scout run in the agent trail.
-const ScoutTaskType = "scout_run"
+const ScoutTaskType = domain.AgentTaskScoutRun
 
 // ScoutJobFinder is the part of job discovery a Scout uses.
 //
@@ -155,6 +155,7 @@ func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRu
 	run := &domain.AgentRun{
 		// No ApplicationID: a scout run creates several applications and
 		// belongs to none of them (ADR-0018 §4).
+		ScoutID:   scout.ID,
 		TaskType:  ScoutTaskType,
 		Status:    domain.AgentRunStatusRunning,
 		StartedAt: s.now(),
@@ -207,7 +208,7 @@ func (s *ScoutService) considerJobs(
 		// jobs it has already decided it cannot act on (AC-005).
 		if report.Created >= scout.MaxApplicationsPerRun {
 			report.CeilingHit = true
-			s.record(ctx, runID, "ceiling_reached", "ok", "",
+			s.recordDecision(ctx, runID, "ceiling_reached", domain.PolicyDenied, "",
 				fmt.Sprintf("stopped after creating %d applications", report.Created))
 			return nil
 		}
@@ -224,7 +225,7 @@ func (s *ScoutService) considerJobs(
 		if ok, reason := scout.PreScreen(input); !ok {
 			verdict.Reason = reason
 			report.Verdicts = append(report.Verdicts, verdict)
-			s.record(ctx, runID, "job_rejected", "ok", job.Title, reason)
+			s.recordDecision(ctx, runID, "job_rejected", domain.PolicyDenied, job.Title, reason)
 			continue
 		}
 
@@ -246,7 +247,7 @@ func (s *ScoutService) considerJobs(
 		verdict.Eligible, verdict.Reason = eligible, reason
 		if !eligible {
 			report.Verdicts = append(report.Verdicts, verdict)
-			s.record(ctx, runID, "job_rejected", "ok", job.Title, reason)
+			s.recordDecision(ctx, runID, "job_rejected", domain.PolicyDenied, job.Title, reason)
 			continue
 		}
 
@@ -264,7 +265,7 @@ func (s *ScoutService) considerJobs(
 		report.Created++
 		applied[job.ID] = true
 		report.Verdicts = append(report.Verdicts, verdict)
-		s.record(ctx, runID, "application_created", "ok", job.Title,
+		s.recordDecision(ctx, runID, "application_created", domain.PolicyAllowed, job.Title,
 			fmt.Sprintf("application %s, %s", application.ID, reason))
 	}
 
@@ -353,13 +354,31 @@ func (s *ScoutService) finish(ctx context.Context, run *domain.AgentRun, report 
 // applications, and losing a line of history is not a reason to throw
 // them away.
 func (s *ScoutService) record(ctx context.Context, runID, action, status, input, output string) {
-	_ = s.events.Save(ctx, &domain.AgentEvent{
+	s.save(ctx, &domain.AgentEvent{
 		RunID:         runID,
 		Action:        action,
-		Tool:          "scout",
 		Status:        status,
 		InputSummary:  input,
 		OutputSummary: output,
-		CreatedAt:     s.now(),
 	})
+}
+
+// recordDecision appends a step that applied the scout's eligibility
+// rules, with the rules' verdict as its policy result and the reason as
+// its output.
+func (s *ScoutService) recordDecision(ctx context.Context, runID, action, policy, input, reason string) {
+	s.save(ctx, &domain.AgentEvent{
+		RunID:         runID,
+		Action:        action,
+		Status:        "ok",
+		InputSummary:  input,
+		OutputSummary: reason,
+		PolicyResult:  policy,
+	})
+}
+
+func (s *ScoutService) save(ctx context.Context, event *domain.AgentEvent) {
+	event.Tool = "scout"
+	event.CreatedAt = s.now()
+	_ = s.events.Save(ctx, event)
 }

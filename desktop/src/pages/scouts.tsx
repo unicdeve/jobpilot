@@ -292,7 +292,17 @@ export function Scouts() {
                     </span>
                   </button>
                   {run.error && <p className="mt-1 text-sm text-red-600">{run.error}</p>}
-                  {openRunId === run.id && <RunTrail runId={run.id} />}
+                  {openRunId === run.id && (
+                    <>
+                      <RunTrail runId={run.id} />
+                      <Link
+                        to={`/activity/${run.id}`}
+                        className="mt-2 inline-block text-xs text-slate-500 underline"
+                      >
+                        Open in Activity
+                      </Link>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             ))}

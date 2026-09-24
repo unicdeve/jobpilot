@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // AgentRunRepository is a ports.AgentRunRepository backed by SQLite.
@@ -31,8 +33,8 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 	}
 
 	query := `INSERT INTO agent_runs (
-		id, application_id, task_type, status, started_at, completed_at, error
-	) VALUES (?, ?, ?, ?, ?, ?, ?)`
+		id, application_id, scout_id, task_type, status, started_at, completed_at, error
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	// application_id is a foreign key and foreign keys are on, so an
 	// empty string is rejected outright — it names an application that
@@ -40,7 +42,7 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 	// belongs to none of them, which is the first run that needs NULL
 	// here (ADR-0018 §4).
 	_, err := r.db.ExecContext(ctx, query,
-		run.ID, nullableString(run.ApplicationID), run.TaskType, run.Status,
+		run.ID, nullableString(run.ApplicationID), nullableString(run.ScoutID), run.TaskType, run.Status,
 		run.StartedAt, run.CompletedAt, nullableString(run.Error),
 	)
 	if err != nil {
@@ -64,19 +66,29 @@ func (r *AgentRunRepository) Update(ctx context.Context, run *domain.AgentRun) e
 }
 
 const agentRunColumns = `
-	id, application_id, task_type, status, started_at, completed_at, error`
+	id, application_id, scout_id, task_type, status, started_at, completed_at, error`
 
 func scanAgentRun(scanner interface{ Scan(...any) error }) (*domain.AgentRun, error) {
 	var run domain.AgentRun
-	var applicationID, taskType, status, errMsg sql.NullString
-	if err := scanner.Scan(&run.ID, &applicationID, &taskType, &status, &run.StartedAt, &run.CompletedAt, &errMsg); err != nil {
+	if err := scanner.Scan(agentRunDest(&run)...); err != nil {
 		return nil, err
 	}
-	run.ApplicationID = applicationID.String
-	run.TaskType = taskType.String
-	run.Status = domain.AgentRunStatus(status.String)
-	run.Error = errMsg.String
 	return &run, nil
+}
+
+// agentRunDest returns scan destinations for agentRunColumns, in order,
+// with the nullable text columns read through sql.NullString into run.
+func agentRunDest(run *domain.AgentRun) []any {
+	return []any{
+		&run.ID,
+		nullStringInto(&run.ApplicationID),
+		nullStringInto(&run.ScoutID),
+		nullStringInto(&run.TaskType),
+		nullStringInto((*string)(&run.Status)),
+		&run.StartedAt,
+		&run.CompletedAt,
+		nullStringInto(&run.Error),
+	}
 }
 
 // GetByID retrieves an agent run by ID.
@@ -151,4 +163,93 @@ func (r *AgentRunRepository) ListUnattached(ctx context.Context, limit int) ([]*
 		return nil, fmt.Errorf("failed to read agent runs: %w", err)
 	}
 	return runs, nil
+}
+
+// agentRunSummaryQuery selects a run with what it served: the scout that
+// started it, or the job its application is for. Both are LEFT JOINs, so
+// a run whose scout or application has since been deleted is still listed.
+const agentRunSummaryQuery = `SELECT
+	r.id, r.application_id, r.scout_id, r.task_type, r.status, r.started_at, r.completed_at, r.error,
+	s.name, j.title, j.company_name,
+	(SELECT COUNT(*) FROM agent_events e WHERE e.run_id = r.id)
+FROM agent_runs r
+LEFT JOIN scouts s ON s.id = r.scout_id
+LEFT JOIN applications a ON a.id = r.application_id
+LEFT JOIN jobs j ON j.id = a.job_id`
+
+func scanAgentRunSummary(scanner interface{ Scan(...any) error }) (*domain.AgentRunSummary, error) {
+	var summary domain.AgentRunSummary
+	dest := append(agentRunDest(&summary.AgentRun),
+		nullStringInto(&summary.ScoutName),
+		nullStringInto(&summary.JobTitle),
+		nullStringInto(&summary.Company),
+		&summary.EventCount,
+	)
+	if err := scanner.Scan(dest...); err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+// ListSummaries returns one page of runs matching filter, newest first,
+// with the total number that match.
+func (r *AgentRunRepository) ListSummaries(ctx context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
+	where, args := agentRunWhere(filter)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_runs r`+where, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("failed to count agent runs: %w", err)
+	}
+
+	// id breaks ties so that paging is stable between runs that started in
+	// the same instant.
+	query := agentRunSummaryQuery + where + ` ORDER BY r.started_at DESC, r.id DESC LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, append(args, filter.Limit, filter.Offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agent runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	page := &domain.AgentRunPage{Runs: make([]*domain.AgentRunSummary, 0), Total: total}
+	for rows.Next() {
+		summary, err := scanAgentRunSummary(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan agent run: %w", err)
+		}
+		page.Runs = append(page.Runs, summary)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read agent runs: %w", err)
+	}
+	return page, nil
+}
+
+// GetSummary returns one run with what it served.
+func (r *AgentRunRepository) GetSummary(ctx context.Context, id string) (*domain.AgentRunSummary, error) {
+	row := r.db.QueryRowContext(ctx, agentRunSummaryQuery+` WHERE r.id = ?`, id)
+	summary, err := scanAgentRunSummary(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", ports.ErrAgentRunNotFound, id)
+		}
+		return nil, fmt.Errorf("failed to get agent run: %w", err)
+	}
+	return summary, nil
+}
+
+func agentRunWhere(filter domain.AgentRunFilter) (string, []any) {
+	var clauses []string
+	var args []any
+	if filter.TaskType != "" {
+		clauses = append(clauses, "r.task_type = ?")
+		args = append(args, filter.TaskType)
+	}
+	if filter.Status != "" {
+		clauses = append(clauses, "r.status = ?")
+		args = append(args, filter.Status)
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }

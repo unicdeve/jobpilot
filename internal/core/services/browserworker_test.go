@@ -220,6 +220,50 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 	})
 }
 
+// TestBrowserWorkerService_TrailHoldsNoAnswers covers the rule in
+// docs/02_features/12_agent_activity.md that the activity trail shows no
+// unnecessary candidate data. The answers are stored on the application's
+// questions; the trail says a field was filled, not what went into it.
+func TestBrowserWorkerService_TrailHoldsNoAnswers(t *testing.T) {
+	t.Parallel()
+	svc, appRepo, jobRepo, candRepo, _, worker := newTestBrowserWorkerService(t)
+
+	candidate := &domain.Candidate{
+		FirstName: "Ada", LastName: "Lovelace",
+		Email: "ada@example.com", Phone: "+44 20 7946 0000",
+	}
+	job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
+	appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
+	worker.fields = applicationFormFields()
+
+	require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+	require.Equal(t, "ada@example.com", worker.filled["1"], "the answer did reach the form")
+
+	runs, err := svc.ListRuns(context.Background(), appID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	events, err := svc.ListEvents(context.Background(), runs[0].ID)
+	require.NoError(t, err)
+
+	filled := 0
+	for _, event := range events {
+		for _, text := range []string{event.InputSummary, event.OutputSummary} {
+			for _, answer := range []string{"Ada Lovelace", "ada@example.com", "+44 20 7946 0000"} {
+				assert.NotContains(t, text, answer, "step %s recorded an answer", event.Action)
+			}
+		}
+		if event.Action == "fill_field" {
+			filled++
+			assert.Empty(t, event.OutputSummary)
+		}
+		if event.Action == "extract_form" {
+			assert.Equal(t, domain.PolicyAllowed, event.PolicyResult,
+				"the application-form gate's verdict is the step's policy result")
+		}
+	}
+	assert.Equal(t, 3, filled)
+}
+
 // TestBrowserWorkerService_ReachesTheApplicationForm covers the route from
 // the job posting to the form, which is what "Prepare in browser" means.
 func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {

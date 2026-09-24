@@ -217,5 +217,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Browser:     browserSvc,
 		Scouts:      scoutSvc,
 		Credentials: credentialSvc,
+		Activity:    services.NewAgentActivityService(agentRunRepo, agentEventRepo),
 	}, nil
 }

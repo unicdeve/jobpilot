@@ -344,9 +344,14 @@ export interface ApplicationQuestion {
 
 export type AgentRunStatus = "running" | "completed" | "blocked" | "failed";
 
+/// What a run was doing. Mirrors domain.AgentTask* in the daemon.
+export type AgentTaskType = "prepare_application" | "scout_run";
+
 export interface AgentRun {
   id: string;
   application_id: string;
+  /// Set for a scout run, which belongs to no single application.
+  scout_id?: string;
   task_type: string;
   status: AgentRunStatus;
   started_at: string;
@@ -370,6 +375,32 @@ export interface AgentEvent {
 export interface AgentRunWithEvents {
   run: AgentRun;
   events: AgentEvent[];
+}
+
+/// A run as the activity list shows it: named by the scout that started
+/// it, or by the job its application is for. Either name is absent once
+/// the scout or application has been deleted; the run itself is kept.
+export interface AgentRunSummary extends AgentRun {
+  scout_name?: string;
+  job_title?: string;
+  company?: string;
+  event_count: number;
+}
+
+export interface AgentRunPage {
+  runs: AgentRunSummary[];
+  total: number;
+}
+
+export interface AgentRunDetail {
+  run: AgentRunSummary;
+  events: AgentEvent[];
+}
+
+/// Narrows the activity list. An empty field means every value.
+export interface AgentRunFilter {
+  task_type: AgentTaskType | "";
+  status: AgentRunStatus | "";
 }
 
 export type ScoutSource = "local" | "sources";
