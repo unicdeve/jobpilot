@@ -21,6 +21,7 @@ import (
 
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/credentials"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/documents"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
@@ -133,6 +134,13 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	agentEventRepo := sqlite.NewAgentEventRepository(db.Conn())
 	settingsSvc := services.NewSettingsService(settingsRepo)
 
+	// The secret lives in the OS keychain and the table records only which
+	// refs exist, because a keychain cannot be enumerated (ADR-0019 §6).
+	credentialSvc := services.NewCredentialService(
+		credentials.NewKeyringStore(),
+		sqlite.NewCredentialNameRepository(db.Conn()),
+	)
+
 	dataDir, err := system.GetDataDir()
 	if err != nil {
 		return httpapi.Services{}, fmt.Errorf("resolving data directory: %w", err)
@@ -208,5 +216,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Answers:     answerSvc,
 		Browser:     browserSvc,
 		Scouts:      scoutSvc,
+		Credentials: credentialSvc,
 	}, nil
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Not yet implemented.
+Accepted and implemented.
 
 Both open questions were settled by the user when the proposal was read: the API is write-only, and a credential is identified by source **and** label.
 The second changed the design rather than just confirming it — see §1 and §6.
@@ -207,11 +207,21 @@ Errors from the store are wrapped with the ref only.
 
 This needs a test, not a convention, because the natural way to write the failure path — `fmt.Errorf("storing %q: %w", secret, err)` — is one character away from correct.
 
+### 8. Every keystore call is bounded
+
+Measured, not predicted: with no login keychain available, the macOS `security` tool blocks forever rather than failing, and the request that triggered it never returns.
+
+So each call runs under a ten-second deadline. Long enough that a keychain merely asking the user to approve access still succeeds; short enough that an unattended run gets an answer. The error names the environment variable from §5, because the machines this happens on are exactly the ones with no way to answer a prompt.
+
+The abandoned goroutine is left running. `go-keyring` owns the child process and exposes no way to kill it, so the choice is a leaked goroutine per abandoned call or a hung request, and one of those is bounded by how many times the user retries.
+
+A keystore that never answered is `503`, not `400`. The first implementation returned `400` for every failure, which told the user to correct a request that was already correct.
+
 ## Consequences
 
 - Google Programmable Search becomes buildable, as do Adzuna, USAJOBS and Jooble. None is built by this ADR.
 - A new dependency, and a first use of an OS facility the product has not touched.
-- On Linux, `Set` will fail where no Secret Service is running. This is measured on macOS only; the Linux and Windows paths are the library's, and are **not verified here**. Whoever implements this should measure both before claiming they work.
+- On Linux and Windows the keystore paths are the library's, and are **not verified**. Only macOS was measured.
 - The desktop gains a settings surface for entering a key and seeing that one is set, and cannot show it again afterwards. That is a deliberate, visible limitation and the UI should say so rather than appear to have lost it.
 - A migration, for `credential_names`. It stores no secret, and exists only because the keychain cannot be enumerated.
 - Two stores that can disagree, with a recovery path rather than a transaction. See §6.
@@ -233,6 +243,8 @@ This needs a test, not a convention, because the natural way to write the failur
 
 ## Open questions
 
-1. **Does the Linux path work on a plain GNOME desktop, and what exactly happens without a Secret Service?** The fallback in §5 assumes it fails cleanly and distinguishably. If it hangs on a D-Bus call instead, the override is not enough and a timeout is needed. Measured on macOS only; Linux and Windows are unverified.
+1. **Does the Linux path work on a plain GNOME desktop?** Still unverified. Windows too. Measured on macOS only.
+
+   The part of this question about hanging is no longer open, and the answer was the bad one. Running the daemon where no login keychain was reachable did not produce an error: `/usr/bin/security` waited for a password prompt that nobody would answer, and waited indefinitely — the HTTP request never returned and the user saw nothing at all. Every keychain call is now bounded by ten seconds and reports the environment variable that would work instead. See §8.
 
 2. **Which label does a run use, when a source has several?** Identity is settled; selection is not. Nothing in the product configures a job source per-run today — a saved search names criteria, not connectors — so there is no field to put a choice in and no honest way to invent one here. Until a source gains configuration, a connector asks for `default`. The moment two labels can both be live, this needs deciding, and it is a product question rather than a storage one.

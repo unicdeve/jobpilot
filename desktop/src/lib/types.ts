@@ -195,6 +195,15 @@ export interface SavedSearch {
   updated_at: string;
 }
 
+/// CredentialRef names one stored secret. It never carries the value: the
+/// daemon has no route that returns one, because it has no authentication
+/// and a readable secret would be less protected there than in a file
+/// (ADR-0019 §4).
+export interface CredentialRef {
+  source: string;
+  label: string;
+}
+
 /// SearchTemplate is a ready-made saved search. Criteria are matched
 /// strictly — every word must appear, and keywords are read against the whole
 /// job description — so a search that reads well can still return almost

@@ -594,6 +594,62 @@ func (f *fakeBrowserWorker) Close(_ context.Context) error { return nil }
 // serves them via NewHandler on a real loopback listener, and returns a
 // Client pointed at it — exercising the client and server together, the
 // same way cmd/jobpilot-cli talks to cmd/jobpilot in production.
+type fakeCredentialStore struct {
+	secrets map[string]string
+	// unavailable stands in for a keychain that never answered.
+	unavailable bool
+}
+
+func (f *fakeCredentialStore) Set(_ context.Context, ref domain.CredentialRef, secret string) error {
+	if f.unavailable {
+		return fmt.Errorf("stand-in: %w", ports.ErrCredentialStoreUnavailable)
+	}
+	f.secrets[ref.String()] = secret
+	return nil
+}
+
+func (f *fakeCredentialStore) Get(_ context.Context, ref domain.CredentialRef) (string, error) {
+	secret, ok := f.secrets[ref.String()]
+	if !ok {
+		return "", ports.ErrCredentialNotFound
+	}
+	return secret, nil
+}
+
+func (f *fakeCredentialStore) Delete(_ context.Context, ref domain.CredentialRef) error {
+	delete(f.secrets, ref.String())
+	return nil
+}
+
+type fakeCredentialNames struct {
+	refs []domain.CredentialRef
+}
+
+func (f *fakeCredentialNames) Record(_ context.Context, ref domain.CredentialRef) error {
+	for _, existing := range f.refs {
+		if existing == ref {
+			return nil
+		}
+	}
+	f.refs = append(f.refs, ref)
+	return nil
+}
+
+func (f *fakeCredentialNames) Forget(_ context.Context, ref domain.CredentialRef) error {
+	kept := f.refs[:0]
+	for _, existing := range f.refs {
+		if existing != ref {
+			kept = append(kept, existing)
+		}
+	}
+	f.refs = kept
+	return nil
+}
+
+func (f *fakeCredentialNames) List(_ context.Context) ([]domain.CredentialRef, error) {
+	return f.refs, nil
+}
+
 func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource) {
 	t.Helper()
 
@@ -609,6 +665,7 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	source := &fakeJobSource{}
 
 	savedSearchSvc := services.NewSavedSearchService(newFakeSavedSearchRepository())
+	credentialStore := &fakeCredentialStore{secrets: map[string]string{}}
 	appSvc := services.NewApplicationService(appRepo)
 	docConverter := &fakeDocumentConverter{}
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
@@ -628,6 +685,7 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, newFakeAgentRunRepository(), newFakeAgentEventRepository(), answerSvc, func() (ports.BrowserWorker, error) {
 			return &fakeBrowserWorker{}, nil
 		}, nil),
+		Credentials: services.NewCredentialService(credentialStore, &fakeCredentialNames{}),
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))
@@ -1225,6 +1283,189 @@ func TestClient_ImportSearchTemplates_RejectsAnUnknownID(t *testing.T) {
 
 	_, err = client.ImportSearchTemplates(ctx, nil)
 	assert.ErrorContains(t, err, "no templates chosen")
+}
+
+func TestClient_CredentialLifecycle(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	refs, err := client.ListCredentials(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, refs)
+
+	ref, err := client.SetCredential(ctx, "adzuna", "work", "a-secret-key")
+	require.NoError(t, err)
+	assert.Equal(t, "adzuna/work", ref.String())
+
+	// An omitted label becomes the default, so a user who never wants a
+	// second key never has to name one.
+	_, err = client.SetCredential(ctx, "google-search", "", "another-key")
+	require.NoError(t, err)
+
+	refs, err = client.ListCredentials(ctx)
+	require.NoError(t, err)
+	require.Len(t, refs, 2)
+	assert.Equal(t, "adzuna/work", refs[0].String())
+	assert.Equal(t, "google-search/default", refs[1].String())
+
+	require.NoError(t, client.DeleteCredential(ctx, "adzuna", "work"))
+	refs, err = client.ListCredentials(ctx)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+	assert.Equal(t, "google-search/default", refs[0].String())
+}
+
+// TestNoResponseCarriesACredential is ADR-0019 §4 as a test.
+//
+// The daemon has no authentication (ADR-0012), so every route is reachable
+// by any process running as the user. A route that returned a stored secret
+// would therefore make a keychain credential readable by all of them — less
+// protected than a file with 0600 on it, and made so in the name of
+// security. The guarantee is that no such route exists, which is only worth
+// having if something checks.
+func TestNoResponseCarriesACredential(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+	const secret = "sk-live-THIS-MUST-NEVER-BE-SERVED"
+
+	_, err := client.SetCredential(ctx, "adzuna", "work", secret)
+	require.NoError(t, err)
+
+	// Every response a client can obtain about credentials.
+	var setBody, listBody, deleteBody string
+	for name, get := range map[string]func() (string, error){
+		"PUT /v1/credentials/{source}/{label}": func() (string, error) {
+			return rawResponse(t, client, http.MethodPut, "/v1/credentials/adzuna/work",
+				map[string]string{"secret": secret})
+		},
+		"GET /v1/credentials": func() (string, error) {
+			return rawResponse(t, client, http.MethodGet, "/v1/credentials", nil)
+		},
+		"DELETE /v1/credentials/{source}/{label}": func() (string, error) {
+			return rawResponse(t, client, http.MethodDelete, "/v1/credentials/adzuna/work", nil)
+		},
+	} {
+		body, err := get()
+		require.NoError(t, err, name)
+		assert.NotContains(t, body, secret, "%s returned the stored secret", name)
+		assert.NotContains(t, body, secret[:8], "%s returned part of the stored secret", name)
+
+		switch name {
+		case "GET /v1/credentials":
+			listBody = body
+		case "DELETE /v1/credentials/{source}/{label}":
+			deleteBody = body
+		default:
+			setBody = body
+		}
+	}
+
+	// Non-vacuous: the set and list responses must actually have carried
+	// the ref, or the assertions above passed on empty strings.
+	assert.Contains(t, setBody, "adzuna")
+	assert.Contains(t, listBody, "adzuna")
+	assert.Empty(t, deleteBody, "a delete answers with no content")
+}
+
+// rawResponse reads a response body verbatim, so the assertion is about the
+// bytes on the wire rather than about a struct that might have dropped a
+// field on the way in.
+func rawResponse(t *testing.T, client *Client, method, path string, body any) (string, error) {
+	t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = strings.NewReader(string(encoded))
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), method, client.baseURL+path, reader)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	raw, err := io.ReadAll(resp.Body)
+	return string(raw), err
+}
+
+func TestSetCredential_RejectsAMalformedRef(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	_, err := client.SetCredential(context.Background(), "Bad Source", "", "a-key")
+	assert.Error(t, err)
+
+	_, err = client.SetCredential(context.Background(), "adzuna", "", "")
+	assert.ErrorContains(t, err, "empty")
+}
+
+// TestAnUnreachableKeychainIsNotTheCallersFault pins a defect found by
+// running the daemon where no login keychain was available.
+//
+// The store failed, and the API answered 400, telling the user to fix a
+// request that was correct. A keychain that never responded is a 503: the
+// same request will work once there is a session to answer the prompt, or
+// once the environment variable the error names is set.
+func TestAnUnreachableKeychainIsNotTheCallersFault(t *testing.T) {
+	store := &fakeCredentialStore{secrets: map[string]string{}, unavailable: true}
+	client := credentialServer(t, store)
+
+	status, err := rawStatus(t, client, http.MethodPut, "/v1/credentials/adzuna/work",
+		map[string]string{"secret": "a-key"})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusServiceUnavailable, status)
+
+	// A request the caller really should fix still reads as their mistake.
+	store.unavailable = false
+	status, err = rawStatus(t, client, http.MethodPut, "/v1/credentials/Bad%20Source/work",
+		map[string]string{"secret": "a-key"})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, status)
+}
+
+// credentialServer serves only the credential routes, over a store the
+// caller controls, so a keystore failure can be provoked without giving
+// every other test a knob it does not use.
+func credentialServer(t *testing.T, store *fakeCredentialStore) *Client {
+	t.Helper()
+
+	ts := httptest.NewServer(NewHandler(Services{
+		Credentials: services.NewCredentialService(store, &fakeCredentialNames{}),
+	}))
+	t.Cleanup(ts.Close)
+
+	_, portStr, err := net.SplitHostPort(ts.Listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+	return NewClient(port)
+}
+
+func rawStatus(t *testing.T, client *Client, method, path string, body any) (int, error) {
+	t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = strings.NewReader(string(encoded))
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), method, client.baseURL+path, reader)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode, nil
 }
 
 // The behaviour the whole change exists for: an unrestricted search used to

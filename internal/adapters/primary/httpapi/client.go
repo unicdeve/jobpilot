@@ -184,6 +184,38 @@ func (c *Client) ImportSearchTemplates(ctx context.Context, templateIDs []string
 	return created, err
 }
 
+// ListCredentials returns which credentials are configured. It returns
+// refs and never values: there is no client method that reads a secret,
+// because there is no endpoint that serves one (ADR-0019 §4).
+func (c *Client) ListCredentials(ctx context.Context) ([]domain.CredentialRef, error) {
+	var refs []domain.CredentialRef
+	_, err := c.do(ctx, http.MethodGet, "/v1/credentials", nil, &refs)
+	return refs, err
+}
+
+// SetCredential stores a secret under a source and label.
+func (c *Client) SetCredential(ctx context.Context, source, label, secret string) (*domain.CredentialRef, error) {
+	req := setCredentialRequest{Secret: secret}
+	var ref domain.CredentialRef
+	if _, err := c.do(ctx, http.MethodPut, credentialPath(source, label), req, &ref); err != nil {
+		return nil, err
+	}
+	return &ref, nil
+}
+
+// DeleteCredential removes a stored secret.
+func (c *Client) DeleteCredential(ctx context.Context, source, label string) error {
+	_, err := c.do(ctx, http.MethodDelete, credentialPath(source, label), nil, nil)
+	return err
+}
+
+func credentialPath(source, label string) string {
+	if label == "" {
+		label = domain.DefaultCredentialLabel
+	}
+	return "/v1/credentials/" + url.PathEscape(source) + "/" + url.PathEscape(label)
+}
+
 // UpdateSavedSearch replaces a saved search's name and criteria.
 func (c *Client) UpdateSavedSearch(ctx context.Context, id, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
 	req := savedSearchRequest{Name: name, Criteria: criteria}

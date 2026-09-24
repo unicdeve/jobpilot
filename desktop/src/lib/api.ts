@@ -21,6 +21,7 @@ import type {
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
+  CredentialRef,
   SearchCriteria,
   SearchTemplateGroup,
   Scout,
@@ -62,6 +63,10 @@ export interface ApiClient {
   deleteSavedSearch(id: string): Promise<void>;
   setDefaultSavedSearch(id: string): Promise<SavedSearch>;
   listSearchTemplates(): Promise<SearchTemplateGroup[]>;
+  /// There is no getCredential. A credential goes in and never comes out.
+  listCredentials(): Promise<CredentialRef[]>;
+  setCredential(source: string, label: string, secret: string): Promise<CredentialRef>;
+  deleteCredential(source: string, label: string): Promise<void>;
   importSearchTemplates(templateIds: string[]): Promise<SavedSearch[]>;
   /// runSavedSearch discovers jobs using a saved search's criteria. The
   /// daemon reads the criteria itself, so no caller has to hold them and
@@ -157,6 +162,8 @@ async function request<T>(
 export function createApiClient(port: number): ApiClient {
   const baseUrl = `http://127.0.0.1:${port}`;
   const q = (params: Record<string, string>) => "?" + new URLSearchParams(params).toString();
+  const credentialPath = (source: string, label: string) =>
+    `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
   return {
     health: () => request<void>(baseUrl, "GET", "/v1/health"),
@@ -202,6 +209,11 @@ export function createApiClient(port: number): ApiClient {
       request<void>(baseUrl, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
     listSearchTemplates: () =>
       request<SearchTemplateGroup[]>(baseUrl, "GET", "/v1/search-templates"),
+    listCredentials: () => request<CredentialRef[]>(baseUrl, "GET", "/v1/credentials"),
+    setCredential: (source, label, secret) =>
+      request<CredentialRef>(baseUrl, "PUT", credentialPath(source, label), { secret }),
+    deleteCredential: (source, label) =>
+      request<void>(baseUrl, "DELETE", credentialPath(source, label)),
     importSearchTemplates: (templateIds) =>
       request<SavedSearch[]>(baseUrl, "POST", "/v1/search-templates/import", {
         template_ids: templateIds,

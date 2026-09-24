@@ -48,6 +48,18 @@ type SavedSearchRepository interface {
 	ClearDefault(ctx context.Context) error
 }
 
+// CredentialNameRepository records which credentials exist, and never
+// their values (ADR-0019 §6). It is a directory over the keychain, which
+// cannot be enumerated.
+type CredentialNameRepository interface {
+	// Record notes that a credential exists for ref, or refreshes it.
+	Record(ctx context.Context, ref domain.CredentialRef) error
+	// Forget removes a ref from the directory.
+	Forget(ctx context.Context, ref domain.CredentialRef) error
+	// List returns every recorded ref, by source then label.
+	List(ctx context.Context) ([]domain.CredentialRef, error)
+}
+
 // MatchRepository persists and retrieves job-match analyses.
 type MatchRepository interface {
 	Save(ctx context.Context, match *domain.JobMatch) error

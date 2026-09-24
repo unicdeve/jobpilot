@@ -40,6 +40,7 @@ import type {
   SaveLLMSettingsResult,
   Scout,
   ScoutRunReport,
+  CredentialRef,
   SearchCriteria,
   SearchTemplateGroup,
 } from "./types";
@@ -59,6 +60,7 @@ export const keys = {
   },
   savedSearches: ["saved-searches"] as const,
   searchTemplates: ["search-templates"] as const,
+  credentials: ["credentials"] as const,
   scouts: ["scouts"] as const,
   scoutRuns: ["scout-runs"] as const,
   scoutRunEvents: (runId: string) => ["scout-run-events", runId] as const,
@@ -379,6 +381,48 @@ export function useImportSearchTemplates(opts?: MutationOpts<SavedSearch[], stri
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+/// useCredentials loads which credentials are configured. It returns refs
+/// and never values — there is no query that reads a secret, because the
+/// daemon serves no route that returns one.
+export function useCredentials() {
+  const api = useApi();
+  return useQuery<CredentialRef[]>({
+    queryKey: keys.credentials,
+    queryFn: () => api.listCredentials(),
+  });
+}
+
+/// useSetCredential stores an API key in the OS keychain.
+export function useSetCredential(
+  opts?: MutationOpts<CredentialRef, { source: string; label: string; secret: string }>,
+) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ source, label, secret }: { source: string; label: string; secret: string }) =>
+      api.setCredential(source, label, secret),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.credentials });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+/// useDeleteCredential removes a stored key.
+export function useDeleteCredential(opts?: MutationOpts<void, CredentialRef>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ref: CredentialRef) => api.deleteCredential(ref.source, ref.label),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.credentials });
       opts?.onSuccess?.(...args);
     },
   });

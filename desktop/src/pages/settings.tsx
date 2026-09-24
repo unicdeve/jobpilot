@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
+import { CredentialSettings } from "../components/credential-settings";
 import { SearchTemplatePicker } from "../components/search-template-picker";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -57,6 +58,8 @@ export function Settings() {
       </Card>
 
       <JobSearchSettings />
+
+      <CredentialSettings />
     </div>
   );
 }

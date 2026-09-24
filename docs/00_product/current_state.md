@@ -140,6 +140,38 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   missed. SQLite's stored-job search applies the same term rule, so browsing
   history and searching sources agree about what a query means.
 
+- Credential storage (ADR-0019): API keys live in the OS keychain, never in
+  the database, addressed by a source and a user-chosen label —
+  `adzuna/work`. Managed from `jobpilot-cli credentials` and the desktop's
+  Settings → Job source keys.
+
+  A credential goes in and never comes out. There is no route that returns a
+  secret, and `TestNoResponseCarriesACredential` checks that every response
+  about credentials is free of one. The reason is ADR-0012: the daemon has
+  no authentication, so a readable secret would be less protected on
+  loopback than in a file with `0600` on it. The desktop says so where the
+  key is typed rather than appearing to have lost it.
+
+  Two places that would seem to need a secret still avoid one. A job board
+  login lives in the browser worker's own Chrome profile, which the user
+  signs into by hand; a cloud LLM credential belongs to Ollama, which holds
+  its own, and `domain.LLMSettings` has no key field.
+
+  `credential_names` (migration `00011`) records which refs exist and holds
+  no value — `go-keyring` cannot enumerate, and a user-chosen label cannot
+  be guessed. Writes go to the keychain first, so a crash leaves a stored
+  secret nothing lists rather than a listed one nothing can read.
+
+  Running the daemon with no login keychain reachable was measured, and it
+  did not fail: macOS `security` waited for a prompt nobody would answer,
+  indefinitely, and the request never returned. Every keystore call is now
+  bounded at ten seconds and names the `JOBPILOT_CREDENTIAL_<SOURCE>__<LABEL>`
+  override, which is read before the keychain and never written. A keystore
+  that did not answer is a 503; the first implementation said 400, which
+  told the user to fix a request that was correct.
+
+  Only macOS is verified. The Linux and Windows paths are the library's.
+
 - Search templates (`docs/02_features/14_search_templates.md`): a catalog of
   ready-made criteria, 34 of them in 7 groups, served from
   `internal/core/domain` through `GET /v1/search-templates` so the desktop
@@ -407,13 +439,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 - No settings/configuration system beyond LLM provider/model and job
   searches (`docs/02_features/13_settings.md` — other categories like prompt
   customization and notifications are unimplemented).
-- No credential storage of any kind, so no job source that needs an API key
-  can be built — measured, Adzuna, Jooble, USAJOBS and The Muse all refuse an
-  unauthenticated request, and Google's Programmable Search API is the one
-  that prompted the question. ADR-0019 settles the shape and is accepted, not yet implemented. Two places that
-  would seem to need a secret already avoid one: board logins live in the
-  browser worker's own Chrome profile, which the user signs into by hand, and
-  a cloud LLM credential is held by Ollama rather than by JobPilot.
+- No job source that needs an API key is *built* yet, though credential
+  storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
+  USAJOBS and The Muse all refuse an unauthenticated request.
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
@@ -495,4 +523,5 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. The desktop has no Agent Activity screen, so the trail a scout writes is readable on the Scouts page and by `scout trail` in the CLI, but nowhere else.
-4. Credential storage, accepted as ADR-0019 and not yet implemented. It unblocks a class of job sources rather than one, and the part that needed deciding was not the keystore but ADR-0012: the daemon has no authentication, so a credential that could be read back over loopback would be less protected than one in a file. Credentials therefore go in and never come out. A credential is identified by a source and a user-chosen label, which forces a `credential_names` table — the keychain has no list operation, and a label cannot be guessed.
+4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Google's Programmable Search API is the one that prompted it; Adzuna, USAJOBS and Jooble are the same shape. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
