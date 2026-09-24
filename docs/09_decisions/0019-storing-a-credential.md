@@ -48,7 +48,7 @@ Measured, with no credentials supplied:
 | USAJOBS | 403 |
 | The Muse | 403 |
 
-Google's Programmable Search JSON API is the one that prompted this — see `docs/02_features/04_job_discovery.md` for why scraping Google is not available — but it is one of a class.
+Google's Programmable Search JSON API is the one that prompted this (it has since been found closed to new customers; see ADR-0020) — see `docs/02_features/04_job_discovery.md` for why scraping Google is not available — but it is one of a class.
 Every source above is an established job API that a JobPilot user could reasonably want and cannot have, because there is nowhere to put the key.
 
 So the question this ADR answers is not "how do we store secrets".
@@ -106,7 +106,7 @@ The keychain holds the value. The API accepts a credential and reports whether o
 // A CredentialRef names one stored secret. Source is owned by the code that
 // needs it; Label is the user's, so they can hold more than one.
 type CredentialRef struct {
-    Source string // "google-search", "adzuna"
+    Source string // "adzuna", "usajobs"
     Label  string // "default", "work", "eu"
 }
 ```
@@ -219,7 +219,8 @@ A keystore that never answered is `503`, not `400`. The first implementation ret
 
 ## Consequences
 
-- Google Programmable Search becomes buildable, as do Adzuna, USAJOBS and Jooble. None is built by this ADR.
+- Adzuna, USAJOBS and Jooble become buildable. None is built by this ADR.
+  Google Programmable Search was listed here too, and turned out to be closed to new customers; see ADR-0020.
 - A new dependency, and a first use of an OS facility the product has not touched.
 - On Linux and Windows the keystore paths are the library's, and are **not verified**. Only macOS was measured.
 - The desktop gains a settings surface for entering a key and seeing that one is set, and cannot show it again afterwards. That is a deliberate, visible limitation and the UI should say so rather than appear to have lost it.

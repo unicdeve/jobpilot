@@ -47,9 +47,9 @@ Measured: a request to `google.com/search` returns HTTP 200 and a JavaScript gat
 Getting results would mean driving the browser worker through that gate, and ADR-0013 and ADR-0014 both state that JobPilot never defeats an anti-bot measure.
 Google's terms also prohibit automated querying.
 
-The legitimate route is Google's Programmable Search JSON API, which is official and free up to 100 queries a day.
-It is not built because it needs an API key, and a stored credential needs OS-native secure storage, which the product does not yet have.
-That is a decision with its own cost, not a connector.
+Google's Programmable Search JSON API was the legitimate route, and it is closed.
+It stopped accepting new customers, and existing ones lose it on 2027-01-01; since January 2026 a new engine cannot search the whole web either.
+See ADR-0020, which records this and defers Brave Search API as the alternative to revisit.
 
 The Hacker News source exists partly to serve the same need: those postings are written by the people hiring and appear on no board.
 

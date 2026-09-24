@@ -160,7 +160,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 
 	// Every source here is a public API that needs no credentials, which
 	// is what keeps discovery working on a fresh install with nothing
-	// configured. Google Search is deliberately absent: it returns a
+	// configured. Google Search is deliberately absent (ADR-0020): it returns a
 	// JavaScript gate rather than results to anything but a browser, and
 	// getting past that is the one thing ADR-0013 and ADR-0014 say the
 	// product never does. See docs/02_features/04_job_discovery.md.

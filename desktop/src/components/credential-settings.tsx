@@ -10,7 +10,7 @@ import { useToast } from "../lib/toast";
 /// is a choice rather than a spelling test. The field stays free text
 /// because a connector added by a later release should not need this list
 /// changed to be configurable.
-const KNOWN_SOURCES = ["google-search", "adzuna", "usajobs", "jooble"];
+const KNOWN_SOURCES = ["adzuna", "usajobs", "jooble"];
 
 /// CredentialSettings manages API keys for job sources.
 ///

@@ -82,8 +82,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Google is deliberately not among them: a request to google.com/search
   returns a JavaScript gate and zero result links, and getting past it is
   the one thing ADR-0013 and ADR-0014 say the product never does. The
-  legitimate Programmable Search API needs a stored credential, and there is
-  no OS keychain integration yet. See `docs/02_features/04_job_discovery.md`. Each connector caches its fetched
+  Programmable Search API that would have been the legitimate route is closed
+  to new customers and ends on 2027-01-01, so no Google source will be built;
+  Brave Search API is deferred as the alternative (ADR-0020). Each connector caches its fetched
   listing in memory (15 min for Arbeitnow, 4 hours for Remotive, 30 min for
   RemoteOK and Himalayas, 1 hour for Hacker News) matching
   that API's own stated update cadence, so repeated searches don't poll
@@ -523,5 +524,5 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. The desktop has no Agent Activity screen, so the trail a scout writes is readable on the Scouts page and by `scout trail` in the CLI, but nowhere else.
-4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Google's Programmable Search API is the one that prompted it; Adzuna, USAJOBS and Jooble are the same shape. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
 5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
