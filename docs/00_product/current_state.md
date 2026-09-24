@@ -140,6 +140,36 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   missed. SQLite's stored-job search applies the same term rule, so browsing
   history and searching sources agree about what a query means.
 
+- Search templates (`docs/02_features/14_search_templates.md`): a catalog of
+  ready-made criteria, 34 of them in 7 groups, served from
+  `internal/core/domain` through `GET /v1/search-templates` so the desktop
+  and the CLI cannot drift apart. Importing one creates an ordinary saved
+  search; a second copy of the same template is numbered rather than
+  refused, and nothing links a search back to where it came from.
+  Offered first in onboarding, and behind "Use a template" in Settings →
+  Job searches, alongside `jobpilot-cli search templates list|import`.
+
+  The catalog exists because `SearchCriteria.Matches` is unforgiving in ways
+  the form does not show, and every entry was chosen by measuring candidate
+  criteria against 654 live postings pulled from all five sources at once.
+  Three findings shaped it: a role word in `Title` costs the half of the
+  market that spells it the other way (`title="backend engineer"` and
+  `title="backend"` returned the same 11 postings, and the second also finds
+  Developer); a split compound beats any one spelling, since terms are
+  matched as substrings (`"full stack"` 26, `"full-stack"` 15,
+  `"fullstack"` 9); and `Keywords` reads whole descriptions, where a short
+  word is supplied by prose (`keywords="go"` matched 426 of 654, on "go-to",
+  "goals" and "Django"; `"rust"` matched 151, on "trust"). The same
+  substring rule rules out searching on UI, UX, ML, SRE or iOS by name —
+  "ui" matches "Cruise", "ux" matches "Luxury", "ml" matches "Teamleiter" —
+  so each is spelled out or replaced.
+
+  Measured for the profile that prompted it, the three specialist searches
+  written by hand found 26 postings and the equivalent templates 112. The
+  templates are guarded by tests rather than by review: every one must match
+  a real posting, none may match a decoy, and no keyword may be shorter than
+  five characters.
+
 - Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
   none of the five public APIs can fetch an arbitrary job by
   URL, so `JobDiscoveryService.ImportJob` falls back to

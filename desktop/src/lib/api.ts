@@ -22,6 +22,7 @@ import type {
   SavedSearch,
   SaveLLMSettingsResult,
   SearchCriteria,
+  SearchTemplateGroup,
   Scout,
   ScoutRunReport,
   AgentRun,
@@ -60,6 +61,8 @@ export interface ApiClient {
   updateSavedSearch(id: string, name: string, criteria: SearchCriteria): Promise<SavedSearch>;
   deleteSavedSearch(id: string): Promise<void>;
   setDefaultSavedSearch(id: string): Promise<SavedSearch>;
+  listSearchTemplates(): Promise<SearchTemplateGroup[]>;
+  importSearchTemplates(templateIds: string[]): Promise<SavedSearch[]>;
   /// runSavedSearch discovers jobs using a saved search's criteria. The
   /// daemon reads the criteria itself, so no caller has to hold them and
   /// post them back — the shape that allowed an empty search to be sent.
@@ -197,6 +200,12 @@ export function createApiClient(port: number): ApiClient {
       }),
     deleteSavedSearch: (id) =>
       request<void>(baseUrl, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
+    listSearchTemplates: () =>
+      request<SearchTemplateGroup[]>(baseUrl, "GET", "/v1/search-templates"),
+    importSearchTemplates: (templateIds) =>
+      request<SavedSearch[]>(baseUrl, "POST", "/v1/search-templates/import", {
+        template_ids: templateIds,
+      }),
     listScouts: () => request<Scout[]>(baseUrl, "GET", "/v1/scouts"),
     createScout: (scout) => request<Scout>(baseUrl, "POST", "/v1/scouts", scout),
     updateScout: (id, scout) =>

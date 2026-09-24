@@ -177,3 +177,121 @@ func TestSavedSearchService_RepositoryFailuresSurface(t *testing.T) {
 
 	assert.ErrorContains(t, err, "disk gone")
 }
+
+func TestSavedSearchService_Templates(t *testing.T) {
+	t.Parallel()
+
+	svc := NewSavedSearchService(newFakeSavedSearchRepository())
+	groups := svc.Templates()
+
+	require.NotEmpty(t, groups)
+	assert.NotEmpty(t, groups[0].Templates)
+}
+
+func TestSavedSearchService_ImportTemplates(t *testing.T) {
+	t.Parallel()
+
+	t.Run("each template becomes an ordinary saved search", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "fullstack-engineer"})
+		require.NoError(t, err)
+		require.Len(t, created, 2)
+
+		assert.Equal(t, "Backend Engineer", created[0].Name)
+		assert.Equal(t, "Full-stack Engineer", created[1].Name)
+		assert.False(t, created[0].Criteria.IsEmpty())
+
+		// They are listed and editable like any other search.
+		listed, err := svc.List(context.Background())
+		require.NoError(t, err)
+		assert.Len(t, listed, 2)
+
+		renamed, err := svc.Update(context.Background(), created[0].ID, "Backend, Berlin",
+			domain.SearchCriteria{Title: "back end", Location: "berlin"})
+		require.NoError(t, err)
+		assert.Equal(t, "Backend, Berlin", renamed.Name)
+	})
+
+	t.Run("the first import into an empty profile becomes the default", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "frontend-engineer"})
+		require.NoError(t, err)
+
+		assert.True(t, created[0].IsDefault, "a user whose first searches are imported still needs a default")
+		assert.False(t, created[1].IsDefault)
+	})
+
+	t.Run("a second copy is numbered rather than refused", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+		ctx := context.Background()
+
+		first, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer", first[0].Name)
+
+		second, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer 2", second[0].Name)
+
+		third, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer 3", third[0].Name)
+	})
+
+	t.Run("a name already taken by hand is not overwritten", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+		ctx := context.Background()
+
+		mine, err := svc.Create(ctx, "backend engineer", domain.SearchCriteria{Keywords: "rust"})
+		require.NoError(t, err)
+
+		created, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		require.NoError(t, err)
+		assert.Equal(t, "Backend Engineer 2", created[0].Name,
+			"names are compared without case, as SQLite compares them")
+
+		unchanged, err := svc.Get(ctx, mine.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "rust", unchanged.Criteria.Keywords)
+	})
+
+	t.Run("the same template twice in one request is imported once", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+		created, err := svc.ImportTemplates(context.Background(),
+			[]string{"backend-engineer", "backend-engineer"})
+
+		require.NoError(t, err)
+		assert.Len(t, created, 1)
+	})
+
+	t.Run("an unknown ID writes nothing", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+		_, err := svc.ImportTemplates(context.Background(),
+			[]string{"backend-engineer", "not-a-template"})
+
+		assert.ErrorContains(t, err, "not-a-template")
+
+		listed, err := svc.List(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, listed, "a mistyped ID should cost nothing, not half an import")
+	})
+
+	t.Run("choosing nothing is refused", func(t *testing.T) {
+		t.Parallel()
+		svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+		_, err := svc.ImportTemplates(context.Background(), nil)
+
+		assert.ErrorContains(t, err, "no templates chosen")
+	})
+}

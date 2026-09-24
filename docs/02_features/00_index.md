@@ -5,6 +5,7 @@
 - Candidate profile
 - Resume management
 - Job discovery
+- Search templates
 - Job matching
 - Cover letters
 - Application answers

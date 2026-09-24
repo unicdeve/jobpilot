@@ -16,6 +16,12 @@ Find jobs using configured criteria and supported sources.
 - Included sources
 - Excluded companies
 
+## Where criteria come from
+
+Discovery runs only against a saved search the user chose.
+Writing a good one requires knowing how `SearchCriteria.Matches` behaves, which the form does not show, so the product also ships measured criteria the user can adopt and edit.
+See `docs/02_features/14_search_templates.md`.
+
 ## Source strategy
 
 Discovery is connector-driven, not scraper-first.

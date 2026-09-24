@@ -69,6 +69,8 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("DELETE /v1/searches/{id}", handleDeleteSavedSearch(svc.Searches))
 	mux.HandleFunc("POST /v1/searches/{id}/default", handleSetDefaultSavedSearch(svc.Searches))
 	mux.HandleFunc("POST /v1/searches/{id}/run", handleRunSavedSearch(svc.Searches, svc.Discovery))
+	mux.HandleFunc("GET /v1/search-templates", handleListSearchTemplates(svc.Searches))
+	mux.HandleFunc("POST /v1/search-templates/import", handleImportSearchTemplates(svc.Searches))
 
 	mux.HandleFunc("GET /v1/scouts", handleListScouts(svc.Scouts))
 	mux.HandleFunc("POST /v1/scouts", handleCreateScout(svc.Scouts))
@@ -354,6 +356,41 @@ func handleSetDefaultSavedSearch(svc *services.SavedSearchService) http.HandlerF
 			return
 		}
 		writeJSON(w, http.StatusOK, search)
+	}
+}
+
+// handleListSearchTemplates serves the catalog of ready-made searches.
+//
+// The catalog is static, so this needs no query parameters and returns the
+// same thing to every caller: the desktop application and the CLI render one
+// list, not two that can drift apart.
+func handleListSearchTemplates(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, svc.Templates())
+	}
+}
+
+// importTemplatesRequest names the templates to adopt, by template ID.
+type importTemplatesRequest struct {
+	TemplateIDs []string `json:"template_ids"`
+}
+
+func handleImportSearchTemplates(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req importTemplatesRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		created, err := svc.ImportTemplates(r.Context(), req.TemplateIDs)
+		if err != nil {
+			// An unknown template ID and an empty selection are both the
+			// caller's to correct.
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
 	}
 }
 

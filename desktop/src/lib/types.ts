@@ -195,6 +195,27 @@ export interface SavedSearch {
   updated_at: string;
 }
 
+/// SearchTemplate is a ready-made saved search. Criteria are matched
+/// strictly — every word must appear, and keywords are read against the whole
+/// job description — so a search that reads well can still return almost
+/// nothing. These are criteria that have been measured against live postings.
+export interface SearchTemplate {
+  id: string;
+  name: string;
+  summary: string;
+  criteria: SearchCriteria;
+}
+
+/// SearchTemplateGroup is the set of templates for one kind of work. It is a
+/// menu, not a bundle: criteria cannot express "or", so Engineer and
+/// Developer are separate entries and adopting one alone hides the other.
+export interface SearchTemplateGroup {
+  id: string;
+  name: string;
+  summary: string;
+  templates: SearchTemplate[];
+}
+
 export interface JobMatch {
   id: string;
   job_id: string;

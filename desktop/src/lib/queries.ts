@@ -41,6 +41,7 @@ import type {
   Scout,
   ScoutRunReport,
   SearchCriteria,
+  SearchTemplateGroup,
 } from "./types";
 
 /// keys centralizes every cache key. Invalidating a prefix invalidates
@@ -57,6 +58,7 @@ export const keys = {
       ["jobs", "infinite", { keywords, pageSize }] as const,
   },
   savedSearches: ["saved-searches"] as const,
+  searchTemplates: ["search-templates"] as const,
   scouts: ["scouts"] as const,
   scoutRuns: ["scout-runs"] as const,
   scoutRunEvents: (runId: string) => ["scout-run-events", runId] as const,
@@ -348,6 +350,32 @@ export function useSetDefaultSavedSearch(opts?: MutationOpts<SavedSearch, string
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.setDefaultSavedSearch(id),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+/// useSearchTemplates loads the catalog of ready-made searches. The catalog
+/// is static Go data served by the daemon, so it never changes within a
+/// session and is cached for the life of one.
+export function useSearchTemplates() {
+  const api = useApi();
+  return useQuery<SearchTemplateGroup[]>({
+    queryKey: keys.searchTemplates,
+    queryFn: () => api.listSearchTemplates(),
+    staleTime: Infinity,
+  });
+}
+
+/// useImportSearchTemplates adopts templates as ordinary saved searches.
+export function useImportSearchTemplates(opts?: MutationOpts<SavedSearch[], string[]>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (templateIds: string[]) => api.importSearchTemplates(templateIds),
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.savedSearches });

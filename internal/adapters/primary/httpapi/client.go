@@ -169,6 +169,21 @@ func (c *Client) CreateSavedSearch(ctx context.Context, name string, criteria do
 	return &search, nil
 }
 
+// ListSearchTemplates returns the catalog of ready-made searches.
+func (c *Client) ListSearchTemplates(ctx context.Context) ([]domain.SearchTemplateGroup, error) {
+	var groups []domain.SearchTemplateGroup
+	_, err := c.do(ctx, http.MethodGet, "/v1/search-templates", nil, &groups)
+	return groups, err
+}
+
+// ImportSearchTemplates creates a saved search from each named template.
+func (c *Client) ImportSearchTemplates(ctx context.Context, templateIDs []string) ([]*domain.SavedSearch, error) {
+	req := importTemplatesRequest{TemplateIDs: templateIDs}
+	var created []*domain.SavedSearch
+	_, err := c.do(ctx, http.MethodPost, "/v1/search-templates/import", req, &created)
+	return created, err
+}
+
 // UpdateSavedSearch replaces a saved search's name and criteria.
 func (c *Client) UpdateSavedSearch(ctx context.Context, id, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
 	req := savedSearchRequest{Name: name, Criteria: criteria}

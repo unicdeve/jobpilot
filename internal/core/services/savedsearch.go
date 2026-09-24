@@ -160,3 +160,82 @@ func (s *SavedSearchService) Delete(ctx context.Context, id string) error {
 	remaining[0].IsDefault = true
 	return s.repo.Save(ctx, remaining[0])
 }
+
+// Templates returns the catalog of ready-made searches a user can adopt.
+//
+// It is served from here, rather than written into each client, so that the
+// CLI and the desktop application offer the same searches and a correction
+// reaches both at once.
+func (s *SavedSearchService) Templates() []domain.SearchTemplateGroup {
+	return domain.SearchTemplateGroups()
+}
+
+// ImportTemplates creates one saved search per template, in the order given.
+//
+// The searches are ordinary ones from the moment they exist: the user edits,
+// renames and deletes them like any other, and nothing records where they
+// came from. A template is a starting point, not a subscription.
+//
+// Every ID is resolved before anything is written, so a mistyped one costs
+// nothing. A repository failure partway through keeps the searches already
+// created — the alternative, deleting them, discards work the user asked for
+// to tidy up an error they can simply retry past.
+func (s *SavedSearchService) ImportTemplates(ctx context.Context, templateIDs []string) ([]*domain.SavedSearch, error) {
+	if len(templateIDs) == 0 {
+		return nil, fmt.Errorf("no templates chosen")
+	}
+
+	templates := make([]domain.SearchTemplate, 0, len(templateIDs))
+	seen := make(map[string]bool, len(templateIDs))
+	for _, id := range templateIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		template, err := domain.FindSearchTemplate(id)
+		if err != nil {
+			return nil, err
+		}
+		templates = append(templates, template)
+	}
+
+	existing, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing saved searches: %w", err)
+	}
+	taken := make(map[string]bool, len(existing))
+	for _, search := range existing {
+		taken[strings.ToLower(search.Name)] = true
+	}
+
+	created := make([]*domain.SavedSearch, 0, len(templates))
+	for _, template := range templates {
+		name := availableName(template.Name, taken)
+		taken[strings.ToLower(name)] = true
+
+		search, err := s.Create(ctx, name, template.Criteria)
+		if err != nil {
+			return created, fmt.Errorf("failed to import template %q: %w", template.ID, err)
+		}
+		created = append(created, search)
+	}
+	return created, nil
+}
+
+// availableName returns base, or base with the lowest numeric suffix that is
+// free. Saved search names are unique, and importing a template twice is a
+// reasonable thing to do — someone who has narrowed "Backend Engineer" to
+// Berlin may well want the unnarrowed one back — so a second copy is
+// numbered rather than refused.
+func availableName(base string, taken map[string]bool) string {
+	if !taken[strings.ToLower(base)] {
+		return base
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s %d", base, n)
+		if !taken[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
+}

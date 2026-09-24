@@ -41,6 +41,9 @@ Search preferences are implemented as named saved searches: see
 one is created during onboarding. They are not optional in the way other
 settings are — discovery refuses to run without one.
 
+"Use a template" alongside them offers measured criteria to adopt and edit,
+rather than a blank form (`docs/02_features/14_search_templates.md`).
+
 All other categories (prompt customization, application mode, notification
 settings, data retention, storage location, browser settings, policies)
 remain unimplemented.

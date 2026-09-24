@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm } from "../components/saved-search-form";
+import { SearchTemplatePicker } from "../components/search-template-picker";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -483,6 +484,9 @@ function SearchStep({
   onBack: () => void;
 }) {
   const { notify } = useToast();
+  // Templates first: this is where a first-time user is least able to tell a
+  // search that will work from one that will quietly find nothing.
+  const [writingOwn, setWritingOwn] = useState(false);
   const create = useCreateSavedSearch({
     onSuccess: (search) => {
       notify(`Saved search "${search.name}".`, "success");
@@ -515,12 +519,46 @@ function SearchStep({
         </p>
       </div>
 
-      <SavedSearchForm
-        submitLabel="Save and finish"
-        pending={create.isPending}
-        onSubmit={(name, criteria) => create.mutate({ name, criteria })}
-        onCancel={onBack}
-      />
+      {writingOwn ? (
+        <>
+          <SavedSearchForm
+            submitLabel="Save and finish"
+            pending={create.isPending}
+            onSubmit={(name, criteria) => create.mutate({ name, criteria })}
+            onCancel={onBack}
+          />
+          <button
+            type="button"
+            onClick={() => setWritingOwn(false)}
+            className="self-start text-xs text-slate-500 underline"
+          >
+            Back to the templates
+          </button>
+        </>
+      ) : (
+        <>
+          <SearchTemplatePicker
+            onCancel={onBack}
+            onError={(message) => notify(message)}
+            onImported={(created) => {
+              notify(
+                created.length === 1
+                  ? `Added "${created[0].name}".`
+                  : `Added ${created.length} searches.`,
+                "success",
+              );
+              onDone();
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setWritingOwn(true)}
+            className="self-start text-xs text-slate-500 underline"
+          >
+            Write my own instead
+          </button>
+        </>
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
+import { SearchTemplatePicker } from "../components/search-template-picker";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import {
@@ -68,9 +69,10 @@ function JobSearchSettings() {
   const { notify } = useToast();
   const { data: searches, error, isPending } = useSavedSearches();
   const [adding, setAdding] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const onError = (err: Error) => notify(String(err));
+  const onError = (err: unknown) => notify(String(err));
 
   const createSearch = useCreateSavedSearch({
     onSuccess: (search) => {
@@ -100,8 +102,31 @@ function JobSearchSettings() {
               searches — without any, it will not import jobs.
             </p>
           </div>
-          {!adding && <Button onClick={() => setAdding(true)}>Add search</Button>}
+          {!adding && !browsing && (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button variant="secondary" onClick={() => setBrowsing(true)}>
+                Use a template
+              </Button>
+              <Button onClick={() => setAdding(true)}>Add search</Button>
+            </div>
+          )}
         </div>
+
+        {browsing && (
+          <SearchTemplatePicker
+            onCancel={() => setBrowsing(false)}
+            onError={onError}
+            onImported={(created) => {
+              setBrowsing(false);
+              notify(
+                created.length === 1
+                  ? `Added "${created[0].name}".`
+                  : `Added ${created.length} searches.`,
+                "success",
+              );
+            }}
+          />
+        )}
 
         {adding && (
           <div className="rounded-md border border-slate-200 p-3">
@@ -120,9 +145,12 @@ function JobSearchSettings() {
           <p className="text-sm text-slate-500">Loading…</p>
         ) : searches.length === 0 ? (
           !adding && (
-            <p className="text-sm text-slate-500">
-              No searches yet — add one to start discovering jobs.
-            </p>
+            !browsing && (
+              <p className="text-sm text-slate-500">
+                No searches yet — start from a template, or add your own, to begin discovering
+                jobs.
+              </p>
+            )
           )
         ) : (
           <div className="space-y-2">

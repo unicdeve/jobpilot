@@ -1179,6 +1179,54 @@ func TestClient_SavedSearch_RejectsUnusableSearches(t *testing.T) {
 	assert.ErrorContains(t, err, "already exists")
 }
 
+func TestClient_SearchTemplates(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	groups, err := client.ListSearchTemplates(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, groups)
+	require.NotEmpty(t, groups[0].Templates)
+
+	// Criteria travel over the wire, so the client sees what it will adopt
+	// rather than a name it has to trust.
+	first := groups[0].Templates[0]
+	assert.NotEmpty(t, first.ID)
+	assert.False(t, first.Criteria.IsEmpty())
+
+	created, err := client.ImportSearchTemplates(ctx, []string{first.ID})
+	require.NoError(t, err)
+	require.Len(t, created, 1)
+	assert.Equal(t, first.Name, created[0].Name)
+	assert.Equal(t, first.Criteria, created[0].Criteria)
+	assert.True(t, created[0].IsDefault, "the first search a user gets is still their default")
+
+	// It is an ordinary saved search from here on.
+	searches, err := client.ListSavedSearches(ctx)
+	require.NoError(t, err)
+	require.Len(t, searches, 1)
+	assert.Equal(t, created[0].ID, searches[0].ID)
+
+	again, err := client.ImportSearchTemplates(ctx, []string{first.ID})
+	require.NoError(t, err)
+	assert.Equal(t, first.Name+" 2", again[0].Name)
+}
+
+func TestClient_ImportSearchTemplates_RejectsAnUnknownID(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	_, err := client.ImportSearchTemplates(ctx, []string{"backend-engineer", "not-a-template"})
+	assert.ErrorContains(t, err, "not-a-template")
+
+	searches, err := client.ListSavedSearches(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, searches, "a mistyped ID should cost nothing, not half an import")
+
+	_, err = client.ImportSearchTemplates(ctx, nil)
+	assert.ErrorContains(t, err, "no templates chosen")
+}
+
 // The behaviour the whole change exists for: an unrestricted search used to
 // import every posting both boards return.
 func TestServer_SearchJobs_RefusesEmptyCriteria(t *testing.T) {

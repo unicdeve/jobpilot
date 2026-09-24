@@ -36,6 +36,11 @@ saved search cannot find jobs at all. The step is therefore not skippable
 the way resume import is: the CLI's `onboard` re-prompts until it gets a
 named search with at least one criterion.
 
+The desktop wizard offers the search templates first and a blank form second
+(`docs/02_features/14_search_templates.md`). This is the point in the product
+where a user is least able to tell a search that will work from one that will
+quietly find nothing, because nothing has been discovered yet to judge it by.
+
 ## Implementation status
 
 `SetupEnvironment`, `ConfigureLLM`, `InitializeProfile`, `ProcessResume` and
