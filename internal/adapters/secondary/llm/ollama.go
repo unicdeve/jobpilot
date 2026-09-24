@@ -30,10 +30,17 @@ type generateOptions struct {
 }
 
 type generateRequest struct {
-	Model   string           `json:"model"`
-	Prompt  string           `json:"prompt"`
-	System  string           `json:"system"`
-	Stream  bool             `json:"stream"`
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	System string `json:"system"`
+	Stream bool   `json:"stream"`
+	// Format carries a JSON Schema that Ollama compiles to a sampling
+	// grammar, so the model cannot emit anything outside the shape.
+	//
+	// Measured against Ollama 0.34 with llama3.2:1b (ADR-0017): object
+	// shape, field types and required fields are enforced across 30 runs.
+	// The keywords ports.Schema cannot express are the ones that are not.
+	Format  *ports.Schema    `json:"format,omitempty"`
 	Options *generateOptions `json:"options,omitempty"`
 }
 
@@ -93,6 +100,7 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		Prompt:  req.UserPrompt,
 		System:  req.SystemPrompt,
 		Stream:  false,
+		Format:  req.ResponseSchema,
 		Options: options,
 	}
 

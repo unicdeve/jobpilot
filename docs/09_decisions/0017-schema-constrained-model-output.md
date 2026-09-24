@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed.
+Accepted, and implemented in full.
+
+One part was reversed during implementation; see "Correction" below.
 
 This implements the "Structured output" paragraph of `docs/01_architecture/05_llm.md`, which has been unimplemented since it was written.
 It does not change the provider abstraction's direction, only the shape of a request.
@@ -124,7 +126,6 @@ Option D, in five parts.
 ### 1. A schema is an optional part of a request
 
 `ports.Request` gains an optional response schema.
-`ports.LLMProvider` gains a way to report whether the backend honours one.
 
 A provider that cannot apply a schema ignores it and behaves exactly as it does today.
 This is not a fallback path bolted on: it is the normal path for three of the four backends until each is measured, and it must stay correct.
@@ -162,6 +163,18 @@ Each is declared beside its struct and covered by a test that fails when a field
 - **This does not make the model more accurate**, and one naive version of it would have made the profile less accurate. The honest summary is that it removes a class of avoidable failure and leaves the important one exactly where it was: in the validation layer and in the user's review.
 - Two more things to keep in step — a schema and a struct — which part 5 exists to contain.
 - `stripJSONFence` stays. A schema-constrained reply does not need it, and the three backends without schema support still do.
+
+## Correction: the capability flag was dead code
+
+This ADR originally said `ports.LLMProvider` would also report whether a backend honours a schema, and the implementation added an `LLMCapabilities` struct for it.
+
+It was removed before the work was finished, because nothing read it.
+
+Every caller states the shape and validates the reply regardless of the answer, so no branch depended on the flag; each adapter already knows what it can apply, and applies it.
+A field that is written and never read is exactly what ADR-0015's closing change deleted three columns for — `work_preferences` was read by a single rule that could never fire, which is a worse state than not having the column, because the code looks like it does something.
+
+The measurements the flag would have carried live in the adapters, next to the decision each one makes: Ollama says what was measured and applies the schema, and `chatCompletionRequest` says why it has no `response_format` field.
+If a caller ever needs to branch on this — showing the user whether their backend is constrained, say — the flag comes back then, with a consumer.
 
 ## Open questions
 

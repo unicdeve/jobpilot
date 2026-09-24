@@ -26,6 +26,15 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
+// chatCompletionRequest deliberately has no response_format field.
+//
+// llama.cpp and LM Studio both advertise OpenAI's json_schema form, and
+// ADR-0017 is largely the story of an advertised constraint and an
+// enforced one being different things — Ollama documents `pattern` and
+// does not apply it. Neither backend was available to measure, so
+// ports.Request.ResponseSchema is ignored here rather than sent on a
+// promise. Callers validate every reply regardless, which is what makes
+// ignoring it safe.
 type chatCompletionRequest struct {
 	Model       string        `json:"model"`
 	Messages    []chatMessage `json:"messages"`

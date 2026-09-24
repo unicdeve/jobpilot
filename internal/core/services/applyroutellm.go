@@ -92,10 +92,11 @@ func (c *ApplyControlChooser) Choose(ctx context.Context, controls []ports.Apply
 	}
 
 	resp, err := c.llm.Generate(ctx, ports.Request{
-		SystemPrompt: applyControlSystemPrompt,
-		UserPrompt:   prompt,
-		Temperature:  0,
-		MaxTokens:    64,
+		SystemPrompt:   applyControlSystemPrompt,
+		UserPrompt:     prompt,
+		Temperature:    0,
+		MaxTokens:      64,
+		ResponseSchema: applyControlChoiceSchema(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to ask the model which control to follow: %w", err)
@@ -138,6 +139,23 @@ func buildApplyControlPrompt(controls []ports.ApplyControl) (string, error) {
 // reply omitting it is told apart from one that answered zero.
 type applyControlChoice struct {
 	Index *int `json:"index"`
+}
+
+// applyControlChoiceSchema describes applyControlChoice for a backend that
+// can constrain the model to it (ADR-0017).
+//
+// The index is not bounded by the schema. A grammar does not enforce
+// numeric bounds, and one that did would be the wrong tool here: a model
+// with no good answer must be able to say so, which it does by returning
+// the abstain value, and a bound that quietly rounded a nonsense index
+// into range would turn "I do not know" into a click on whatever link
+// happened to be there. parseApplyControlChoice checks the range instead.
+func applyControlChoiceSchema() *ports.Schema {
+	schema := ports.ObjectSchema(map[string]ports.Schema{
+		"index": ports.IntegerSchema(
+			"the number of the control that leads to the application form, or -1 to abstain"),
+	})
+	return &schema
 }
 
 func parseApplyControlChoice(content string, offered int) (int, error) {

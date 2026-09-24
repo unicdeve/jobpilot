@@ -382,11 +382,16 @@ Phase 8 (scouts and eligibility rules) has not started. It was re-scoped from Au
   added dated work history and skills; the closing change made work
   preference structured and removed education and certifications, which no
   interface ever wrote and nothing ever read.
-- The LLM provider abstraction (`internal/core/ports/llm.go`) has no
-  schema-constrained structured output support: matching, profile-draft, and
-  cover-letter/answer generation all rely on prompt instructions plus
-  post-hoc parsing, not provider-level schema constraints, despite
-  `docs/01_architecture/05_llm.md` preferring the latter where supported.
+- Structured model output is schema-constrained where the backend supports
+  it (ADR-0017). `ports.Request` carries an optional `ResponseSchema`, which
+  Ollama compiles to a sampling grammar; llama.cpp, LM Studio and custom
+  endpoints ignore it until each is measured, so they behave as before.
+  The schema type cannot express `enum`, `pattern` or numeric bounds: the
+  latter two are not enforced by a grammar, and `enum` is enforced in a way
+  that turns a detectably wrong answer into a plausible one. Every
+  structured reply is validated after decoding regardless, which is new for
+  the job-page extraction — it previously checked nothing but a non-empty
+  title, on content scraped from an arbitrary web page.
 - The profile is empty until it is filled in. ADR-0015 dropped the prose
   columns, so after upgrading JobPilot answers less than it used to until the
   user enters their details or re-imports their resume. That is the intended
