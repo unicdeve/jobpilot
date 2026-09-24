@@ -407,6 +407,13 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 - No settings/configuration system beyond LLM provider/model and job
   searches (`docs/02_features/13_settings.md` — other categories like prompt
   customization and notifications are unimplemented).
+- No credential storage of any kind, so no job source that needs an API key
+  can be built — measured, Adzuna, Jooble, USAJOBS and The Muse all refuse an
+  unauthenticated request, and Google's Programmable Search API is the one
+  that prompted the question. ADR-0019 settles the shape and is accepted, not yet implemented. Two places that
+  would seem to need a secret already avoid one: board logins live in the
+  browser worker's own Chrome profile, which the user signs into by hand, and
+  a cloud LLM credential is held by Ollama rather than by JobPilot.
 - No user-configurable prompt customization for matching (Phase 3).
 - The Desktop app has no Agent Activity screen (see above) and no import
   progress/loading polish beyond basic "Loading…" text.
@@ -488,3 +495,4 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. The desktop has no Agent Activity screen, so the trail a scout writes is readable on the Scouts page and by `scout trail` in the CLI, but nowhere else.
+4. Credential storage, accepted as ADR-0019 and not yet implemented. It unblocks a class of job sources rather than one, and the part that needed deciding was not the keystore but ADR-0012: the daemon has no authentication, so a credential that could be read back over loopback would be less protected than one in a file. Credentials therefore go in and never come out. A credential is identified by a source and a user-chosen label, which forces a `credential_names` table — the keychain has no list operation, and a label cannot be guessed.
