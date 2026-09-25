@@ -11,6 +11,7 @@
 - Application answers
 - History
 - Prompt customization
+- Data deletion
 - CLI
 - Desktop
 
