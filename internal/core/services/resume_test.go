@@ -197,31 +197,3 @@ func TestResumeService_GetResume(t *testing.T) {
 
 	assert.ErrorContains(t, err, "failed to get resume")
 }
-
-func TestResumeService_DeleteResume(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		repo := newFakeResumeRepository()
-		require.NoError(t, repo.Save(context.Background(), &domain.Resume{ID: "resume-1"}))
-		svc := NewResumeService(repo, &fakeLLMProvider{}, &fakeDocumentConverter{})
-
-		err := svc.DeleteResume(context.Background(), "resume-1")
-
-		require.NoError(t, err)
-		_, ok := repo.resumes["resume-1"]
-		assert.False(t, ok)
-	})
-
-	t.Run("repo error is wrapped", func(t *testing.T) {
-		t.Parallel()
-		repo := newFakeResumeRepository()
-		repo.deleteErr = errors.New("boom")
-		svc := NewResumeService(repo, &fakeLLMProvider{}, &fakeDocumentConverter{})
-
-		err := svc.DeleteResume(context.Background(), "resume-1")
-
-		assert.ErrorContains(t, err, "failed to delete resume")
-	})
-}

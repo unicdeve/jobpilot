@@ -250,6 +250,15 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   `GET /v1/applications/{id}/transitions` serves the state machine's own answer, so the desktop offers the moves that will work instead of all nine states with an error for most of them, and the CLI's `application show` lists them too.
   The desktop asks the question directly when an application is approved, shows when it was submitted, groups the Applications list by whose move it is, and puts a count of what is waiting on the user on the Dashboard.
   `jobpilot-cli application submitted <id>` is the same act under the name a user would look for.
+- Data deletion and "Not interested" (`docs/02_features/15_data_deletion.md`, ADR-0021): a job, an application, a cover letter version, a resume, the profile, the activity history, the unused jobs, or everything, from the CLI and the desktop.
+  Before, almost nothing could be deleted: twelve of the eighteen foreign keys had no `ON DELETE` rule, so a row anything referenced could not be removed, and deleting a resume an application had used failed with a 500.
+  Migration `00015` rebuilds the eight tables concerned so every foreign key carries its rule, and repairs, by those rules, the orphans left from when foreign keys were enforced on one pooled connection only.
+  The rules are `domain.DeletionRules`, and a test fails if the schema's foreign keys ever disagree with them.
+  Every deletion is previewed first, by kind and count, and carried out only with the preview's token; one whose reach changed since is refused with the new reach, so a scout acting between the two cannot have something deleted the user was not shown.
+  Deleted content is overwritten on disk (`secure_delete`, a WAL checkpoint after each deletion, and a vacuum after "delete all data"), which also removes the keychain's API keys, the browser profile and the daemon's log.
+  "Not interested" hides a job from every list and search result and has scouts pass it over before scoring, without deleting it; `jobpilot-cli job not-interested`, and a button on a job's page and in the job list.
+  The repository `Delete` methods the deletion service supersedes were removed, so nothing deletes without a preview, and core no longer imports the SQLite adapter to set up storage (`ports.LocalStorage`).
+
 - No profile yet is an answer, not an error: `GET /v1/profile` is a 404 for an installation that has none (`ports.ErrNoCandidate`), and the desktop reads it as `null`.
   It was a 500, which the desktop kept as an errored query, and that turned into a request loop that left the app on "Loading…" for anyone who skipped first-run setup.
   An errored query with no data reads as pending while it refetches, the setup gate unmounted every screen while the profile was pending, and each screen remounting refetched it — thousands of requests a minute against a fresh install.
@@ -572,7 +581,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 ## Next
 
 1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
-2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
+2. Answer "not found" with 404 across the API. A job or application that does not exist is still a 500 with the repository's message, which the desktop shows as it is — seen when going back to a deleted application's page. Deletion and the profile already answer 404.
+3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-4. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.

@@ -815,3 +815,64 @@ func (p *panickingJobSource) Search(context.Context, domain.SearchCriteria) ([]d
 func (p *panickingJobSource) GetJob(context.Context, string) (*domain.Job, error) {
 	return nil, errors.New("not supported")
 }
+
+func TestJobDiscoveryService_NotInterested(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("a search leaves out a job the user ruled out, and does not call it new", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		ruledOut := &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/1", Title: "Backend Engineer"}
+		require.NoError(t, jobRepo.Save(ctx, ruledOut))
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{searchableSource("board", []domain.Job{
+			{CanonicalURL: "https://acme.example/1", Title: "Backend Engineer"},
+			{CanonicalURL: "https://acme.example/2", Title: "Backend Developer"},
+		}, nil)}, nil, nil, nil)
+		_, err := svc.SetInterest(ctx, "job-1", true)
+		require.NoError(t, err)
+
+		result, err := svc.Search(ctx, domain.SearchCriteria{Keywords: "backend"})
+
+		require.NoError(t, err)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, "Backend Developer", result.Jobs[0].Title)
+		assert.Equal(t, 1, result.New)
+		assert.Equal(t, 2, jobRepo.saveCalls, "the ruled-out job is recognised, not stored again")
+	})
+
+	t.Run("lists hide ruled-out jobs unless asked for them, and interested again restores them", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		for _, id := range []string{"a", "b"} {
+			require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: id, CanonicalURL: "https://acme.example/" + id, Title: "Engineer"}))
+		}
+		svc := NewJobDiscoveryService(jobRepo, nil, nil, nil, nil)
+
+		marked, err := svc.SetInterest(ctx, "a", true)
+		require.NoError(t, err)
+		require.NotNil(t, marked.NotInterestedAt)
+
+		page, err := svc.ListJobs(ctx, domain.JobFilter{}, 0, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 1, page.Total)
+		assert.Equal(t, "b", page.Jobs[0].ID)
+
+		page, err = svc.ListJobs(ctx, domain.JobFilter{Interest: domain.JobsNotInterested}, 0, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 1, page.Total)
+		assert.Equal(t, "a", page.Jobs[0].ID)
+
+		restored, err := svc.SetInterest(ctx, "a", false)
+		require.NoError(t, err)
+		assert.Nil(t, restored.NotInterestedAt)
+		page, err = svc.ListJobs(ctx, domain.JobFilter{}, 0, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 2, page.Total)
+
+		_, err = svc.ListJobs(ctx, domain.JobFilter{Interest: "maybe"}, 0, 0)
+		assert.ErrorIs(t, err, ErrInvalidJobFilter)
+		_, err = svc.SetInterest(ctx, "no-such-job", true)
+		assert.Error(t, err)
+	})
+}

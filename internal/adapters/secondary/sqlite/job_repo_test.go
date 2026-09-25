@@ -113,20 +113,6 @@ func TestJobRepository_List_Pagination(t *testing.T) {
 	require.Len(t, jobs, 1)
 }
 
-func TestJobRepository_Delete(t *testing.T) {
-	t.Parallel()
-
-	db := newTestDB(t)
-	repo := NewJobRepository(db.Conn())
-	job := &domain.Job{CanonicalURL: "https://acme.example/job-1"}
-	require.NoError(t, repo.Save(context.Background(), job))
-
-	require.NoError(t, repo.Delete(context.Background(), job.ID))
-
-	_, err := repo.GetByID(context.Background(), job.ID)
-	assert.ErrorContains(t, err, "job not found")
-}
-
 func TestJobRepository_List_Keywords(t *testing.T) {
 	t.Parallel()
 
@@ -348,4 +334,48 @@ func TestJobRepository_StoresTimesInUTC(t *testing.T) {
 	got, err := repo.GetByID(ctx, job.ID)
 	require.NoError(t, err)
 	assert.True(t, got.PostedAt.Equal(posted))
+}
+
+func TestJobRepository_NotInterested(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	for _, id := range []string{"kept", "first-out", "second-out"} {
+		require.NoError(t, repo.Save(ctx, &domain.Job{ID: id, CanonicalURL: "https://acme.example/" + id, Title: "Engineer"}))
+	}
+	earlier := time.Date(2026, 9, 20, 9, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.SetNotInterested(ctx, "first-out", &earlier))
+	require.NoError(t, repo.SetNotInterested(ctx, "second-out", &later))
+
+	ids := func(filter domain.JobFilter) []string {
+		jobs, err := repo.List(ctx, filter, 50, 0)
+		require.NoError(t, err)
+		var out []string
+		for _, j := range jobs {
+			out = append(out, j.ID)
+		}
+		return out
+	}
+	assert.Equal(t, []string{"kept"}, ids(domain.JobFilter{}))
+	assert.Equal(t, []string{"second-out", "first-out"}, ids(domain.JobFilter{Interest: domain.JobsNotInterested}),
+		"the most recently ruled out first")
+	assert.Len(t, ids(domain.JobFilter{Interest: domain.JobsAll}), 3)
+
+	total, err := repo.Count(ctx, domain.JobFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total, "counts leave them out too")
+
+	got, err := repo.GetByID(ctx, "first-out")
+	require.NoError(t, err)
+	require.NotNil(t, got.NotInterestedAt)
+	assert.True(t, got.NotInterestedAt.Equal(earlier))
+
+	require.NoError(t, repo.SetNotInterested(ctx, "first-out", nil))
+	got, err = repo.GetByID(ctx, "first-out")
+	require.NoError(t, err)
+	assert.Nil(t, got.NotInterestedAt)
+
+	assert.Error(t, repo.SetNotInterested(ctx, "no-such-job", &later))
 }

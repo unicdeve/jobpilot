@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/services"
 )
 
 func TestCandidateRepository_SaveAndGetByID(t *testing.T) {
@@ -55,20 +56,6 @@ func TestCandidateRepository_Update(t *testing.T) {
 	got, err := repo.GetByID(context.Background(), candidate.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated summary", got.Summary)
-}
-
-func TestCandidateRepository_Delete(t *testing.T) {
-	t.Parallel()
-
-	db := newTestDB(t)
-	repo := NewCandidateRepository(db.Conn())
-	candidate := &domain.Candidate{FirstName: "Taiwo"}
-	require.NoError(t, repo.Save(context.Background(), candidate))
-
-	require.NoError(t, repo.Delete(context.Background(), candidate.ID))
-
-	_, err := repo.GetByID(context.Background(), candidate.ID)
-	assert.ErrorContains(t, err, "candidate not found")
 }
 
 func TestCandidateRepository_GetFirstCandidate(t *testing.T) {
@@ -197,7 +184,13 @@ func TestCandidateRepository_LinksAndWorkAuthorizations(t *testing.T) {
 			WorkAuthorizations: []domain.WorkAuthorization{{Country: "Germany", IsAuthorized: true}},
 		}
 		require.NoError(t, repo.Save(ctx, candidate))
-		require.NoError(t, repo.Delete(ctx, candidate.ID))
+
+		svc := services.NewDeletionService(NewDeletionStore(db), noCredentials{}, nil, nil)
+		reach, err := svc.Preview(ctx, domain.DeleteProfile, "")
+		require.NoError(t, err)
+		assert.Equal(t, 2, reach.Deleted[domain.RecordCandidateDetail], "the preview counts the profile's details")
+		_, err = svc.Delete(ctx, domain.DeleteProfile, "", reach.Token)
+		require.NoError(t, err)
 
 		for _, table := range []string{"candidate_links", "candidate_work_authorizations"} {
 			var count int

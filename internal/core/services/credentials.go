@@ -76,10 +76,21 @@ func (s *CredentialService) Delete(ctx context.Context, source, label string) er
 		return err
 	}
 
-	if err := s.store.Delete(ctx, ref); err != nil {
+	// An environment variable still supplying the credential is reported,
+	// but the stored copy is gone, so its name goes too.
+	err = s.store.Delete(ctx, ref)
+	if err != nil && !errors.Is(err, ports.ErrCredentialFromEnvironment) {
 		return err
 	}
-	return s.names.Forget(ctx, ref)
+	if forgetErr := s.names.Forget(ctx, ref); forgetErr != nil {
+		return forgetErr
+	}
+	return err
+}
+
+// FromEnvironment reports whether an environment variable supplies ref.
+func (s *CredentialService) FromEnvironment(ref domain.CredentialRef) bool {
+	return s.store.FromEnvironment(ref)
 }
 
 // Get returns a stored secret, for use inside the daemon only.

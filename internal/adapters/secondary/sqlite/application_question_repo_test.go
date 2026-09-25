@@ -99,20 +99,3 @@ func TestApplicationQuestionRepository_ListByApplication(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, questions, 2)
 }
-
-func TestApplicationQuestionRepository_Delete(t *testing.T) {
-	t.Parallel()
-
-	db := newTestDB(t)
-	candidate := saveTestCandidate(t, db)
-	job := saveTestJob(t, db, "https://acme.example/job-1")
-	app := saveTestApplication(t, db, candidate.ID, job.ID)
-	repo := NewApplicationQuestionRepository(db.Conn())
-	q := &domain.ApplicationQuestion{ApplicationID: app.ID, Label: "Q1"}
-	require.NoError(t, repo.Save(context.Background(), q))
-
-	require.NoError(t, repo.Delete(context.Background(), q.ID))
-
-	_, err := repo.GetByID(context.Background(), q.ID)
-	assert.ErrorContains(t, err, "application question not found")
-}

@@ -137,16 +137,6 @@ func (r *ApplicationRepository) ListByCandidate(ctx context.Context, candidateID
 	return apps, nil
 }
 
-// Delete removes an application by ID.
-func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM applications WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete application: %w", err)
-	}
-	return nil
-}
-
 // TransitionState atomically moves an application from "from" to "to" and
 // appends an ApplicationStateTransition record. The UPDATE is conditional
 // on the row's current state still being "from"; if zero rows are

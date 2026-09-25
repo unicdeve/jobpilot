@@ -47,6 +47,7 @@ export interface JobFilters {
 export const VIEW_FILTERS = {
   all: ["posted", "source", "remote"],
   analyzed: ["score", "analyzed", "source", "remote"],
+  not_interested: ["posted", "source", "remote"],
 } as const satisfies Record<string, readonly (keyof JobFilters)[]>;
 
 export type JobsView = keyof typeof VIEW_FILTERS;

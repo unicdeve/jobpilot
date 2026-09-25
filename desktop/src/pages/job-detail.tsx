@@ -1,7 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, CircleAlert, CircleCheck, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { DeletionDialog } from "../components/deletion-dialog";
 import { FormField } from "../components/form-field";
 import { Markdown } from "../components/markdown";
 import { DetailSection, Toolbar } from "../components/page";
@@ -17,6 +18,12 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -40,8 +47,9 @@ import {
   useCandidateId,
   useCreateApplication,
   useJob,
-  useMatches,
+  useJobMatch,
   useResumes,
+  useSetJobInterest,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { Application, ApplicationMode, Job, JobMatch } from "../lib/types";
@@ -62,10 +70,9 @@ export function JobDetail() {
   const { search } = useLocation();
   const { candidateId } = useCandidateId();
   const { data: job, error, isPending } = useJob(id);
-  const { data: matches } = useMatches(candidateId);
+  const { data: match } = useJobMatch(id);
   const { data: applications } = useApplications(candidateId);
 
-  const match = matches?.find((m) => m.job_id === id);
   const existing = applications?.filter((a) => a.job_id === id) ?? [];
 
   const back = (
@@ -98,16 +105,19 @@ export function JobDetail() {
             )}
             {candidateId && <AnalyzeButton candidateId={candidateId} jobId={job.id} analyzed={!!match} />}
             {candidateId && <StartApplicationButton candidateId={candidateId} jobId={job.id} again={existing.length > 0} />}
+            <InterestButton job={job} applications={existing.length} />
+            <JobMenu job={job} />
           </>
         }
       />
 
       <article className="max-w-3xl px-8 pt-6 pb-12">
+        {job.not_interested_at && <RuledOutBanner job={job} />}
         <JobHeading job={job} />
 
         {existing.length > 0 && <ExistingApplications applications={existing} />}
 
-        <MatchSection candidateId={candidateId} match={match} />
+        <MatchSection candidateId={candidateId} match={match ?? undefined} />
 
         {job.skills?.length > 0 && (
           <DetailSection title="Skills">
@@ -130,6 +140,94 @@ export function JobDetail() {
         </DetailSection>
       </article>
     </div>
+  );
+}
+
+/// InterestButton rules the job out, or back in. Neither asks: both are
+/// reversible, and ruling a job out changes nothing but where it is shown —
+/// its applications are left as they are, which the notice says.
+function InterestButton({ job, applications }: { job: Job; applications: number }) {
+  const { notify } = useToast();
+  const setInterest = useSetJobInterest({
+    onSuccess: (updated) => {
+      if (!updated.not_interested_at) {
+        notify("Back in your lists.", "success");
+        return;
+      }
+      notify(
+        applications > 0
+          ? `Marked not interested. Its ${applications === 1 ? "application is" : `${applications} applications are`} unchanged.`
+          : "Marked not interested. It is hidden from your lists, and scouts pass it over.",
+        "success",
+      );
+    },
+    onError: (err) => notify(String(err)),
+  });
+  const ruledOut = !!job.not_interested_at;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={setInterest.isPending}
+      onClick={() => setInterest.mutate({ id: job.id, notInterested: !ruledOut })}
+    >
+      {ruledOut ? <Undo2 data-icon="inline-start" /> : <EyeOff data-icon="inline-start" />}
+      {ruledOut ? "Interested again" : "Not interested"}
+    </Button>
+  );
+}
+
+/// JobMenu holds what is done to the job rather than with it.
+function JobMenu({ job }: { job: Job }) {
+  const { notify } = useToast();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const [deleting, setDeleting] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}>
+          <Ellipsis />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            Delete job…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DeletionDialog
+        target="job"
+        id={job.id}
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete “${job.title}”?`}
+        note={
+          job.not_interested_at
+            ? "It is marked not interested; deleting it forgets that, so a search may find it again."
+            : "A later search may find it again. To keep it out of your lists and scouts, mark it not interested instead."
+        }
+        confirmLabel="Delete job"
+        onDeleted={() => {
+          notify("Job deleted.", "success");
+          navigate({ pathname: "/jobs", search });
+        }}
+      />
+    </>
+  );
+}
+
+/// RuledOutBanner says why a job that left every list is still here: it was
+/// opened directly, from an application or a link.
+function RuledOutBanner({ job }: { job: Job }) {
+  return (
+    <p className="mb-5 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-subtle-foreground">
+      <EyeOff className="size-4 shrink-0 text-muted-foreground" />
+      <span>
+        You marked this job not interested{" "}
+        <span title={dateTime(job.not_interested_at)}>{relativeTime(job.not_interested_at)}</span>. It is hidden from your
+        lists, and scouts pass it over.
+      </span>
+    </p>
   );
 }
 

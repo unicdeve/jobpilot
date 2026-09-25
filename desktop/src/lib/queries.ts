@@ -13,6 +13,8 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type Query,
+  type QueryClient,
   type UseMutationOptions,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -31,6 +33,9 @@ import type {
   ApplicationStateTransition,
   Candidate,
   CoverLetter,
+  DeletionReach,
+  DeletionResult,
+  DeletionTarget,
   DiscoveryResult,
   Job,
   JobMatch,
@@ -73,7 +78,9 @@ export const keys = {
     detail: (id: string) => ["activity", "detail", id] as const,
   },
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
+  allMatches: ["matches"] as const,
   matches: (candidateId: string) => ["matches", candidateId] as const,
+  jobMatch: (jobId: string) => ["matches", "job", jobId] as const,
   applications: {
     all: ["applications"] as const,
     list: (candidateId: string) => ["applications", "list", candidateId] as const,
@@ -130,6 +137,8 @@ export interface StoredJobsFilter {
   source: string;
   remote: string;
   posted: TimeRange | "";
+  /// notInterested lists only the jobs the user ruled out.
+  notInterested?: boolean;
 }
 
 /// useInfiniteJobs pages through stored jobs. Every page already loaded stays
@@ -150,6 +159,7 @@ export function useInfiniteJobs(filter: StoredJobsFilter, pageSize: number) {
           source: filter.source,
           remote: filter.remote,
           postedSince,
+          interest: filter.notInterested ? "not_interested" : undefined,
         },
         pageSize,
         pageParam,
@@ -189,8 +199,9 @@ export function useActivityRun(id: string | undefined) {
   });
 }
 
-/// useJob loads one stored job. Job records do not change once discovered,
-/// so this stays fresh far longer than a list does.
+/// useJob loads one stored job. A job's record changes only when the user
+/// rules it out or back in, which replaces this cache entry directly, so it
+/// stays fresh far longer than a list does.
 export function useJob(id: string | undefined) {
   const api = useApi();
   return useQuery<Job>({
@@ -542,17 +553,128 @@ export function useImportResume(
   });
 }
 
-export function useDeleteResume(
-  opts?: MutationOpts<void, { id: string; candidateId: string }>,
-) {
+/// useJobMatch loads one job's latest match, or null. The job's page reads
+/// it this way rather than from useMatches, which leaves out the jobs the
+/// user ruled out — a page they can still open.
+export function useJobMatch(jobId: string | undefined) {
+  const api = useApi();
+  return useQuery<JobMatch | null>({
+    queryKey: keys.jobMatch(jobId ?? ""),
+    queryFn: () => api.getJobMatch(jobId!),
+    enabled: !!jobId,
+  });
+}
+
+/// useDeletionPreview loads what deleting target would take with it, each
+/// time it is asked for: a preview is only worth showing if it is current,
+/// so it is never cached. target null asks for nothing.
+export function useDeletionPreview(target: DeletionTarget | null, id?: string) {
+  const api = useApi();
+  return useQuery<DeletionReach>({
+    queryKey: ["deletion", target, id ?? ""],
+    queryFn: () => api.previewDeletion(target!, id),
+    enabled: target !== null,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+export interface DeletionRequest {
+  target: DeletionTarget;
+  id?: string;
+  token: string;
+}
+
+/// useDeleteRecords carries out a confirmed deletion. What one reaches is
+/// not known to the client ahead of time — a job takes its applications,
+/// the profile nearly everything — so every query is refreshed after it,
+/// and after "delete all data" the cache is emptied instead.
+///
+/// The deleted record's own queries are the exception. The screen showing
+/// it may still be mounted while it navigates away, and refreshed then, it
+/// would ask the daemon for a record that no longer exists. They are left
+/// as they are, and dropped once nothing shows them (dropWhenUnobserved).
+export function useDeleteRecords(opts?: MutationOpts<DeletionResult, DeletionRequest>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id }: { id: string; candidateId: string }) => api.deleteResume(id),
+    mutationFn: ({ target, id, token }: DeletionRequest) => api.deleteRecords(target, id, token),
     ...opts,
-    onSuccess: (data, variables, ...rest) => {
-      void queryClient.invalidateQueries({ queryKey: keys.resumes(variables.candidateId) });
-      opts?.onSuccess?.(data, variables, ...rest);
+    onSuccess: (result, variables, ...rest) => {
+      if (variables.target === "everything") {
+        opts?.onSuccess?.(result, variables, ...rest);
+        queryClient.clear();
+        return;
+      }
+      const gone = dropWhenUnobserved(queryClient, deletedRecordKeys(variables));
+      void queryClient.invalidateQueries({ predicate: (query) => !gone.has(query.queryHash) });
+      opts?.onSuccess?.(result, variables, ...rest);
+    },
+  });
+}
+
+/// dropWhenUnobserved removes the queries under keys from the cache as soon
+/// as no component observes them, now or when the last one unmounts, and
+/// returns their hashes.
+function dropWhenUnobserved(queryClient: QueryClient, queryKeys: readonly (readonly unknown[])[]): Set<string> {
+  const cache = queryClient.getQueryCache();
+  const pending = new Map<string, Query>();
+  for (const queryKey of queryKeys) {
+    for (const query of cache.findAll({ queryKey })) pending.set(query.queryHash, query);
+  }
+  const hashes = new Set(pending.keys());
+
+  const dropIfUnobserved = (query: Query) => {
+    if (query.getObserversCount() > 0) return;
+    cache.remove(query);
+    pending.delete(query.queryHash);
+  };
+  pending.forEach(dropIfUnobserved);
+  if (pending.size > 0) {
+    const unsubscribe = cache.subscribe((event) => {
+      if (event.type === "observerRemoved" && pending.has(event.query.queryHash)) dropIfUnobserved(event.query);
+      if (pending.size === 0) unsubscribe();
+    });
+  }
+  return hashes;
+}
+
+function deletedRecordKeys({ target, id }: DeletionRequest): readonly (readonly unknown[])[] {
+  const previews = [["deletion"]] as const;
+  if (!id) return previews;
+  switch (target) {
+    case "job":
+      return [...previews, keys.jobs.detail(id), keys.jobMatch(id)];
+    case "application":
+      return [
+        ...previews,
+        keys.applications.detail(id),
+        keys.applications.history(id),
+        keys.applications.transitions(id),
+        keys.applications.coverLetters(id),
+        keys.applications.questions(id),
+        keys.applications.agentRuns(id),
+      ];
+    default:
+      return previews;
+  }
+}
+
+/// useSetJobInterest rules a job out or back in. The job's own record
+/// changes, so its cached copy is replaced, and every list it leaves or
+/// rejoins is refreshed.
+export function useSetJobInterest(opts?: MutationOpts<Job, { id: string; notInterested: boolean }>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, notInterested }: { id: string; notInterested: boolean }) => api.setJobInterest(id, notInterested),
+    ...opts,
+    onSuccess: (job, variables, ...rest) => {
+      queryClient.setQueryData(keys.jobs.detail(job.id), job);
+      void queryClient.invalidateQueries({ queryKey: keys.jobs.all });
+      void queryClient.invalidateQueries({ queryKey: keys.allMatches });
+      opts?.onSuccess?.(job, variables, ...rest);
     },
   });
 }
@@ -578,6 +700,7 @@ export function useAnalyzeMatch(
     ...opts,
     onSuccess: (match, variables, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: keys.matches(variables.candidateId) });
+      queryClient.setQueryData(keys.jobMatch(variables.jobId), match);
       opts?.onSuccess?.(match, variables, ...rest);
     },
   });

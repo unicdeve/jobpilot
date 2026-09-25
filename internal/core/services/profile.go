@@ -41,11 +41,3 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, profile *domain.Cand
 	}
 	return nil
 }
-
-// DeleteProfile removes a candidate profile.
-func (s *ProfileService) DeleteProfile(ctx context.Context, id string) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete profile: %w", err)
-	}
-	return nil
-}

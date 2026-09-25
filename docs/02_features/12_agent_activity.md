@@ -28,7 +28,8 @@ Matching and cover letters do not create runs.
 
 A run names what it served.
 A browser run belongs to one application; a scout run belongs to none, and records its scout instead (migration `00012_agent_activity.sql`).
-Deleting the scout or the application keeps the run and clears the link, so the record of what happened outlives the thing it happened to.
+Deleting a scout keeps its runs and clears the link, so the record of what it did outlives it.
+Deleting an application deletes its browser runs with it: each is about that one application, naming its employer's questions and pages, and says nothing once it is gone (`docs/02_features/15_data_deletion.md` D4).
 
 The policy result of a step is the verdict of a deterministic rule, `allowed` or `denied`, with the reason in the step's output:
 

@@ -7,12 +7,13 @@ This document lists the currently implemented CLI commands for the JobPilot.
 
 ## Candidate Profile
 - `jobpilot-cli profile get`: Displays the current candidate profile information.
+- `jobpilot-cli profile delete`: Deletes your profile, resumes, match analyses and applications. Jobs, saved searches, scouts and settings stay. Shows what goes and asks first; `--yes` skips the question.
 - `jobpilot-cli profile update`: Interactively update the current candidate profile. Allows updating First Name, Last Name, Contact, Location, Summary, Skills, Salary Preferences, Work Authorization, and Application Preferences.
 
 ## Resume Management
 - `jobpilot-cli resume import [path]`: Imports a resume file from the specified path, converts it to Markdown, and associates it with the current candidate profile. Afterward, the LLM proposes a draft of First Name, Last Name, Contact, Location, Summary, and Skills from the resume; you can review and edit each field (defaulting to your current profile value if the draft left it blank) before it's applied to your profile. This same review step also runs during `onboard` when a resume is imported there. If suggestion generation fails, the resume import itself still succeeds.
 - `jobpilot-cli resume list`: Lists all resumes currently imported for the candidate.
-- `jobpilot-cli resume delete [id]`: Deletes a specific resume by its ID.
+- `jobpilot-cli resume delete [id]`: Deletes a resume. Applications that used it keep everything already written from it. Shows what goes and asks first; `--yes` skips the question.
 
 ## Job Discovery
 - `jobpilot-cli search run`: Discovers jobs using your default saved search. Pass `--saved <name-or-id>` to run a different one, or give keywords for a one-off search. Discovery always needs criteria — the public job boards do no filtering of their own, so a search with nothing set would import every posting on every board. Requires internet access. It reports how many of the jobs it found are new, and names any source that could not be reached or answered with an error, since results without that source may be incomplete. When no source can be reached it says so and exits with an error; jobs already found stay available through `search list`.
@@ -21,9 +22,21 @@ This document lists the currently implemented CLI commands for the JobPilot.
 - `jobpilot-cli search saved edit [name-or-id]`: Replaces a saved search's criteria; `--name` renames it.
 - `jobpilot-cli search saved delete [name-or-id]`: Deletes a saved search. Deleting the default promotes another.
 - `jobpilot-cli search saved default [name-or-id]`: Chooses the search `search run` uses by default.
-- `jobpilot-cli search list`: Lists jobs already discovered, most recent first, from local history. Reads stored data only and contacts no job source, so it works offline. Flags: `--keywords` (only jobs whose title or company matches), `--limit` (default 50, maximum 200), `--offset` (skip this many; the output names the offset for the next page).
+- `jobpilot-cli search list`: Lists jobs already discovered, most recent first, from local history. Reads stored data only and contacts no job source, so it works offline. Jobs marked not interested are left out. Flags: `--keywords` (only jobs whose title or company matches), `--limit` (default 50, maximum 200), `--offset` (skip this many; the output names the offset for the next page), `--not-interested` (only the jobs marked not interested, most recently first).
+- `jobpilot-cli job not-interested [id]`: Rules a job out. It leaves your lists and search results, and scouts pass it over; its match and applications are unchanged. `job interested [id]` undoes it. Neither asks, since both are reversible.
+- `jobpilot-cli job delete [id]`: Deletes a job with its match and applications. A later search may store it again; to keep it away, mark it not interested instead.
 - `jobpilot-cli search show [id]`: Shows one stored job in full, including its description. Reads local history only.
 - `jobpilot-cli search import [url]`: Imports one job by its URL. When no source's API can fetch that URL, the page is opened in the browser worker and its content extracted (see `docs/02_features/04_job_discovery.md` AC-007). Requires internet access.
+
+## Deleting Data
+
+Every deletion first shows what it takes with it and asks. `--yes` skips the question but not the list. Without a terminal to ask on, nothing is deleted. If what it reaches changes before it is carried out — a scout created an application meanwhile — the new list is shown and asked about again.
+
+- `jobpilot-cli application delete [id]`: Deletes an application with its answers, cover letter versions, status history and browser runs. Nothing already sent to an employer is withdrawn.
+- `jobpilot-cli application cover-letter delete [id]`: Deletes an earlier cover letter version. The version an application uses cannot be deleted while it is in use.
+- `jobpilot-cli data clear activity`: Deletes every agent run and its steps.
+- `jobpilot-cli data clear jobs`: Deletes every stored job no application uses, keeping those marked not interested so they are not offered again.
+- `jobpilot-cli data delete-all`: Deletes everything JobPilot stores — the database's contents, API keys in the system keychain, the browser profile and its job board sign-ins, and the daemon's log — leaving it as a fresh install. Asks for the word `delete`. An API key supplied through an environment variable cannot be unset by JobPilot, and the confirmation says so.
 
 ## Settings
 - `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured).

@@ -12,13 +12,26 @@ import (
 )
 
 // newTestOnboardingService constructs an OnboardingService with fakes.
-// SetupEnvironment is intentionally not exercised here since it depends on
-// a concrete *sqlite.DB and real filesystem access rather than a fakeable
-// port — it's already covered indirectly by every sqlite integration test's
-// setup helper.
 func newTestOnboardingService(candRepo *fakeCandidateRepository, llm *fakeLLMProvider) *OnboardingService {
 	resumeSvc := NewResumeService(newFakeResumeRepository(), llm, &fakeDocumentConverter{})
-	return NewOnboardingService(candRepo, resumeSvc, NewSavedSearchService(newFakeSavedSearchRepository()), llm, nil)
+	return NewOnboardingService(candRepo, resumeSvc, NewSavedSearchService(newFakeSavedSearchRepository()), llm, &fakeLocalStorage{dir: "/data"})
+}
+
+type fakeLocalStorage struct {
+	dir string
+	err error
+}
+
+func (f *fakeLocalStorage) Prepare(context.Context) (string, error) { return f.dir, f.err }
+
+func TestOnboardingService_SetupEnvironment(t *testing.T) {
+	t.Parallel()
+	svc := newTestOnboardingService(newFakeCandidateRepository(), &fakeLLMProvider{})
+
+	dir, err := svc.SetupEnvironment(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "/data", dir)
 }
 
 func TestOnboardingService_ConfigureLLM(t *testing.T) {

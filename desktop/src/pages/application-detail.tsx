@@ -1,12 +1,19 @@
-import { ArrowLeft, ChevronRight, Globe, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, ChevronRight, Ellipsis, Globe, Plus, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { DeletionDialog } from "../components/deletion-dialog";
 import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
 import { StatusBadge, statusLabel } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -104,10 +111,13 @@ export function ApplicationDetail() {
           </Button>
         }
         actions={
-          <Button size="sm" variant="ghost" render={<Link to={`/jobs/${application.job_id}`} />}>
-            View job
-            <ChevronRight data-icon="inline-end" />
-          </Button>
+          <>
+            <Button size="sm" variant="ghost" render={<Link to={`/jobs/${application.job_id}`} />}>
+              View job
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+            <ApplicationMenu applicationId={id} title={job?.title} />
+          </>
         }
       />
 
@@ -146,6 +156,41 @@ export function ApplicationDetail() {
         {history && history.length > 0 && <HistorySection history={history} />}
       </article>
     </div>
+  );
+}
+
+/// ApplicationMenu holds what is done to the application rather than with it.
+function ApplicationMenu({ applicationId, title }: { applicationId: string; title?: string }) {
+  const { notify } = useToast();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const [deleting, setDeleting] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}>
+          <Ellipsis />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            Delete application…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DeletionDialog
+        target="application"
+        id={applicationId}
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={title ? `Delete the application for “${title}”?` : "Delete this application?"}
+        note="The job stays."
+        confirmLabel="Delete application"
+        onDeleted={() => {
+          notify("Application deleted.", "success");
+          navigate({ pathname: "/applications", search });
+        }}
+      />
+    </>
   );
 }
 
@@ -425,6 +470,7 @@ function CoverLetterSection({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [showEarlier, setShowEarlier] = useState(false);
+  const [deletingVersion, setDeletingVersion] = useState<CoverLetter | null>(null);
 
   const generateCoverLetter = useGenerateCoverLetter({ onError: (err) => notify(String(err)) });
   const editCoverLetter = useEditCoverLetter({
@@ -510,9 +556,14 @@ function CoverLetterSection({
             <div className="mt-3 space-y-3">
               {earlier.map((v) => (
                 <div key={v.id} className="rounded-lg border border-dashed border-border px-5 py-4">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    {v.user_edited ? "Edited" : "Written"} {relativeTime(v.created_at)}
-                  </p>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      {v.user_edited ? "Edited" : "Written"} {relativeTime(v.created_at)}
+                    </p>
+                    <Button size="xs" variant="ghost" onClick={() => setDeletingVersion(v)}>
+                      Delete
+                    </Button>
+                  </div>
                   <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground select-text">
                     {v.content}
                   </p>
@@ -522,6 +573,16 @@ function CoverLetterSection({
           )}
         </>
       )}
+      <DeletionDialog
+        target="cover_letter"
+        id={deletingVersion?.id}
+        open={deletingVersion !== null}
+        onOpenChange={(open) => !open && setDeletingVersion(null)}
+        title="Delete this earlier version?"
+        note="The version this application uses is kept."
+        confirmLabel="Delete version"
+        onDeleted={() => notify("Version deleted.", "success")}
+      />
     </DetailSection>
   );
 }

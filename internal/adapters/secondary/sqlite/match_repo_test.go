@@ -112,18 +112,27 @@ func TestMatchRepository_ListByCandidate(t *testing.T) {
 	assert.Equal(t, older.ID, matches[1].ID)
 }
 
-func TestMatchRepository_Delete(t *testing.T) {
+// The analyzed jobs a user browses leave out the ones they ruled out; the
+// job's own page still finds its match.
+func TestMatchRepository_ListByCandidate_LeavesOutJobsRuledOut(t *testing.T) {
 	t.Parallel()
-
+	ctx := context.Background()
 	db := newTestDB(t)
 	candidate := saveTestCandidate(t, db)
-	job := saveTestJob(t, db, "https://acme.example/job-1")
+	kept := saveTestJob(t, db, "https://acme.example/kept")
+	ruledOut := saveTestJob(t, db, "https://acme.example/out")
 	repo := NewMatchRepository(db.Conn())
-	match := &domain.JobMatch{JobID: job.ID, CandidateID: candidate.ID}
-	require.NoError(t, repo.Save(context.Background(), match))
+	require.NoError(t, repo.Save(ctx, &domain.JobMatch{JobID: kept.ID, CandidateID: candidate.ID}))
+	require.NoError(t, repo.Save(ctx, &domain.JobMatch{JobID: ruledOut.ID, CandidateID: candidate.ID}))
+	at := time.Now()
+	require.NoError(t, NewJobRepository(db.Conn()).SetNotInterested(ctx, ruledOut.ID, &at))
 
-	require.NoError(t, repo.Delete(context.Background(), match.ID))
+	matches, err := repo.ListByCandidate(ctx, candidate.ID)
 
-	_, err := repo.GetByID(context.Background(), match.ID)
-	assert.ErrorContains(t, err, "match not found")
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	assert.Equal(t, kept.ID, matches[0].JobID)
+	own, err := repo.GetByJobID(ctx, ruledOut.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, own)
 }

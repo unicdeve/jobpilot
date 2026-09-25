@@ -127,13 +127,3 @@ func (r *ApplicationQuestionRepository) ListByApplication(ctx context.Context, a
 
 	return questions, nil
 }
-
-// Delete removes an application question by ID.
-func (r *ApplicationQuestionRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM application_questions WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete application question: %w", err)
-	}
-	return nil
-}

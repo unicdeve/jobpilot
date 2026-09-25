@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -70,6 +71,9 @@ func (s *JobDiscoveryService) ListJobs(ctx context.Context, filter domain.JobFil
 		return nil, fmt.Errorf("%w: unknown remote type %q", ErrInvalidJobFilter, filter.RemoteType)
 	}
 	filter.SourceID = strings.TrimSpace(filter.SourceID)
+	if !filter.Interest.Valid() {
+		return nil, fmt.Errorf("%w: unknown interest %q", ErrInvalidJobFilter, filter.Interest)
+	}
 
 	switch {
 	case limit <= 0:
@@ -196,7 +200,11 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 		}
 
 		if existing != nil {
-			result.Jobs = append(result.Jobs, existing)
+			// A job the user ruled out is left out of what a search found:
+			// it is not news, and it is not wanted (spec AC-008).
+			if existing.NotInterestedAt == nil {
+				result.Jobs = append(result.Jobs, existing)
+			}
 			continue
 		}
 
@@ -262,6 +270,24 @@ func noAnswerError(outcomes []domain.SourceOutcome) error {
 		return ErrSourcesUnreachable
 	}
 	return fmt.Errorf("%w: %s", ErrAllSourcesFailed, strings.Join(reasons, "; "))
+}
+
+// SetInterest rules a job out (notInterested) or back in, and returns it.
+//
+// Ruling a job out hides it from the lists, a search's result and every
+// scout, and changes nothing else: its match and applications stay as they
+// are (docs/02_features/15_data_deletion.md D9). Both directions are
+// reversible, so neither asks for confirmation.
+func (s *JobDiscoveryService) SetInterest(ctx context.Context, id string, notInterested bool) (*domain.Job, error) {
+	var at *time.Time
+	if notInterested {
+		now := time.Now().UTC()
+		at = &now
+	}
+	if err := s.repo.SetNotInterested(ctx, id, at); err != nil {
+		return nil, err
+	}
+	return s.GetJob(ctx, id)
 }
 
 // GetJob returns one stored job by ID. Like ListJobs it reads local history

@@ -1,4 +1,4 @@
-import { Briefcase, ChevronDown, Link2, ListFilter, Search } from "lucide-react";
+import { Briefcase, ChevronDown, EyeOff, Link2, ListFilter, Search, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { FILTER_ALL, FilterSelect } from "../components/filter-select";
@@ -38,12 +38,14 @@ import {
   VIEW_FILTERS,
 } from "../lib/job-filters";
 import {
+  useApplications,
   useCandidateId,
   useImportJob,
   useInfiniteJobs,
   useJobsByID,
   useMatches,
   useRunSavedSearch,
+  useSetJobInterest,
   useSavedSearches,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
@@ -61,7 +63,8 @@ const PAGE_SIZE = 50;
 export function Jobs() {
   const hasSelection = useMatch("/jobs/:id") !== null;
   const [params, setParams] = useSearchParams();
-  const view: JobsView = params.get("view") === "analyzed" ? "analyzed" : "all";
+  const requestedView = params.get("view");
+  const view: JobsView = requestedView === "analyzed" || requestedView === "not_interested" ? requestedView : "all";
   const query = params.get("q") ?? "";
   const filters = readJobFilters(params);
 
@@ -98,19 +101,20 @@ export function Jobs() {
           controls={
             <>
               <SearchField value={query} onChange={(value) => setParam("q", value)} />
-              <Tabs value={view} onValueChange={(value) => setParam("view", value === "analyzed" ? "analyzed" : "")}>
+              <Tabs value={view} onValueChange={(value) => setParam("view", value === "all" ? "" : String(value))}>
                 <TabsList className="w-full">
                   <TabsTrigger value="all">All jobs</TabsTrigger>
                   <TabsTrigger value="analyzed">Analyzed</TabsTrigger>
+                  <TabsTrigger value="not_interested">Not interested</TabsTrigger>
                 </TabsList>
               </Tabs>
             </>
           }
         >
-          {view === "all" ? (
-            <AllJobs query={query} filters={filters} onClearFilters={clearFilters} />
-          ) : (
+          {view === "analyzed" ? (
             <AnalyzedJobs query={query} filters={filters} onClearFilters={clearFilters} />
+          ) : (
+            <AllJobs query={query} filters={filters} onClearFilters={clearFilters} notInterested={view === "not_interested"} />
           )}
         </ListPane>
       }
@@ -149,23 +153,29 @@ function SearchField({ value, onChange }: { value: string; onChange: (value: str
   );
 }
 
+/// AllJobs lists stored jobs, newest first. With notInterested it lists the
+/// jobs the user ruled out instead, most recently ruled out first, which is
+/// the one place they can be found again.
 function AllJobs({
   query,
   filters,
   onClearFilters,
+  notInterested = false,
 }: {
   query: string;
   filters: JobFilters;
   onClearFilters: () => void;
+  notInterested?: boolean;
 }) {
+  const view: JobsView = notInterested ? "not_interested" : "all";
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } = useInfiniteJobs(
-    { keywords: query, source: filters.source, remote: filters.remote, posted: filters.posted },
+    { keywords: query, source: filters.source, remote: filters.remote, posted: filters.posted, notInterested },
     PAGE_SIZE,
   );
   const { candidateId } = useCandidateId();
   const { data: matches } = useMatches(candidateId);
   const scoreByJob = useMemo(() => new Map(matches?.map((m) => [m.job_id, m.score])), [matches]);
-  const filtered = activeFilterCount(filters, "all") > 0;
+  const filtered = activeFilterCount(filters, view) > 0;
 
   if (error) return <ListNote tone="error">{error.message}</ListNote>;
   if (isPending) return <ListNote>Loading…</ListNote>;
@@ -175,6 +185,15 @@ function AllJobs({
 
   if (jobs.length === 0) {
     if (filtered) return <NoneMatch query={query} onClearFilters={onClearFilters} />;
+    if (notInterested) {
+      return (
+        <ListNote>
+          {query
+            ? `No jobs marked not interested match “${query}”.`
+            : "No jobs marked not interested. A job you rule out is listed here, and scouts pass it over."}
+        </ListNote>
+      );
+    }
     return (
       <ListNote>
         {query ? `No stored jobs match “${query}”.` : "No jobs yet. Use Discover to search your job sources, or add one by URL."}
@@ -186,6 +205,7 @@ function AllJobs({
     <>
       <CountNote filtered={filtered} onClearFilters={onClearFilters}>
         {total} {total === 1 ? "job" : "jobs"}
+        {notInterested && " marked not interested"}
         {query && ` matching “${query}”`}
       </CountNote>
       <div className="border-t border-border">
@@ -390,6 +410,55 @@ function FilterMenu({
 function JobRow({ job, score }: { job: Job; score?: number }) {
   const where = [remoteLabel(job.remote_type), jobLocation(job)].filter(Boolean).join(" · ");
   const age = relativeTime(job.posted_at) ?? relativeTime(job.discovered_at);
+  // The row is a link, which cannot hold a button, so the quick action sits
+  // beside it and shows itself while the row is hovered or focused.
+  return (
+    <div className="group relative">
+      <JobRowLink job={job} score={score} where={where} age={age} />
+      <RowInterestButton job={job} />
+    </div>
+  );
+}
+
+/// RowInterestButton rules a job out, or back in, from the list. Ruling one
+/// out leaves its applications as they are, which the notice says.
+function RowInterestButton({ job }: { job: Job }) {
+  const { notify } = useToast();
+  const { candidateId } = useCandidateId();
+  const { data: applications } = useApplications(candidateId);
+  const ruledOut = !!job.not_interested_at;
+  const setInterest = useSetJobInterest({
+    onSuccess: (updated) => {
+      if (!updated.not_interested_at) {
+        notify(`“${updated.title}” is back in your lists.`, "success");
+        return;
+      }
+      const kept = applications?.filter((a) => a.job_id === updated.id).length ?? 0;
+      notify(
+        `“${updated.title}” marked not interested.` +
+          (kept === 0 ? "" : kept === 1 ? " Its application is unchanged." : ` Its ${kept} applications are unchanged.`),
+        "success",
+      );
+    },
+    onError: (err) => notify(String(err)),
+  });
+  const label = ruledOut ? "Interested again" : "Not interested";
+  return (
+    <Button
+      size="icon-xs"
+      variant="outline"
+      aria-label={`${label}: ${job.title}`}
+      title={label}
+      disabled={setInterest.isPending}
+      onClick={() => setInterest.mutate({ id: job.id, notInterested: !ruledOut })}
+      className="absolute right-3 bottom-2 bg-popover opacity-0 shadow-xs transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+    >
+      {ruledOut ? <Undo2 /> : <EyeOff />}
+    </Button>
+  );
+}
+
+function JobRowLink({ job, score, where, age }: { job: Job; score?: number; where: string; age?: string }) {
   return (
     <ListItem to={`/jobs/${job.id}`}>
       <div className="flex items-start gap-3">

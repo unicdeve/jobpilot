@@ -160,6 +160,8 @@ export interface Job {
   discovered_at: string;
   updated_at: string;
   raw_source_reference: string;
+  /// When the user ruled the job out; absent while it is in their lists.
+  not_interested_at?: string;
 }
 
 /// JobListFilter narrows the stored jobs the daemon lists. Every field is
@@ -171,6 +173,9 @@ export interface JobListFilter {
   /// Keep jobs posted at or after this instant. A job whose source gave no
   /// posting date is judged by when it was found.
   postedSince?: Date;
+  /// Which jobs to include by whether they were ruled out. Absent lists the
+  /// ones the user has not, as every list does by default.
+  interest?: "not_interested" | "all";
 }
 
 /// JobPage is one page of stored jobs plus the total matching the same
@@ -480,4 +485,40 @@ export interface ScoutRunReport {
   verdicts: ScoutVerdict[] | null;
   ceiling_hit: boolean;
   error?: string;
+}
+
+/// DeletionTarget mirrors domain.DeletionTarget: what can be deleted. The
+/// first four name one record by ID.
+export type DeletionTarget =
+  | "job"
+  | "application"
+  | "cover_letter"
+  | "resume"
+  | "profile"
+  | "activity"
+  | "jobs"
+  | "everything";
+
+/// RecordKind mirrors domain.RecordKind, the kinds of record a deletion
+/// reports by. A kind a newer daemon adds is shown by its name.
+export type RecordKind = string;
+
+/// DeletionReach mirrors domain.DeletionReach: what a deletion takes with it,
+/// shown before it happens, and the token that carrying it out requires.
+export interface DeletionReach {
+  target: DeletionTarget;
+  id?: string;
+  deleted: Record<RecordKind, number>;
+  detached: Record<RecordKind, number>;
+  sent_applications: number;
+  kept_not_interested?: number;
+  outside?: string[];
+  environment_credentials?: string[];
+  token: string;
+}
+
+/// DeletionResult mirrors domain.DeletionResult.
+export interface DeletionResult {
+  reach: DeletionReach;
+  notices?: string[];
 }

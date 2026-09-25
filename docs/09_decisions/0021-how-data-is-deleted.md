@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted and implemented.
 
 This is decision D1 of `docs/02_features/15_data_deletion.md`, where the user chose option B: core decides what a deletion reaches, the adapter executes it, and the schema agrees.
 This ADR says what each of those means, and how the three are kept from drifting apart.
@@ -129,11 +129,17 @@ That spec is changed with the implementation.
 2. `PRAGMA foreign_keys = OFF`.
 3. Begin a transaction.
 4. For each of the eight tables, parents before children: create the new table, copy every row column by column, drop the old table, rename the new one, recreate its indexes.
-5. Run `PRAGMA foreign_key_check`; any row it reports rolls the whole migration back.
+5. Repair orphans by the rules being installed, then run `PRAGMA foreign_key_check`; any row it still reports rolls the whole migration back.
 6. Commit, then `PRAGMA foreign_keys = ON` before the connection returns to the pool.
 
 Step 6 matters as much as the rest.
 A connection returned to the pool with foreign keys off would enforce nothing for as long as it lived, which is the defect `04_database.md` records fixing once already.
+If turning them back on fails, the connection is discarded rather than returned.
+
+Step 5 exists because that same defect means an installation can already hold orphans: rows referencing one that was deleted while most connections enforced nothing.
+Rolling back on the first of them would stop the daemon starting after the upgrade, over data the user never asked to keep.
+Each orphan is instead given the effect its rule prescribes — a row whose rule is "delete" is deleted, since what it was derived from is already gone, and a "detach" reference is nulled — and the pass repeats, since deleting an orphan can orphan its own children.
+This was amended after acceptance, at the user's direction, before any code shipped.
 
 Every foreign key column on the referencing side gets an index, which most do not have today.
 SQLite finds the rows a cascade reaches by scanning the referencing table without one, so a cascade over an unindexed column slows as history grows.

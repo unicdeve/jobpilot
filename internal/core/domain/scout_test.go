@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -174,4 +175,19 @@ func TestScoutSource_IsValid(t *testing.T) {
 	assert.True(t, ScoutSourceFetch.IsValid())
 	assert.False(t, ScoutSource("").IsValid(), "a scout must say where its jobs come from")
 	assert.False(t, ScoutSource("browser").IsValid(), "a scout stops before the browser")
+}
+
+// A job the user ruled out is passed over before anything else is asked of
+// it, including whether it matches, so its reason is the user's own.
+func TestScout_PreScreenPassesOverJobsRuledOut(t *testing.T) {
+	t.Parallel()
+	ruledOut := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+
+	ok, reason := matchingScout().PreScreen(EligibilityInput{
+		Job:      &Job{ID: "job-1", Title: "Senior Go Engineer", NotInterestedAt: &ruledOut},
+		Criteria: SearchCriteria{Keywords: "Go"},
+	})
+
+	assert.False(t, ok)
+	assert.Equal(t, "you marked this job not interested", reason)
 }

@@ -75,6 +75,10 @@ func TestDB_ForeignKeysEnforcedOnEveryConnection(t *testing.T) {
 		require.NoError(t, c.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&enabled))
 		assert.Equal(t, 1, enabled, "foreign_keys off on pooled connection %d", i)
 
+		var secureDelete int
+		require.NoError(t, c.QueryRowContext(ctx, "PRAGMA secure_delete").Scan(&secureDelete))
+		assert.Equal(t, 1, secureDelete, "secure_delete off on pooled connection %d", i)
+
 		_, err := c.ExecContext(ctx,
 			`INSERT INTO resumes (id, candidate_id, name) VALUES (?, ?, ?)`,
 			"resume-"+strconv.Itoa(i), "no-such-candidate", "CV",

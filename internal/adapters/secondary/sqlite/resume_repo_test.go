@@ -77,18 +77,3 @@ func TestResumeRepository_GetByCandidateID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resumes, 2)
 }
-
-func TestResumeRepository_Delete(t *testing.T) {
-	t.Parallel()
-
-	db := newTestDB(t)
-	candidate := saveTestCandidate(t, db)
-	repo := NewResumeRepository(db.Conn())
-	resume := &domain.Resume{CandidateID: candidate.ID, Name: "resume.pdf"}
-	require.NoError(t, repo.Save(context.Background(), resume))
-
-	require.NoError(t, repo.Delete(context.Background(), resume.ID))
-
-	_, err := repo.GetByID(context.Background(), resume.ID)
-	assert.ErrorContains(t, err, "resume not found")
-}

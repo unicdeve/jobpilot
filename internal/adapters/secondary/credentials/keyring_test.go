@@ -104,9 +104,18 @@ func TestKeyringStore_EnvironmentOverrides(t *testing.T) {
 
 	// An override cannot be unset by JobPilot, so Delete says so rather
 	// than reporting a success the next connector run would disprove.
+	assert.True(t, store.FromEnvironment(adzuna))
 	err = store.Delete(ctx, adzuna)
-	require.Error(t, err)
+	require.ErrorIs(t, err, ports.ErrCredentialFromEnvironment)
 	assert.Contains(t, err.Error(), adzuna.EnvVarName())
+
+	// But the stored copy, which is JobPilot's, is gone: unsetting the
+	// variable must not bring the key back.
+	// (Built by hand: newTestStore would reset the mock keychain, and with
+	// it the evidence.)
+	withoutOverride := &KeyringStore{lookupEnv: func(string) (string, bool) { return "", false }}
+	_, err = withoutOverride.Get(ctx, adzuna)
+	assert.ErrorIs(t, err, ports.ErrCredentialNotFound)
 }
 
 func TestKeyringStore_AnEmptyOverrideIsNotAnOverride(t *testing.T) {

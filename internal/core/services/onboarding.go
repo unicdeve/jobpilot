@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/sqlite"
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
@@ -17,18 +15,18 @@ type OnboardingService struct {
 	resumeSvc     *ResumeService
 	savedSearches *SavedSearchService
 	llm           ports.LLMProvider
-	sqliteDB      *sqlite.DB
+	storage       ports.LocalStorage
 }
 
 // NewOnboardingService constructs an OnboardingService with its required
 // dependencies.
-func NewOnboardingService(candidateRepo ports.CandidateRepository, resumeSvc *ResumeService, savedSearches *SavedSearchService, llm ports.LLMProvider, db *sqlite.DB) *OnboardingService {
+func NewOnboardingService(candidateRepo ports.CandidateRepository, resumeSvc *ResumeService, savedSearches *SavedSearchService, llm ports.LLMProvider, storage ports.LocalStorage) *OnboardingService {
 	return &OnboardingService{
 		candidateRepo: candidateRepo,
 		resumeSvc:     resumeSvc,
 		savedSearches: savedSearches,
 		llm:           llm,
-		sqliteDB:      db,
+		storage:       storage,
 	}
 }
 
@@ -49,18 +47,7 @@ func (s *OnboardingService) ConfigureSearchPreferences(ctx context.Context, name
 
 // SetupEnvironment initializes the local storage and database.
 func (s *OnboardingService) SetupEnvironment(ctx context.Context) (string, error) {
-	dir, err := system.EnsureDataDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to ensure data directory: %w", err)
-	}
-
-	// In a real app, the DB connection would be managed by a lifecycle manager.
-	// For onboarding, we ensure the schema is initialized.
-	if err := s.sqliteDB.InitializeSchema(ctx); err != nil {
-		return "", fmt.Errorf("failed to initialize database schema: %w", err)
-	}
-
-	return dir, nil
+	return s.storage.Prepare(ctx)
 }
 
 // ConfigureLLM tests connectivity to the configured LLM provider.

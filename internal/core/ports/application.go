@@ -15,7 +15,6 @@ type ApplicationRepository interface {
 	// only TransitionState may change).
 	Update(ctx context.Context, application *domain.Application) error
 	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.Application, error)
-	Delete(ctx context.Context, id string) error
 
 	// TransitionState atomically moves an application from "from" to "to"
 	// and appends an ApplicationStateTransition record, in a single
@@ -46,5 +45,4 @@ type ApplicationQuestionRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.ApplicationQuestion, error)
 	Update(ctx context.Context, question *domain.ApplicationQuestion) error
 	ListByApplication(ctx context.Context, applicationID string) ([]*domain.ApplicationQuestion, error)
-	Delete(ctx context.Context, id string) error
 }

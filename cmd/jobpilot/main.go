@@ -201,6 +201,10 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),
 		candRepo, appRepo, agentRunRepo, agentEventRepo, discoverySvc, matchingSvc)
 	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
+	// "Delete all data" reaches past the database to the browser profile
+	// and the daemon's log (ADR-0021 §7).
+	deletionSvc := services.NewDeletionService(sqlite.NewDeletionStore(db), credentialSvc,
+		chrome.ProfileEraser(), system.NewDaemonLog(dataDir))
 
 	return httpapi.Services{
 		Candidates:  candRepo,
@@ -218,5 +222,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Scouts:      scoutSvc,
 		Credentials: credentialSvc,
 		Activity:    services.NewAgentActivityService(agentRunRepo, agentEventRepo),
+		Deletion:    deletionSvc,
 	}, nil
 }

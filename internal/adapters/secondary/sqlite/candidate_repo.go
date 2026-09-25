@@ -118,26 +118,6 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 	})
 }
 
-// Delete removes a candidate by ID, and their links and work
-// authorizations with them.
-//
-// The rows are deleted explicitly rather than left to ON DELETE CASCADE,
-// because SQLite enforces foreign keys only when the connection has asked
-// it to and a silently orphaned row is worse than a redundant statement.
-func (r *CandidateRepository) Delete(ctx context.Context, id string) error {
-	return r.inTransaction(ctx, func(tx *sql.Tx) error {
-		for _, table := range candidateChildTables {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE candidate_id = ?`, id); err != nil {
-				return fmt.Errorf("failed to delete candidate's %s: %w", table, err)
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM candidates WHERE id = ?`, id); err != nil {
-			return fmt.Errorf("failed to delete candidate: %w", err)
-		}
-		return nil
-	})
-}
-
 // GetFirstCandidate returns the first candidate profile in the database.
 // JobPilot currently manages a single local candidate profile per
 // installation, so this is the standard way to fetch "the" profile.
@@ -172,15 +152,6 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 		return nil, err
 	}
 	return &c, nil
-}
-
-// candidateChildTables are the tables that belong to a candidate and are
-// written, read and deleted with them.
-var candidateChildTables = []string{
-	"candidate_links",
-	"candidate_work_authorizations",
-	"candidate_skills",
-	"candidate_experiences",
 }
 
 // loadChildren fills in everything that lives in its own table.

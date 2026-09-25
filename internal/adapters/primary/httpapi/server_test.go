@@ -54,11 +54,6 @@ func (f *fakeCandidateRepository) Update(_ context.Context, c *domain.Candidate)
 	return nil
 }
 
-func (f *fakeCandidateRepository) Delete(_ context.Context, id string) error {
-	delete(f.candidates, id)
-	return nil
-}
-
 func (f *fakeCandidateRepository) GetFirstCandidate(_ context.Context) (*domain.Candidate, error) {
 	for _, c := range f.candidates {
 		return c, nil
@@ -98,11 +93,6 @@ func (f *fakeResumeRepository) GetByCandidateID(_ context.Context, candidateID s
 		}
 	}
 	return out, nil
-}
-
-func (f *fakeResumeRepository) Delete(_ context.Context, id string) error {
-	delete(f.resumes, id)
-	return nil
 }
 
 type fakeJobRepository struct {
@@ -162,6 +152,10 @@ func (f *fakeJobRepository) matching(filter domain.JobFilter) []*domain.Job {
 		if filter.RemoteType != "" && j.RemoteType != filter.RemoteType {
 			continue
 		}
+		ruledOut := j.NotInterestedAt != nil
+		if (filter.Interest == domain.JobsInterested && ruledOut) || (filter.Interest == domain.JobsNotInterested && !ruledOut) {
+			continue
+		}
 		if posted := j.PostedAt; !filter.PostedSince.IsZero() {
 			if posted.IsZero() {
 				posted = j.DiscoveredAt
@@ -187,8 +181,12 @@ func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (i
 	return len(f.matching(filter)), nil
 }
 
-func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
-	delete(f.jobs, id)
+func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
+	j, ok := f.jobs[id]
+	if !ok {
+		return fmt.Errorf("job not found: %s", id)
+	}
+	j.NotInterestedAt = at
 	return nil
 }
 
@@ -301,11 +299,6 @@ func (f *fakeMatchRepository) ListByCandidate(_ context.Context, candidateID str
 	return out, nil
 }
 
-func (f *fakeMatchRepository) Delete(_ context.Context, id string) error {
-	delete(f.matches, id)
-	return nil
-}
-
 type fakeSettingsRepository struct {
 	values map[string]string
 }
@@ -415,11 +408,6 @@ func (f *fakeApplicationRepository) ListByCandidate(_ context.Context, candidate
 	return out, nil
 }
 
-func (f *fakeApplicationRepository) Delete(_ context.Context, id string) error {
-	delete(f.applications, id)
-	return nil
-}
-
 func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicationID string, from, to domain.ApplicationState, reason string) error {
 	a, ok := f.applications[applicationID]
 	if !ok {
@@ -515,11 +503,6 @@ func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context,
 		}
 	}
 	return out, nil
-}
-
-func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
-	delete(f.questions, id)
-	return nil
 }
 
 // fakeAgentRunRepository is an in-memory ports.AgentRunRepository for
@@ -689,6 +672,8 @@ func (f *fakeCredentialStore) Delete(_ context.Context, ref domain.CredentialRef
 	delete(f.secrets, ref.String())
 	return nil
 }
+
+func (f *fakeCredentialStore) FromEnvironment(domain.CredentialRef) bool { return false }
 
 type fakeCredentialNames struct {
 	refs []domain.CredentialRef
@@ -917,13 +902,6 @@ func TestClient_ResumeLifecycle(t *testing.T) {
 	require.Contains(t, resumes[0].MarkdownContent, "Converted from",
 		"the stored markdown is what every later step reads")
 
-	require.NoError(t, client.DeleteResume(ctx, imported.ID))
-	resumes, err = client.ListResumes(ctx, "cand-1")
-	require.NoError(t, err)
-	require.Empty(t, resumes)
-
-	err = client.DeleteResume(ctx, "does-not-exist")
-	require.NoError(t, err, "delete is idempotent at the repository layer used here")
 }
 
 func TestClient_JobSearchAndImport(t *testing.T) {
@@ -1980,4 +1958,185 @@ func TestServer_SearchJobs_ReportsSourcesThatDidNotAnswer(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusServiceUnavailable, status)
 	})
+}
+
+// fakeDeletionStore holds jobs only: enough to exercise the deletion
+// routes' statuses and bodies. What a deletion reaches is DeletionService's
+// and the schema's to get right, and is tested there.
+type fakeDeletionStore struct {
+	jobs    map[string]bool
+	current map[string]bool // cover letters in use
+	deleted []string
+	// changeBeforeDelete adds a job between a preview and its deletion.
+	changeBeforeDelete bool
+	calls              int
+}
+
+func (f *fakeDeletionStore) InTransaction(_ context.Context, do func(ports.DeletionTx) error) error {
+	f.calls++
+	if f.changeBeforeDelete && f.calls == 2 {
+		f.jobs["job-added-meanwhile"] = true
+	}
+	return do(f)
+}
+
+func (f *fakeDeletionStore) Compact(context.Context, bool) error { return nil }
+
+func (f *fakeDeletionStore) Roots(_ context.Context, target domain.DeletionTarget, id string) (domain.RecordKind, []string, error) {
+	switch target {
+	case domain.DeleteJob:
+		if f.jobs[id] {
+			return domain.RecordJob, []string{id}, nil
+		}
+		return domain.RecordJob, nil, nil
+	case domain.DeleteCoverLetter:
+		return domain.RecordCoverLetter, []string{id}, nil
+	case domain.ClearJobs:
+		var ids []string
+		for id := range f.jobs {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		return domain.RecordJob, ids, nil
+	}
+	return "", nil, nil
+}
+
+func (f *fakeDeletionStore) Referencing(context.Context, domain.DeletionRule, []string) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeDeletionStore) SentApplications(context.Context, []string) (int, error) { return 0, nil }
+func (f *fakeDeletionStore) KeptNotInterested(context.Context) (int, error)          { return 0, nil }
+func (f *fakeDeletionStore) IsCurrentCoverLetter(_ context.Context, id string) (bool, error) {
+	return f.current[id], nil
+}
+func (f *fakeDeletionStore) Delete(_ context.Context, _ domain.RecordKind, ids []string) error {
+	f.deleted = append(f.deleted, ids...)
+	return nil
+}
+func (f *fakeDeletionStore) CountAll(context.Context) (map[domain.RecordKind]int, error) {
+	return map[domain.RecordKind]int{domain.RecordJob: len(f.jobs)}, nil
+}
+func (f *fakeDeletionStore) Fingerprint(context.Context) (string, error) { return "fixed", nil }
+func (f *fakeDeletionStore) DeleteAll(context.Context) error             { return nil }
+
+func deletionServer(t *testing.T, store *fakeDeletionStore) *Client {
+	t.Helper()
+	credentials := services.NewCredentialService(&fakeCredentialStore{secrets: map[string]string{}}, &fakeCredentialNames{})
+	ts := httptest.NewServer(NewHandler(Services{Deletion: services.NewDeletionService(store, credentials, nil, nil)}))
+	t.Cleanup(ts.Close)
+	_, portStr, err := net.SplitHostPort(ts.Listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+	return NewClient(port)
+}
+
+func TestServer_Deletion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("a preview's token carries out exactly that deletion", func(t *testing.T) {
+		t.Parallel()
+		store := &fakeDeletionStore{jobs: map[string]bool{"job-1": true}}
+		client := deletionServer(t, store)
+
+		reach, err := client.PreviewDeletion(ctx, domain.DeleteJob, "job-1")
+		require.NoError(t, err)
+		assert.Equal(t, 1, reach.Deleted[domain.RecordJob])
+		result, err := client.Delete(ctx, domain.DeleteJob, "job-1", reach.Token)
+
+		require.NoError(t, err)
+		assert.Equal(t, reach.Token, result.Reach.Token)
+		assert.Equal(t, []string{"job-1"}, store.deleted)
+	})
+
+	t.Run("statuses say what went wrong", func(t *testing.T) {
+		t.Parallel()
+		store := &fakeDeletionStore{jobs: map[string]bool{"job-1": true}, current: map[string]bool{"letter": true}}
+		client := deletionServer(t, store)
+
+		for _, tc := range []struct {
+			method, path string
+			want         int
+		}{
+			{http.MethodGet, "/v1/jobs/no-such-job/deletion", http.StatusNotFound},
+			{http.MethodDelete, "/v1/jobs/job-1", http.StatusBadRequest},                     // no token: never without a preview
+			{http.MethodGet, "/v1/cover-letters/letter/deletion", http.StatusConflict},       // the current letter
+			{http.MethodDelete, "/v1/jobs/job-1?token=not-the-preview", http.StatusConflict}, // a reach nobody was shown
+		} {
+			status, err := rawStatus(t, client, tc.method, tc.path, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, status, "%s %s", tc.method, tc.path)
+		}
+		assert.Empty(t, store.deleted)
+	})
+
+	t.Run("a reach that changed is refused with what it reaches now", func(t *testing.T) {
+		t.Parallel()
+		store := &fakeDeletionStore{jobs: map[string]bool{"job-1": true}, changeBeforeDelete: true}
+		client := deletionServer(t, store)
+
+		reach, err := client.PreviewDeletion(ctx, domain.ClearJobs, "")
+		require.NoError(t, err)
+		_, err = client.Delete(ctx, domain.ClearJobs, "", reach.Token)
+
+		var changed *ReachChangedError
+		require.ErrorAs(t, err, &changed)
+		assert.Equal(t, 2, changed.Reach.Deleted[domain.RecordJob], "the job added meanwhile is shown")
+		assert.Empty(t, store.deleted)
+	})
+}
+
+func TestServer_SetJobInterest(t *testing.T) {
+	client, _, source := testServer(t)
+	ctx := context.Background()
+	source.searchResult = []domain.Job{{CanonicalURL: "https://example.com/job/1", Title: "Engineer", CompanyName: "Acme"}}
+	found, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "engineer"})
+	require.NoError(t, err)
+	id := found.Jobs[0].ID
+
+	job, err := client.SetJobInterest(ctx, id, true)
+	require.NoError(t, err)
+	require.NotNil(t, job.NotInterestedAt)
+
+	listed, err := client.ListJobs(ctx, domain.JobFilter{}, 0, 0)
+	require.NoError(t, err)
+	assert.Zero(t, listed.Total)
+	ruledOut, err := client.ListJobs(ctx, domain.JobFilter{Interest: domain.JobsNotInterested}, 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, ruledOut.Total)
+
+	job, err = client.SetJobInterest(ctx, id, false)
+	require.NoError(t, err)
+	assert.Nil(t, job.NotInterestedAt)
+
+	status, err := rawStatus(t, client, http.MethodGet, "/v1/jobs?interest=maybe", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, status)
+}
+
+// A job's own page finds its match even once the job is ruled out and has
+// left the list of analyzed jobs.
+func TestServer_GetJobMatch(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+	profile := domain.Candidate{FirstName: "Grace"}
+	require.NoError(t, candRepo.Save(ctx, &profile))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://example.com/job/9", Title: "Compiler Engineer"}
+	job, err := client.ImportJob(ctx, "https://example.com/job/9")
+	require.NoError(t, err)
+
+	status, err := rawStatus(t, client, http.MethodGet, "/v1/jobs/"+job.ID+"/match", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, status, "not analyzed yet")
+
+	_, err = client.AnalyzeMatch(ctx, profile.ID, job.ID)
+	require.NoError(t, err)
+	_, err = client.SetJobInterest(ctx, job.ID, true)
+	require.NoError(t, err)
+
+	body, err := rawResponse(t, client, http.MethodGet, "/v1/jobs/"+job.ID+"/match", nil)
+	require.NoError(t, err)
+	assert.Contains(t, body, `"score":80`)
 }

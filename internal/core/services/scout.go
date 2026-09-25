@@ -298,7 +298,9 @@ func (s *ScoutService) collectJobs(
 				len(found.Jobs), found.New, len(found.Sources)-len(unanswered), len(found.Sources)))
 	}
 
-	page, err := s.finder.ListJobs(ctx, domain.JobFilter{}, maxJobsConsideredPerRun, 0)
+	// Jobs the user ruled out are read too, so each is passed over with
+	// its reason in the trail rather than silently absent from it.
+	page, err := s.finder.ListJobs(ctx, domain.JobFilter{Interest: domain.JobsAll}, maxJobsConsideredPerRun, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read stored jobs: %w", err)
 	}

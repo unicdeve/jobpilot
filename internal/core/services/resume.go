@@ -176,11 +176,3 @@ func (s *ResumeService) GetResume(ctx context.Context, id string) (*domain.Resum
 	}
 	return resume, nil
 }
-
-// DeleteResume removes a resume.
-func (s *ResumeService) DeleteResume(ctx context.Context, id string) error {
-	if err := s.resumeRepo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete resume: %w", err)
-	}
-	return nil
-}

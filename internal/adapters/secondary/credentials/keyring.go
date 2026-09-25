@@ -78,7 +78,8 @@ func (s *KeyringStore) Get(ctx context.Context, ref domain.CredentialRef) (strin
 		return "", err
 	}
 
-	if value, ok := s.lookupEnv(ref.EnvVarName()); ok && value != "" {
+	if s.FromEnvironment(ref) {
+		value, _ := s.lookupEnv(ref.EnvVarName())
 		return value, nil
 	}
 
@@ -99,18 +100,14 @@ func (s *KeyringStore) Get(ctx context.Context, ref domain.CredentialRef) (strin
 
 // Delete removes a stored secret. Deleting one that is not there succeeds.
 //
-// It cannot remove an environment override, and says so rather than
-// reporting a success the user would find untrue the next time a connector
-// ran.
+// The stored copy is removed whether or not an environment variable also
+// supplies the credential: it is JobPilot's to delete, and leaving it would
+// bring the key back the moment the variable was unset. The variable itself
+// cannot be removed, and Delete says so rather than reporting a success the
+// user would find untrue the next time a connector ran.
 func (s *KeyringStore) Delete(ctx context.Context, ref domain.CredentialRef) error {
 	if err := ref.Validate(); err != nil {
 		return err
-	}
-
-	if value, ok := s.lookupEnv(ref.EnvVarName()); ok && value != "" {
-		return fmt.Errorf(
-			"the credential for %s comes from the environment variable %s, which JobPilot cannot unset — remove it there",
-			ref, ref.EnvVarName())
 	}
 
 	err := s.withTimeout(ctx, ref, func() error {
@@ -119,7 +116,20 @@ func (s *KeyringStore) Delete(ctx context.Context, ref domain.CredentialRef) err
 	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return fmt.Errorf("failed to delete the credential for %s: %w", ref, err)
 	}
+
+	if s.FromEnvironment(ref) {
+		return fmt.Errorf(
+			"the stored credential for %s was deleted, but the environment variable %s still supplies one, which JobPilot cannot unset — remove it there: %w",
+			ref, ref.EnvVarName(), ports.ErrCredentialFromEnvironment)
+	}
 	return nil
+}
+
+// FromEnvironment reports whether ref's environment variable supplies it.
+// An exported-but-empty variable does not, as on read.
+func (s *KeyringStore) FromEnvironment(ref domain.CredentialRef) bool {
+	value, ok := s.lookupEnv(ref.EnvVarName())
+	return ok && value != ""
 }
 
 // withTimeout runs a keychain call under ctx and keychainTimeout.

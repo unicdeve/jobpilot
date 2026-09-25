@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -139,6 +140,33 @@ func (s *ChromeSession) Shutdown() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.discardLocked()
+}
+
+// ProfileEraser removes this session's Chrome profile, for "delete all
+// data" (ADR-0021 §7): the profile holds whatever job boards the user
+// signed into, which is theirs, not the browser's.
+func (s *ChromeSession) ProfileEraser() ports.LocalDataEraser {
+	return profileEraser{session: s}
+}
+
+type profileEraser struct{ session *ChromeSession }
+
+func (p profileEraser) Describe() string {
+	return "the browser profile and its job board sign-ins"
+}
+
+// Erase closes Chrome, which holds the profile open, and removes it. The
+// session's lock is held throughout, so no task can relaunch Chrome on the
+// directory while it is being removed. A missing profile is already erased.
+func (p profileEraser) Erase(context.Context) error {
+	s := p.session
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.discardLocked()
+	if err := os.RemoveAll(s.profileDir); err != nil {
+		return fmt.Errorf("failed to remove the browser profile: %w", err)
+	}
+	return nil
 }
 
 func (s *ChromeSession) launchLocked() error {

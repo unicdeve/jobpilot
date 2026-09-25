@@ -141,6 +141,10 @@ func (s Scout) PreScreen(in EligibilityInput) (bool, string) {
 	switch {
 	case in.Job == nil:
 		return false, "the job could not be read"
+	case in.Job.NotInterestedAt != nil:
+		// Before anything else about the job: the user's answer to it
+		// outranks every rule, and it saves the model call scoring would make.
+		return false, "you marked this job not interested"
 	case !in.Criteria.Matches(*in.Job):
 		return false, "does not match the saved search"
 	case in.AlreadyApplied:

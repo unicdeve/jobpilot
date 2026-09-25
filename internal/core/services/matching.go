@@ -88,7 +88,19 @@ func (s *MatchingService) AnalyzeJobForCandidate(ctx context.Context, candidateI
 	return match, nil
 }
 
-// ListMatches retrieves all match analyses for a candidate.
+// GetMatchForJob returns a job's latest match analysis, or nil if it has
+// none. Unlike ListMatches it finds one for a job the user ruled out: this
+// is the job's own page, which a ruled-out job still has.
+func (s *MatchingService) GetMatchForJob(ctx context.Context, jobID string) (*domain.JobMatch, error) {
+	match, err := s.matchRepo.GetByJobID(ctx, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the job's match: %w", err)
+	}
+	return match, nil
+}
+
+// ListMatches retrieves the match analyses for a candidate, leaving out
+// those of jobs the user ruled out.
 func (s *MatchingService) ListMatches(ctx context.Context, candidateID string) ([]*domain.JobMatch, error) {
 	return s.matchRepo.ListByCandidate(ctx, candidateID)
 }

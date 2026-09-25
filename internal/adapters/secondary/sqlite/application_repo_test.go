@@ -95,21 +95,6 @@ func TestApplicationRepository_ListByCandidate(t *testing.T) {
 	assert.Equal(t, app1.ID, apps[0].ID)
 }
 
-func TestApplicationRepository_Delete(t *testing.T) {
-	t.Parallel()
-
-	db := newTestDB(t)
-	candidate := saveTestCandidate(t, db)
-	job := saveTestJob(t, db, "https://acme.example/job-1")
-	repo := NewApplicationRepository(db.Conn())
-	app := saveTestApplication(t, db, candidate.ID, job.ID)
-
-	require.NoError(t, repo.Delete(context.Background(), app.ID))
-
-	_, err := repo.GetByID(context.Background(), app.ID)
-	assert.ErrorContains(t, err, "application not found")
-}
-
 func TestApplicationRepository_TransitionState(t *testing.T) {
 	t.Parallel()
 

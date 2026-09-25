@@ -25,6 +25,12 @@ var ErrCredentialNotFound = errors.New("no credential stored")
 // one would tell the user to fix a request that was correct.
 var ErrCredentialStoreUnavailable = errors.New("the credential store did not respond")
 
+// ErrCredentialFromEnvironment is returned by CredentialStore.Delete when,
+// having removed the stored copy, the credential is still supplied by its
+// environment variable (ADR-0019 §5), which JobPilot cannot unset. It is a
+// named error so "delete all data" can report it rather than stop at it.
+var ErrCredentialFromEnvironment = errors.New("an environment variable still supplies this credential")
+
 // CredentialStore holds API keys and other secrets outside the application
 // database, in OS-native secure storage (ADR-0019, and the "Secret storage"
 // rule in docs/01_architecture/08_security.md).
@@ -46,5 +52,10 @@ type CredentialStore interface {
 	Get(ctx context.Context, ref domain.CredentialRef) (string, error)
 	// Delete removes a stored secret. Deleting one that is not there is
 	// not an error, so that a caller cleaning up need not check first.
+	// When the ref's environment variable also supplies it, the stored
+	// copy is removed and ErrCredentialFromEnvironment returned.
 	Delete(ctx context.Context, ref domain.CredentialRef) error
+	// FromEnvironment reports whether the ref's environment variable
+	// supplies it, which no deletion can change.
+	FromEnvironment(ref domain.CredentialRef) bool
 }

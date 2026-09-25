@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,6 +73,7 @@ type fakeScoutJobFinder struct {
 	searchErr    error
 	listErr      error
 	searchedWith domain.SearchCriteria
+	listedWith   domain.JobFilter
 }
 
 func (f *fakeScoutJobFinder) Search(_ context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error) {
@@ -83,7 +85,8 @@ func (f *fakeScoutJobFinder) Search(_ context.Context, criteria domain.SearchCri
 	return &domain.DiscoveryResult{Jobs: f.jobs, Sources: f.sources}, nil
 }
 
-func (f *fakeScoutJobFinder) ListJobs(_ context.Context, _ domain.JobFilter, _, _ int) (*domain.JobPage, error) {
+func (f *fakeScoutJobFinder) ListJobs(_ context.Context, filter domain.JobFilter, _, _ int) (*domain.JobPage, error) {
+	f.listedWith = filter
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -505,4 +508,33 @@ func TestScoutService_CreateScout(t *testing.T) {
 
 		assert.ErrorContains(t, err, "needs a name")
 	})
+}
+
+// TestScoutRun_PassesOverJobsRuledOut is the spec's AC-009: a scout reads
+// the jobs the user ruled out, so it can record passing each one over, and
+// never scores one.
+func TestScoutRun_PassesOverJobsRuledOut(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ruledOut := time.Now()
+	jobs := []*domain.Job{job("job-1", "Senior Go Engineer", "Acme"), job("job-2", "Go Engineer", "Acme")}
+	jobs[1].NotInterestedAt = &ruledOut
+	f := newScoutFixture(t, jobs, map[string]int{"job-1": 90, "job-2": 99}, domain.SearchCriteria{Keywords: "Go"}, nil)
+
+	report, err := f.svc.Run(ctx, f.scout.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.JobsAll, f.finder.listedWith.Interest, "ruled-out jobs are read so they can be accounted for")
+	assert.Equal(t, 1, report.Created)
+	assert.NotContains(t, f.matcher.calls, "job-2", "a job ruled out is not worth a model call")
+
+	events, err := f.events.ListByRun(ctx, report.RunID)
+	require.NoError(t, err)
+	var passedOver []string
+	for _, event := range events {
+		if event.Action == "job_rejected" {
+			passedOver = append(passedOver, event.OutputSummary)
+		}
+	}
+	assert.Contains(t, passedOver, "you marked this job not interested")
 }

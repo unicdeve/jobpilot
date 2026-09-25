@@ -52,6 +52,21 @@ browsing history impossible without a network round trip, which
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
 
+## Deletion is previewed, then confirmed
+
+A deletion is two requests (ADR-0021 §4).
+`GET <resource>/deletion` returns what deleting the resource would take with it, by kind and count, and a token that identifies exactly that.
+`DELETE <resource>?token=<token>` carries it out, provided what it reaches is still what the token names.
+
+A `DELETE` without a token is 400: nothing is deleted that no one was shown.
+One whose reach changed since — a scout created an application for the job meanwhile — is 409, with the reach as it is now in the body, so the client can show it and ask again without another request.
+A record that does not exist is 404, and a deletion the rules refuse, such as the cover letter an application uses, is 409 with the reason.
+
+The resources are `/v1/jobs/{id}`, `/v1/applications/{id}`, `/v1/cover-letters/{id}`, `/v1/resumes/{id}`, `/v1/profile`, and three that name no record: `/v1/data/activity`, `/v1/data/jobs` and `/v1/data`, which is everything.
+
+"Not interested" is not a deletion and takes no token: `PUT /v1/jobs/{id}/interest` with `{"not_interested": true}` or `false`.
+`GET /v1/jobs` leaves the jobs so marked out unless given `interest=not_interested` or `interest=all`, and `GET /v1/matches` leaves their matches out; `GET /v1/jobs/{id}/match` returns a job's latest match whether or not it is marked, or 404 if it has none.
+
 ## Checking a dependency before using it
 
 `GET /v1/settings/llm/health` reports `{"configured": bool, "ok": bool,

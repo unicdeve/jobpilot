@@ -49,6 +49,8 @@ func (f *fakeCredentialStore) Delete(_ context.Context, ref domain.CredentialRef
 	return nil
 }
 
+func (f *fakeCredentialStore) FromEnvironment(domain.CredentialRef) bool { return false }
+
 type fakeCredentialNames struct {
 	refs  []domain.CredentialRef
 	calls *[]string

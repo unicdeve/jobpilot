@@ -56,79 +56,72 @@ func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 	return nil
 }
 
-// GetByID retrieves a job by ID.
-func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, error) {
-	query := `SELECT
-		id, canonical_url, source_id, source_job_id, title, company_name,
-		company_url, description_markdown, locations, remote_type,
-		employment_type, salary_min, salary_max, salary_currency,
-		salary_period, experience_min, experience_max, skills,
-		posted_at, expires_at, discovered_at, updated_at, raw_source_reference
-	FROM jobs WHERE id = ?`
+// jobColumns are the columns scanJob reads, in its order.
+const jobColumns = `id, canonical_url, source_id, source_job_id, title, company_name,
+	company_url, description_markdown, locations, remote_type,
+	employment_type, salary_min, salary_max, salary_currency,
+	salary_period, experience_min, experience_max, skills,
+	posted_at, expires_at, discovered_at, updated_at, raw_source_reference,
+	not_interested_at`
 
-	row := r.db.QueryRowContext(ctx, query, id)
+// rowScanner is what *sql.Row and *sql.Rows have in common.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
 
+// scanJob reads a job selected with jobColumns.
+func scanJob(row rowScanner) (*domain.Job, error) {
 	var j domain.Job
 	var locations, skills string
-
+	var notInterested sql.NullTime
 	err := row.Scan(
 		&j.ID, &j.CanonicalURL, &j.SourceID, &j.SourceJobID, &j.Title, &j.CompanyName,
 		&j.CompanyURL, &j.DescriptionMarkdown, &locations, &j.RemoteType,
 		&j.EmploymentType, &j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency,
 		&j.SalaryPeriod, &j.ExperienceMin, &j.ExperienceMax, &skills,
 		&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
+		&notInterested,
 	)
+	if err != nil {
+		return nil, err
+	}
+	j.Locations = splitStrings(locations)
+	j.Skills = splitStrings(skills)
+	if notInterested.Valid {
+		at := notInterested.Time
+		j.NotInterestedAt = &at
+	}
+	return &j, nil
+}
+
+// GetByID retrieves a job by ID.
+func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, error) {
+	j, err := scanJob(r.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("job not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
-
-	j.Locations = splitStrings(locations)
-	j.Skills = splitStrings(skills)
-
-	return &j, nil
+	return j, nil
 }
 
 // GetByCanonicalURL retrieves a job by its canonical URL, returning (nil,
 // nil) if no such job exists.
 func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*domain.Job, error) {
-	query := `SELECT
-		id, canonical_url, source_id, source_job_id, title, company_name,
-		company_url, description_markdown, locations, remote_type,
-		employment_type, salary_min, salary_max, salary_currency,
-		salary_period, experience_min, experience_max, skills,
-		posted_at, expires_at, discovered_at, updated_at, raw_source_reference
-	FROM jobs WHERE canonical_url = ?`
-
-	row := r.db.QueryRowContext(ctx, query, url)
-
-	var j domain.Job
-	var locations, skills string
-
-	err := row.Scan(
-		&j.ID, &j.CanonicalURL, &j.SourceID, &j.SourceJobID, &j.Title, &j.CompanyName,
-		&j.CompanyURL, &j.DescriptionMarkdown, &locations, &j.RemoteType,
-		&j.EmploymentType, &j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency,
-		&j.SalaryPeriod, &j.ExperienceMin, &j.ExperienceMax, &skills,
-		&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
-	)
+	j, err := scanJob(r.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs WHERE canonical_url = ?`, url))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get job by URL: %w", err)
 	}
-
-	j.Locations = splitStrings(locations)
-	j.Skills = splitStrings(skills)
-
-	return &j, nil
+	return j, nil
 }
 
 // jobFilterClause builds the WHERE clause and arguments that restrict a job
-// query to rows matching filter, or empty values when filter is empty.
+// query to rows matching filter. Even an empty filter leaves out the jobs
+// the user ruled out; see domain.JobInterest.
 //
 // Every keyword term must appear, in the title or the company name, in any order —
 // the same rule domain.SearchCriteria.Matches applies during discovery, and
@@ -158,6 +151,12 @@ func jobFilterClause(filter domain.JobFilter) (string, []any) {
 	if filter.RemoteType != "" {
 		clauses = append(clauses, "LOWER(remote_type) = ?")
 		args = append(args, filter.RemoteType)
+	}
+	switch filter.Interest {
+	case domain.JobsInterested:
+		clauses = append(clauses, "not_interested_at IS NULL")
+	case domain.JobsNotInterested:
+		clauses = append(clauses, "not_interested_at IS NOT NULL")
 	}
 	if !filter.PostedSince.IsZero() {
 		clauses = append(clauses, `julianday(CASE
@@ -190,13 +189,13 @@ func (r *JobRepository) Count(ctx context.Context, filter domain.JobFilter) (int
 func (r *JobRepository) List(ctx context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error) {
 	where, args := jobFilterClause(filter)
 
-	query := `SELECT
-		id, canonical_url, source_id, source_job_id, title, company_name,
-		company_url, description_markdown, locations, remote_type,
-		employment_type, salary_min, salary_max, salary_currency,
-		salary_period, experience_min, experience_max, skills,
-		posted_at, expires_at, discovered_at, updated_at, raw_source_reference
-	FROM jobs` + where + ` ORDER BY discovered_at DESC LIMIT ? OFFSET ?`
+	// The jobs the user ruled out are listed by when they were ruled out,
+	// the order the "Not interested" view reads them in.
+	order := ` ORDER BY discovered_at DESC`
+	if filter.Interest == domain.JobsNotInterested {
+		order = ` ORDER BY not_interested_at DESC`
+	}
+	query := `SELECT ` + jobColumns + ` FROM jobs` + where + order + ` LIMIT ? OFFSET ?`
 
 	rows, err := r.db.QueryContext(ctx, query, append(args, limit, offset)...)
 	if err != nil {
@@ -206,23 +205,11 @@ func (r *JobRepository) List(ctx context.Context, filter domain.JobFilter, limit
 
 	jobs := make([]*domain.Job, 0)
 	for rows.Next() {
-		var j domain.Job
-		var locations, skills string
-
-		err := rows.Scan(
-			&j.ID, &j.CanonicalURL, &j.SourceID, &j.SourceJobID, &j.Title, &j.CompanyName,
-			&j.CompanyURL, &j.DescriptionMarkdown, &locations, &j.RemoteType,
-			&j.EmploymentType, &j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency,
-			&j.SalaryPeriod, &j.ExperienceMin, &j.ExperienceMax, &skills,
-			&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
-		)
+		j, err := scanJob(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
-
-		j.Locations = splitStrings(locations)
-		j.Skills = splitStrings(skills)
-		jobs = append(jobs, &j)
+		jobs = append(jobs, j)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -232,12 +219,21 @@ func (r *JobRepository) List(ctx context.Context, filter domain.JobFilter, limit
 	return jobs, nil
 }
 
-// Delete removes a job by ID.
-func (r *JobRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM jobs WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
+// SetNotInterested marks a job not interested as of at, or clears the mark
+// when at is nil.
+func (r *JobRepository) SetNotInterested(ctx context.Context, id string, at *time.Time) error {
+	var value any
+	if at != nil {
+		value = *at
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE jobs SET not_interested_at = ? WHERE id = ?`, value, id)
 	if err != nil {
-		return fmt.Errorf("failed to delete job: %w", err)
+		return fmt.Errorf("failed to mark the job: %w", err)
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("failed to mark the job: %w", err)
+	} else if n == 0 {
+		return fmt.Errorf("job not found: %s", id)
 	}
 	return nil
 }

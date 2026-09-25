@@ -14,6 +14,9 @@ import type {
   ApplicationStateTransition,
   Candidate,
   CoverLetter,
+  DeletionReach,
+  DeletionResult,
+  DeletionTarget,
   DiscoveryResult,
   Job,
   JobMatch,
@@ -47,12 +50,17 @@ export type ScoutInput = Omit<Scout, "id" | "last_run_at" | "created_at" | "upda
 /// Its message is shown to the user as it is, so it reads as a sentence:
 /// the daemon's errors are Go's, which start in lower case, and String(err)
 /// would otherwise put "Error: " in front of every one.
+///
+/// reach is set on the one error that carries data: a deletion refused
+/// because what it reaches changed since it was shown (ADR-0021 §4).
 export class ApiError extends Error {
   readonly status?: number;
+  readonly reach?: DeletionReach;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, reach?: DeletionReach) {
     super(message.charAt(0).toUpperCase() + message.slice(1));
     this.status = status;
+    this.reach = reach;
   }
 
   override toString(): string {
@@ -71,7 +79,17 @@ export interface ApiClient {
 
   importResume(candidateId: string, filePath: string): Promise<Resume>;
   listResumes(candidateId: string): Promise<Resume[]>;
-  deleteResume(id: string): Promise<void>;
+  /// previewDeletion returns what deleting target would take with it, and
+  /// the token deleteRecords needs. A preview deletes nothing.
+  previewDeletion(target: DeletionTarget, id?: string): Promise<DeletionReach>;
+  /// deleteRecords carries out the deletion a preview's token names. If what
+  /// it reaches changed since, it throws an ApiError carrying the new reach.
+  deleteRecords(target: DeletionTarget, id: string | undefined, token: string): Promise<DeletionResult>;
+  /// getJobMatch returns a job's latest match, or null if it has none. It
+  /// finds one for a job ruled out, which listMatches leaves out.
+  getJobMatch(jobId: string): Promise<JobMatch | null>;
+  /// setJobInterest rules a job out, or back in. Both are reversible.
+  setJobInterest(id: string, notInterested: boolean): Promise<Job>;
   proposeProfileDraft(resumeMarkdown: string): Promise<ProfileDraft>;
 
   /// listJobs reads stored discovery history and contacts no job source,
@@ -179,17 +197,43 @@ async function request<T>(
 
   if (!res.ok) {
     let message = `daemon returned status ${res.status}`;
+    let reach: DeletionReach | undefined;
     try {
-      const errBody = (await res.json()) as { error?: string };
+      const errBody = (await res.json()) as { error?: string; reach?: DeletionReach };
       if (errBody.error) message = errBody.error;
+      reach = errBody.reach;
     } catch {
       // response wasn't JSON; keep the generic status message
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, reach);
   }
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/// deletionPath is where target lives, as the daemon's deletion routes name
+/// it (internal/adapters/primary/httpapi/deletion.go).
+function deletionPath(target: DeletionTarget, id?: string): string {
+  const one = (collection: string) => `/v1/${collection}/${encodeURIComponent(id ?? "")}`;
+  switch (target) {
+    case "job":
+      return one("jobs");
+    case "application":
+      return one("applications");
+    case "cover_letter":
+      return one("cover-letters");
+    case "resume":
+      return one("resumes");
+    case "profile":
+      return "/v1/profile";
+    case "activity":
+      return "/v1/data/activity";
+    case "jobs":
+      return "/v1/data/jobs";
+    case "everything":
+      return "/v1/data";
+  }
 }
 
 export function createApiClient(port: number): ApiClient {
@@ -217,7 +261,16 @@ export function createApiClient(port: number): ApiClient {
       }),
     listResumes: (candidateId) =>
       request<Resume[]>(baseUrl, "GET", "/v1/resumes" + q({ candidate_id: candidateId })),
-    deleteResume: (id) => request<void>(baseUrl, "DELETE", `/v1/resumes/${encodeURIComponent(id)}`),
+    previewDeletion: (target, id) => request<DeletionReach>(baseUrl, "GET", deletionPath(target, id) + "/deletion"),
+    deleteRecords: (target, id, token) =>
+      request<DeletionResult>(baseUrl, "DELETE", deletionPath(target, id) + q({ token })),
+    getJobMatch: (jobId) =>
+      request<JobMatch>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/match`).catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }),
+    setJobInterest: (id, notInterested) =>
+      request<Job>(baseUrl, "PUT", `/v1/jobs/${encodeURIComponent(id)}/interest`, { not_interested: notInterested }),
     proposeProfileDraft: (resumeMarkdown) =>
       request<ProfileDraft>(baseUrl, "POST", "/v1/resumes/propose-draft", {
         resume_markdown: resumeMarkdown,
@@ -229,6 +282,7 @@ export function createApiClient(port: number): ApiClient {
       if (filter.source) params.source = filter.source;
       if (filter.remote) params.remote = filter.remote;
       if (filter.postedSince) params.posted_since = filter.postedSince.toISOString();
+      if (filter.interest) params.interest = filter.interest;
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();

@@ -1,9 +1,10 @@
 import { cn } from "cn";
-import { Ellipsis, KeyRound, Monitor, Moon, Palette, Plus, Search, Sparkles, Sun } from "lucide-react";
+import { Database, Ellipsis, KeyRound, Monitor, Moon, Palette, Plus, Search, Sparkles, Sun } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ConfirmDialog } from "../components/confirm";
 import { CredentialSettings } from "../components/credential-settings";
+import { DataSettings } from "../components/data-settings";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { Page, Panel } from "../components/page";
 import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
@@ -36,6 +37,7 @@ const SECTIONS = [
   { key: "model", label: "AI model", icon: Sparkles },
   { key: "searches", label: "Job searches", icon: Search },
   { key: "keys", label: "API keys", icon: KeyRound },
+  { key: "data", label: "Data", icon: Database },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
@@ -73,6 +75,7 @@ export function Settings() {
             {section === "model" && <ModelSettings />}
             {section === "searches" && <JobSearchSettings />}
             {section === "keys" && <CredentialSettings />}
+            {section === "data" && <DataSettings />}
           </div>
         </div>
       </div>

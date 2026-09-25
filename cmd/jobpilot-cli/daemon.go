@@ -77,7 +77,7 @@ func spawnDaemon() error {
 	if err != nil {
 		return fmt.Errorf("resolving data directory for daemon log: %w", err)
 	}
-	logFile, err := os.OpenFile(filepath.Join(dataDir, "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(filepath.Join(dataDir, system.DaemonLogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("opening daemon log file: %w", err)
 	}

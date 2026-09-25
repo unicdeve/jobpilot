@@ -10,6 +10,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
+
 	// Registers the "sqlite" driver with database/sql.
 	_ "modernc.org/sqlite"
 )
@@ -44,12 +46,17 @@ type DB struct {
 //     time is instead written in UTC as "2006-01-02 15:04:05.999999999-07:00",
 //     which julianday() understands and which orders correctly as text.
 //     Migration 00014 rewrites the values stored before this.
+//   - secure_delete: a deleted row's content is otherwise left in the file's
+//     free pages, readable by anyone who opens it, until SQLite happens to
+//     reuse them. Deleting data has to mean it is gone (ADR-0021 §6). The
+//     driver has no shorthand for it, so it goes through _pragma.
 var connectionPragmas = url.Values{
 	"_busy_timeout": {"5000"},
 	"_journal_mode": {"WAL"},
 	"_foreign_keys": {"on"},
 	"_time_format":  {"sqlite"},
 	"_timezone":     {"UTC"},
+	"_pragma":       {"secure_delete(on)"},
 }
 
 // dsn builds the modernc.org/sqlite connection string for dbPath.
@@ -134,6 +141,19 @@ func (db *DB) InitializeSchema(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Prepare makes the data directory and brings the schema up to date
+// (ports.LocalStorage).
+func (db *DB) Prepare(ctx context.Context) (string, error) {
+	dir, err := system.EnsureDataDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to ensure data directory: %w", err)
+	}
+	if err := db.InitializeSchema(ctx); err != nil {
+		return "", fmt.Errorf("failed to initialize database schema: %w", err)
+	}
+	return dir, nil
 }
 
 // MigrateDown rolls back the most recently applied migration. It is a

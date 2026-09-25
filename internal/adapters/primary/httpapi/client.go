@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -97,12 +98,6 @@ func (c *Client) ListResumes(ctx context.Context, candidateID string) ([]*domain
 	return resumes, err
 }
 
-// DeleteResume removes a resume by ID.
-func (c *Client) DeleteResume(ctx context.Context, id string) error {
-	_, err := c.do(ctx, http.MethodDelete, "/v1/resumes/"+url.PathEscape(id), nil, nil)
-	return err
-}
-
 // ProposeProfileDraft asks the daemon's LLM to draft profile fields from
 // resumeMarkdown, for the caller to review before applying.
 func (c *Client) ProposeProfileDraft(ctx context.Context, resumeMarkdown string) (*domain.ProfileDraft, error) {
@@ -132,6 +127,9 @@ func (c *Client) ListJobs(ctx context.Context, filter domain.JobFilter, limit, o
 	}
 	if !filter.PostedSince.IsZero() {
 		query.Set("posted_since", filter.PostedSince.UTC().Format(time.RFC3339))
+	}
+	if filter.Interest != "" {
+		query.Set("interest", string(filter.Interest))
 	}
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
@@ -514,9 +512,13 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (*h
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var errBody struct {
-			Error string `json:"error"`
+			Error string                `json:"error"`
+			Reach *domain.DeletionReach `json:"reach"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil && errBody.Error != "" {
+			if errBody.Reach != nil {
+				return resp, &ReachChangedError{Message: errBody.Error, Reach: errBody.Reach}
+			}
 			return resp, fmt.Errorf("%s", errBody.Error)
 		}
 		return resp, fmt.Errorf("daemon returned status %d", resp.StatusCode)
@@ -642,4 +644,63 @@ func scoutRequestFrom(scout *domain.Scout) scoutRequest {
 		Source:                scout.Source,
 		IsEnabled:             scout.IsEnabled,
 	}
+}
+
+// ReachChangedError is a deletion the daemon refused because what it would
+// reach changed since its preview. Reach is what it reaches now, for the
+// caller to show and confirm again.
+type ReachChangedError struct {
+	Message string
+	Reach   *domain.DeletionReach
+}
+
+func (e *ReachChangedError) Error() string { return e.Message }
+
+// deletionPath is where target lives, as the daemon's deletion routes name it.
+func deletionPath(target domain.DeletionTarget, id string) (string, error) {
+	for _, route := range deletionRoutes {
+		if route.target == target {
+			return strings.Replace(route.path, "{id}", url.PathEscape(id), 1), nil
+		}
+	}
+	return "", fmt.Errorf("nothing can be deleted as %q", target)
+}
+
+// PreviewDeletion returns what deleting target would take with it, and the
+// token Delete needs.
+func (c *Client) PreviewDeletion(ctx context.Context, target domain.DeletionTarget, id string) (*domain.DeletionReach, error) {
+	path, err := deletionPath(target, id)
+	if err != nil {
+		return nil, err
+	}
+	var reach domain.DeletionReach
+	if _, err := c.do(ctx, http.MethodGet, path+"/deletion", nil, &reach); err != nil {
+		return nil, err
+	}
+	return &reach, nil
+}
+
+// Delete carries out the deletion a preview returned token for. If what it
+// reaches changed since, it returns a *ReachChangedError and deletes
+// nothing.
+func (c *Client) Delete(ctx context.Context, target domain.DeletionTarget, id, token string) (*domain.DeletionResult, error) {
+	path, err := deletionPath(target, id)
+	if err != nil {
+		return nil, err
+	}
+	var result domain.DeletionResult
+	if _, err := c.do(ctx, http.MethodDelete, path+"?"+url.Values{"token": {token}}.Encode(), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SetJobInterest rules a job out (notInterested) or back in.
+func (c *Client) SetJobInterest(ctx context.Context, id string, notInterested bool) (*domain.Job, error) {
+	var job domain.Job
+	if _, err := c.do(ctx, http.MethodPut, "/v1/jobs/"+url.PathEscape(id)+"/interest",
+		setJobInterestRequest{NotInterested: notInterested}, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
 }

@@ -1,12 +1,12 @@
 import { FileText, Upload } from "lucide-react";
 import { useState } from "react";
-import { ConfirmDialog } from "../components/confirm";
+import { DeletionDialog } from "../components/deletion-dialog";
 import { EmptyState } from "../components/empty-state";
 import { Page, Panel } from "../components/page";
 import { Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { dateTime, relativeTime } from "../lib/format";
-import { useCandidateId, useDeleteResume, useImportResume, useResumes } from "../lib/queries";
+import { useCandidateId, useImportResume, useResumes } from "../lib/queries";
 import { pickResumeFile } from "../lib/resume-file";
 import { useToast } from "../lib/toast";
 import type { Resume } from "../lib/types";
@@ -19,10 +19,6 @@ export function Resumes() {
 
   const importMutation = useImportResume({
     onSuccess: () => notify("Resume imported.", "success"),
-    onError: (err) => notify(String(err)),
-  });
-  const deleteMutation = useDeleteResume({
-    onSuccess: () => setDeleting(null),
     onError: (err) => notify(String(err)),
   });
 
@@ -86,14 +82,15 @@ export function Resumes() {
         </Panel>
       )}
 
-      <ConfirmDialog
+      <DeletionDialog
+        target="resume"
+        id={deleting?.id}
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title={`Delete “${deleting?.name}”?`}
-        description="JobPilot’s copy is removed. The original file on your computer is not touched."
+        note="Applications that used it keep everything already written from it. The original file on your computer is not touched."
         confirmLabel="Delete resume"
-        onConfirm={() => deleting && candidateId && deleteMutation.mutate({ id: deleting.id, candidateId })}
-        pending={deleteMutation.isPending}
+        onDeleted={() => notify("Resume deleted.", "success")}
       />
     </Page>
   );

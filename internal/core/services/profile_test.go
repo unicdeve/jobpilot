@@ -72,31 +72,3 @@ func TestProfileService_UpdateProfile(t *testing.T) {
 		assert.Equal(t, "updated", repo.candidates["cand-1"].Summary)
 	})
 }
-
-func TestProfileService_DeleteProfile(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		repo := newFakeCandidateRepository()
-		require.NoError(t, repo.Save(context.Background(), &domain.Candidate{ID: "cand-1"}))
-
-		svc := NewProfileService(repo)
-		err := svc.DeleteProfile(context.Background(), "cand-1")
-
-		require.NoError(t, err)
-		_, ok := repo.candidates["cand-1"]
-		assert.False(t, ok)
-	})
-
-	t.Run("repo error is wrapped", func(t *testing.T) {
-		t.Parallel()
-		repo := newFakeCandidateRepository()
-		repo.deleteErr = errors.New("boom")
-
-		svc := NewProfileService(repo)
-		err := svc.DeleteProfile(context.Background(), "cand-1")
-
-		assert.ErrorContains(t, err, "failed to delete profile")
-	})
-}

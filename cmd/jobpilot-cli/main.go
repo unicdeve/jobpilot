@@ -51,6 +51,8 @@ func main() {
 	rootCmd.AddCommand(newScoutCmd(client))
 	rootCmd.AddCommand(newCredentialCmd(client))
 	rootCmd.AddCommand(newActivityCmd(client))
+	rootCmd.AddCommand(newJobCmd(client))
+	rootCmd.AddCommand(newDataCmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
@@ -232,6 +234,9 @@ func suggestProfileFromResume(ctx context.Context, client *httpapi.Client, resum
 func newProfileCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "profile", Short: "Manage candidate profile"}
 
+	cmd.AddCommand(deleteCmd(client, "delete", "Delete your profile, resumes, matches and applications",
+		domain.DeleteProfile, func([]string) string { return "your profile" }))
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get",
 		Short: "View current profile",
@@ -370,21 +375,8 @@ func newResumeCmd(client *httpapi.Client) *cobra.Command {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "delete [id]",
-		Short: "Delete a resume by ID",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			id := args[0]
-
-			if err := client.DeleteResume(ctx, id); err != nil {
-				return fmt.Errorf("deleting resume: %w", err)
-			}
-			fmt.Println("✅ Resume deleted successfully.")
-			return nil
-		},
-	})
+	cmd.AddCommand(deleteCmd(client, "delete [id]", "Delete a resume; applications that used it keep what was made from it",
+		domain.DeleteResume, func(args []string) string { return "resume " + args[0] }))
 
 	return cmd
 }
@@ -489,7 +481,15 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("--posted-within-days must not be negative")
 			}
 
+			notInterested, err := cmd.Flags().GetBool("not-interested")
+			if err != nil {
+				return err
+			}
+
 			filter := domain.JobFilter{Keywords: keywords, SourceID: source, RemoteType: remote}
+			if notInterested {
+				filter.Interest = domain.JobsNotInterested
+			}
 			if postedWithin > 0 {
 				filter.PostedSince = time.Now().AddDate(0, 0, -postedWithin)
 			}
@@ -500,15 +500,32 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 			}
 
 			if len(page.Jobs) == 0 {
-				if offset > 0 {
+				switch {
+				case offset > 0:
 					fmt.Printf("No jobs at offset %d (%d stored in total).\n", offset, page.Total)
-					return nil
+				case notInterested:
+					fmt.Println("No jobs are marked not interested.")
+				default:
+					// Jobs ruled out are stored but not listed, so an empty list
+					// is not the same as nothing discovered.
+					ruledOut, err := client.ListJobs(ctx, domain.JobFilter{Interest: domain.JobsNotInterested}, 1, 0)
+					if err != nil {
+						return fmt.Errorf("listing jobs: %w", err)
+					}
+					if ruledOut.Total > 0 {
+						fmt.Printf("No jobs to list. %d marked not interested; --not-interested lists them.\n", ruledOut.Total)
+						return nil
+					}
+					fmt.Println("No jobs discovered yet. Run 'search run <keywords>' to discover some.")
 				}
-				fmt.Println("No jobs discovered yet. Run 'search run <keywords>' to discover some.")
 				return nil
 			}
 
-			fmt.Printf("Discovered jobs %d-%d of %d:\n", offset+1, offset+len(page.Jobs), page.Total)
+			heading := "Discovered jobs"
+			if notInterested {
+				heading = "Jobs marked not interested"
+			}
+			fmt.Printf("%s %d-%d of %d:\n", heading, offset+1, offset+len(page.Jobs), page.Total)
 			for i, j := range page.Jobs {
 				fmt.Printf("%d. %s at %s (ID: %s)\n", offset+i+1, j.Title, j.CompanyName, j.ID)
 			}
@@ -523,6 +540,7 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 	listCmd.Flags().String("source", "", "Only list jobs from this source, e.g. arbeitnow")
 	listCmd.Flags().String("remote", "", "Only list remote, hybrid or onsite jobs")
 	listCmd.Flags().Int("posted-within-days", 0, "Only list jobs posted in the last this many days")
+	listCmd.Flags().Bool("not-interested", false, "List only the jobs marked not interested, most recently first")
 	listCmd.Flags().Int("limit", 0, "Maximum jobs to list (default 50, maximum 200)")
 	listCmd.Flags().Int("offset", 0, "Skip this many jobs before listing")
 	cmd.AddCommand(listCmd)

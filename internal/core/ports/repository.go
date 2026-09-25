@@ -3,9 +3,17 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
+
+// LocalStorage is where JobPilot keeps its data on this machine.
+type LocalStorage interface {
+	// Prepare makes the data directory and brings the database schema up
+	// to date, returning the directory. It is safe to call on every start.
+	Prepare(ctx context.Context) (string, error)
+}
 
 // ErrNoCandidate is returned by CandidateRepository.GetFirstCandidate when
 // no profile exists yet. That is the ordinary state of a new installation,
@@ -17,7 +25,6 @@ type CandidateRepository interface {
 	Save(ctx context.Context, candidate *domain.Candidate) error
 	GetByID(ctx context.Context, id string) (*domain.Candidate, error)
 	Update(ctx context.Context, candidate *domain.Candidate) error
-	Delete(ctx context.Context, id string) error
 	// GetFirstCandidate returns the first candidate profile in the
 	// database. JobPilot currently manages a single local candidate
 	// profile per installation, so this is the standard way to fetch
@@ -30,7 +37,6 @@ type ResumeRepository interface {
 	Save(ctx context.Context, resume *domain.Resume) error
 	GetByID(ctx context.Context, id string) (*domain.Resume, error)
 	GetByCandidateID(ctx context.Context, candidateID string) ([]*domain.Resume, error)
-	Delete(ctx context.Context, id string) error
 }
 
 // JobRepository persists and retrieves discovered job postings.
@@ -40,7 +46,9 @@ type JobRepository interface {
 	GetByCanonicalURL(ctx context.Context, url string) (*domain.Job, error)
 	List(ctx context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error)
 	Count(ctx context.Context, filter domain.JobFilter) (int, error)
-	Delete(ctx context.Context, id string) error
+	// SetNotInterested marks a job not interested as of at, or clears the
+	// mark when at is nil.
+	SetNotInterested(ctx context.Context, id string, at *time.Time) error
 }
 
 // SavedSearchRepository persists the user's named search criteria.
@@ -73,7 +81,6 @@ type MatchRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.JobMatch, error)
 	GetByJobID(ctx context.Context, jobID string) (*domain.JobMatch, error)
 	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error)
-	Delete(ctx context.Context, id string) error
 }
 
 // SettingsRepository persists arbitrary local key/value settings.

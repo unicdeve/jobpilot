@@ -2,9 +2,9 @@
 
 ## Status
 
-Draft.
-D1 to D10 are decided (2026-09-25).
-ADR-0021 (D1) is accepted; implementation is in progress.
+Implemented.
+D1 to D10 were decided on 2026-09-25, and ADR-0021 (D1) records how deletion is built.
+Migration `00015` gives the foreign keys their rules and `00016` adds `jobs.not_interested_at`.
 
 ## Purpose
 
@@ -173,9 +173,10 @@ It is the user's answer to a job, and it is reversible: "Interested again" undoe
   The run records it as a passed-over job with the reason "you marked this job not interested", like any other eligibility decision.
 - **Applications.**
   Existing applications for the job are left as they are; see D9.
-  The action says how many there are and in what state, and links to them.
+  The action says how many there are, and the job's page links to them.
 - **Matching.**
   The user can still analyze the job from its page; ruling it out does not forbid looking at it.
+  Its match leaves the list of analyzed jobs with it, and the job's page reads its own match through `GET /v1/jobs/{id}/match`, which still finds one.
 
 ### What it is not
 
@@ -312,15 +313,20 @@ AC-G-022 asks for derived data to go with its source, and a browser run's steps 
 
 ## Where it is offered
 
-- CLI: `job delete <id>`, `application delete <id>`, `cover-letter delete <id>`, `profile delete`, `data clear activity`, `data clear jobs`, `data delete-all`.
-  Each asks for confirmation and states what goes, unless given `--yes`.
+- CLI: `job delete <id>`, `application delete <id>`, `application cover-letter delete <id>`, `resume delete <id>`, `profile delete`, `data clear activity`, `data clear jobs`, `data delete-all`.
+  Each shows what goes and asks, unless given `--yes`; "delete all data" asks for the word `delete`.
+  With no terminal to ask on, nothing is deleted.
   `job not-interested <id>` and `job interested <id>` rule a job out and back in, without confirmation, since both are reversible; `search list --not-interested` lists the jobs ruled out.
-- Desktop: a Delete action on a job, an application and a cover letter version where each is shown; profile deletion and the three bulk actions under Settings → Data.
-  "Not interested" sits beside Delete on a job's page and in the job list, and the Jobs screen gains a "Not interested" view.
-- HTTP: `DELETE` on each resource, and a read-only preview route per deletion that returns what it would reach, so both clients show the same confirmation.
-  `PUT /v1/jobs/{id}/interest` sets or clears the mark; `GET /v1/jobs` leaves marked jobs out unless asked for them.
+- Desktop: Delete in the "⋯" menu of a job's and an application's page, on each earlier cover letter version, and on a resume; profile deletion and the three bulk actions under Settings → Data.
+  One dialog serves them all: it fetches the preview as it opens and, for "delete all data", asks for the word `delete`.
+  "Not interested" sits in a job page's toolbar and on each row of the job list, shown on hover or focus, and the Jobs screen has a "Not interested" view.
+- HTTP: `GET <resource>/deletion` previews and `DELETE <resource>?token=` deletes, for `/v1/jobs/{id}`, `/v1/applications/{id}`, `/v1/cover-letters/{id}`, `/v1/resumes/{id}`, `/v1/profile`, `/v1/data/activity`, `/v1/data/jobs` and `/v1/data`.
+  A missing token is 400, a missing record 404, a refusal 409, and a reach that changed 409 with the new reach in the body.
+  `PUT /v1/jobs/{id}/interest` sets or clears the mark; `GET /v1/jobs?interest=not_interested|all` includes marked jobs, which it otherwise leaves out.
 
-## Acceptance Criteria (draft)
+## Acceptance Criteria
+
+Each is checked by a test: AC-001 to AC-003 by `TestDeletionStore_DeletesExactlyWhatThePreviewSaid` and `TestSchema_ForeignKeysAreTheDeletionRules`, AC-004 by `TestSchema_DeletionFollowsTheRules`, AC-005 by `TestDeletionService_DeleteEverything` and `TestDeletionStore_Specifics`, AC-006 by `TestDeletionStore_DeletedContentIsGoneFromDisk`, and AC-008 to AC-010 by `TestJobDiscoveryService_NotInterested`, `TestScoutRun_PassesOverJobsRuledOut` and `TestJobRepository_NotInterested`.
 
 ### AC-001
 Each operation above deletes what it names and nothing else, in one transaction.

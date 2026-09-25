@@ -84,14 +84,15 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*domain.JobMa
 	return &m, nil
 }
 
-// GetByJobID retrieves the match analysis for a job, returning (nil, nil)
-// if none exists.
+// GetByJobID retrieves the latest match analysis for a job, returning
+// (nil, nil) if none exists. Analyzing a job again adds an analysis rather
+// than replacing one, so the newest is the one that stands.
 func (r *MatchRepository) GetByJobID(ctx context.Context, jobID string) (*domain.JobMatch, error) {
 	query := `SELECT
 		id, job_id, candidate_id, score, confidence, strengths,
 		gaps, concerns, matched_skills, missing_skills,
 		rationale, model_provider, model_name, created_at
-	FROM job_matches WHERE job_id = ?`
+	FROM job_matches WHERE job_id = ? ORDER BY created_at DESC LIMIT 1`
 
 	row := r.db.QueryRowContext(ctx, query, jobID)
 
@@ -119,14 +120,19 @@ func (r *MatchRepository) GetByJobID(ctx context.Context, jobID string) (*domain
 	return &m, nil
 }
 
-// ListByCandidate returns all match analyses for a candidate, most recent
-// first.
+// ListByCandidate returns the match analyses for a candidate, most recent
+// first, leaving out those of jobs the user ruled out: this is the list of
+// analyzed jobs they browse, and a ruled-out job leaves every such list.
+// GetByJobID still finds one, for the job's own page.
 func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error) {
 	query := `SELECT
 		id, job_id, candidate_id, score, confidence, strengths,
 		gaps, concerns, matched_skills, missing_skills,
 		rationale, model_provider, model_name, created_at
-	FROM job_matches WHERE candidate_id = ? ORDER BY created_at DESC`
+	FROM job_matches
+	WHERE candidate_id = ?
+		AND job_id NOT IN (SELECT id FROM jobs WHERE not_interested_at IS NOT NULL)
+	ORDER BY created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, candidateID)
 	if err != nil {
@@ -161,14 +167,4 @@ func (r *MatchRepository) ListByCandidate(ctx context.Context, candidateID strin
 	}
 
 	return matches, nil
-}
-
-// Delete removes a match analysis by ID.
-func (r *MatchRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM job_matches WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete match: %w", err)
-	}
-	return nil
 }

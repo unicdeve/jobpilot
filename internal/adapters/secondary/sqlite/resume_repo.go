@@ -71,17 +71,6 @@ func (r *ResumeRepository) GetByID(ctx context.Context, id string) (*domain.Resu
 	return &res, nil
 }
 
-// Delete removes a resume by ID.
-func (r *ResumeRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM resumes WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete resume: %w", err)
-	}
-
-	return nil
-}
-
 // GetByCandidateID returns all resumes belonging to a candidate.
 func (r *ResumeRepository) GetByCandidateID(ctx context.Context, candidateID string) ([]*domain.Resume, error) {
 	query := `SELECT

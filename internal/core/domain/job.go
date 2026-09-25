@@ -30,6 +30,10 @@ type Job struct {
 	DiscoveredAt        time.Time `json:"discovered_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 	RawSourceReference  string    `json:"raw_source_reference"`
+	// NotInterestedAt is when the user ruled the job out, or nil. A job
+	// ruled out stays stored, leaves the lists and a search's result, and
+	// is passed over by scouts (docs/02_features/15_data_deletion.md).
+	NotInterestedAt *time.Time `json:"not_interested_at,omitempty"`
 }
 
 // SearchCriteria defines the parameters for finding jobs.
@@ -191,6 +195,33 @@ type JobFilter struct {
 	// gave no posting date is judged by when JobPilot found it, which is
 	// the same date the job list shows for it.
 	PostedSince time.Time
+	// Interest says whether jobs the user ruled out are included. The zero
+	// value leaves them out, as every list the user browses does.
+	Interest JobInterest
+}
+
+// JobInterest selects jobs by whether the user marked them not interested.
+type JobInterest string
+
+// The jobs a listing includes.
+const (
+	// JobsInterested leaves out the jobs marked not interested. It is the
+	// zero value, so a listing that says nothing hides them.
+	JobsInterested JobInterest = ""
+	// JobsNotInterested keeps only the jobs marked not interested.
+	JobsNotInterested JobInterest = "not_interested"
+	// JobsAll includes both. A scout reads jobs this way, because it must
+	// see a job it passes over to record why.
+	JobsAll JobInterest = "all"
+)
+
+// Valid reports whether i is a known selection.
+func (i JobInterest) Valid() bool {
+	switch i {
+	case JobsInterested, JobsNotInterested, JobsAll:
+		return true
+	}
+	return false
 }
 
 // JobPage is one page of stored jobs together with the total number of jobs

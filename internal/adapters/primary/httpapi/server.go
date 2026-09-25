@@ -39,6 +39,7 @@ type Services struct {
 	Scouts      *services.ScoutService
 	Credentials *services.CredentialService
 	Activity    *services.AgentActivityService
+	Deletion    *services.DeletionService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -56,13 +57,13 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("POST /v1/resumes", handleImportResume(svc.Resume))
 	mux.HandleFunc("GET /v1/resumes", handleListResumes(svc.Resume))
-	mux.HandleFunc("DELETE /v1/resumes/{id}", handleDeleteResume(svc.Resume))
 	mux.HandleFunc("POST /v1/resumes/propose-draft", handleProposeDraft(svc.Resume))
 
 	mux.HandleFunc("GET /v1/jobs", handleListJobs(svc.Discovery))
 	mux.HandleFunc("GET /v1/jobs/{id}", handleGetJob(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/search", handleSearchJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/import", handleImportJob(svc.Discovery))
+	mux.HandleFunc("PUT /v1/jobs/{id}/interest", handleSetJobInterest(svc.Discovery))
 
 	mux.HandleFunc("GET /v1/searches", handleListSavedSearches(svc.Searches))
 	mux.HandleFunc("POST /v1/searches", handleCreateSavedSearch(svc.Searches))
@@ -88,6 +89,7 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))
+	mux.HandleFunc("GET /v1/jobs/{id}/match", handleGetJobMatch(svc.Matching))
 
 	// Credentials go in and never come out (ADR-0019 §4). There is
 	// deliberately no route that returns a secret: the daemon has no
@@ -119,6 +121,8 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("POST /v1/applications/{id}/prepare-in-browser", handlePrepareInBrowser(svc.Browser, svc.Application))
 	mux.HandleFunc("GET /v1/applications/{id}/agent-runs", handleListAgentRuns(svc.Browser))
+
+	registerDeletions(mux, svc.Deletion)
 
 	return withCORS(mux)
 }
@@ -261,16 +265,6 @@ func handleListResumes(svc *services.ResumeService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, resumes)
-	}
-}
-
-func handleDeleteResume(svc *services.ResumeService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if err := svc.DeleteResume(r.Context(), id); writeErrIfAny(w, err) {
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
 
@@ -534,6 +528,7 @@ func handleListJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 			Keywords:   query.Get("q"),
 			SourceID:   query.Get("source"),
 			RemoteType: query.Get("remote"),
+			Interest:   domain.JobInterest(query.Get("interest")),
 		}
 		if raw := query.Get("posted_since"); raw != "" {
 			filter.PostedSince, err = time.Parse(time.RFC3339, raw)
@@ -635,6 +630,22 @@ func handleListMatches(svc *services.MatchingService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, matches)
+	}
+}
+
+// handleGetJobMatch serves a job's latest match, or 404 when it has none:
+// no analysis yet is an ordinary answer, which the desktop reads as null.
+func handleGetJobMatch(svc *services.MatchingService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		match, err := svc.GetMatchForJob(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		if match == nil {
+			writeError(w, http.StatusNotFound, errors.New("this job has not been analyzed"))
+			return
+		}
+		writeJSON(w, http.StatusOK, match)
 	}
 }
 

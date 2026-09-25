@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -18,7 +19,6 @@ type fakeCandidateRepository struct {
 	saveErr    error
 	getErr     error
 	updateErr  error
-	deleteErr  error
 }
 
 func newFakeCandidateRepository() *fakeCandidateRepository {
@@ -55,14 +55,6 @@ func (f *fakeCandidateRepository) Update(_ context.Context, c *domain.Candidate)
 	return nil
 }
 
-func (f *fakeCandidateRepository) Delete(_ context.Context, id string) error {
-	if f.deleteErr != nil {
-		return f.deleteErr
-	}
-	delete(f.candidates, id)
-	return nil
-}
-
 func (f *fakeCandidateRepository) GetFirstCandidate(_ context.Context) (*domain.Candidate, error) {
 	for _, c := range f.candidates {
 		return c, nil
@@ -72,11 +64,10 @@ func (f *fakeCandidateRepository) GetFirstCandidate(_ context.Context) (*domain.
 
 // fakeResumeRepository is an in-memory ports.ResumeRepository for tests.
 type fakeResumeRepository struct {
-	resumes   map[string]*domain.Resume
-	saveErr   error
-	getErr    error
-	listErr   error
-	deleteErr error
+	resumes map[string]*domain.Resume
+	saveErr error
+	getErr  error
+	listErr error
 }
 
 func newFakeResumeRepository() *fakeResumeRepository {
@@ -116,14 +107,6 @@ func (f *fakeResumeRepository) GetByCandidateID(_ context.Context, candidateID s
 		}
 	}
 	return out, nil
-}
-
-func (f *fakeResumeRepository) Delete(_ context.Context, id string) error {
-	if f.deleteErr != nil {
-		return f.deleteErr
-	}
-	delete(f.resumes, id)
-	return nil
 }
 
 // fakeJobRepository is an in-memory ports.JobRepository for tests.
@@ -197,6 +180,10 @@ func (f *fakeJobRepository) matching(filter domain.JobFilter) []*domain.Job {
 		if filter.RemoteType != "" && j.RemoteType != filter.RemoteType {
 			continue
 		}
+		ruledOut := j.NotInterestedAt != nil
+		if (filter.Interest == domain.JobsInterested && ruledOut) || (filter.Interest == domain.JobsNotInterested && !ruledOut) {
+			continue
+		}
 		if posted := j.PostedAt; !filter.PostedSince.IsZero() {
 			if posted.IsZero() {
 				posted = j.DiscoveredAt
@@ -230,9 +217,12 @@ func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (i
 	return len(f.matching(filter)), nil
 }
 
-func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
-	delete(f.jobs, id)
-	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
+func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
+	j, ok := f.jobs[id]
+	if !ok {
+		return fmt.Errorf("job not found: %s", id)
+	}
+	j.NotInterestedAt = at
 	return nil
 }
 
@@ -363,11 +353,6 @@ func (f *fakeMatchRepository) ListByCandidate(_ context.Context, candidateID str
 	return out, nil
 }
 
-func (f *fakeMatchRepository) Delete(_ context.Context, id string) error {
-	delete(f.matches, id)
-	return nil
-}
-
 // fakeSettingsRepository is an in-memory ports.SettingsRepository for tests.
 type fakeSettingsRepository struct {
 	values map[string]string
@@ -485,11 +470,6 @@ func (f *fakeApplicationRepository) ListByCandidate(_ context.Context, candidate
 	return out, nil
 }
 
-func (f *fakeApplicationRepository) Delete(_ context.Context, id string) error {
-	delete(f.applications, id)
-	return nil
-}
-
 func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicationID string, from, to domain.ApplicationState, reason string) error {
 	if f.transitionErr != nil {
 		return f.transitionErr
@@ -596,11 +576,6 @@ func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context,
 		}
 	}
 	return out, nil
-}
-
-func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
-	delete(f.questions, id)
-	return nil
 }
 
 // fakeJobSource is a ports.JobSource test double.

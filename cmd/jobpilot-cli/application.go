@@ -23,6 +23,8 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(newQuestionCmd(client))
 	cmd.AddCommand(newApplicationPrepareInBrowserCmd(client))
 	cmd.AddCommand(newApplicationAgentRunsCmd(client))
+	cmd.AddCommand(deleteCmd(client, "delete [application-id]", "Delete an application, with its answers, cover letters and history",
+		domain.DeleteApplication, func(args []string) string { return "application " + args[0] }))
 
 	return cmd
 }
@@ -264,6 +266,9 @@ func newApplicationAgentRunsCmd(client *httpapi.Client) *cobra.Command {
 
 func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "cover-letter", Short: "Manage an application's cover letter"}
+
+	cmd.AddCommand(deleteCmd(client, "delete [cover-letter-id]", "Delete a cover letter version other than the current one",
+		domain.DeleteCoverLetter, func(args []string) string { return "cover letter " + args[0] }))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "generate [application-id]",
