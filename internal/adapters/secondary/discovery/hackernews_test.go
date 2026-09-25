@@ -162,3 +162,34 @@ func TestLocationsFromFields(t *testing.T) {
 		})
 	}
 }
+
+// TestPlainHeaderField covers the company names measured in the September
+// 2026 thread, where a homepage written beside the name became part of it.
+func TestPlainHeaderField(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"Freeform ([http://freeform.co](http://freeform.co))", "Freeform"},
+		{"Snout [https://snout.com/](https://snout.com/)", "Snout"},
+		{"Cerity Partners ([https://ceritypartners.com](https://ceritypartners.com))", "Cerity Partners"},
+		{"Acme (https://acme.example)", "Acme"},
+		{"[Acme](https://acme.example)", "Acme"},
+		{"  Remote (Europe)  ", "Remote (Europe)"},
+		{"Open Education / Neon", "Open Education / Neon"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, plainHeaderField(tt.in), tt.in)
+	}
+}
+
+func TestHackerNewsSource_CompanyWrittenWithItsHomepage(t *testing.T) {
+	thread := `{"id": 3, "title": "Ask HN: Who is hiring? (September 2026)", "children": [
+		{"id": 21, "created_at": "2026-09-01T16:00:00Z",
+		 "text": "Freeform (<a href=\"http://freeform.co\">http://freeform.co</a>) | Software Engineers | Hawthorne, CA | Onsite | https://freeform.co/careers"}
+	]}`
+	source := NewHackerNewsSource(hnServer(t, hnStories, thread).URL)
+
+	jobs, err := source.Search(context.Background(), domain.SearchCriteria{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, "Freeform", jobs[0].CompanyName)
+	assert.Equal(t, "Software Engineers", jobs[0].Title)
+}

@@ -59,6 +59,7 @@ Hacker News postings follow a convention — `Company | Role | Location | Type |
 Measured on the September 2026 thread, 92% of 257 top-level comments carry at least two pipes and 80% carry both pipes and a link.
 
 A comment that does not fit is skipped rather than guessed at, and so is one with no link: a job nobody can apply to is a comment, and storing it would put an unusable row in front of the user and hand the browser worker a discussion thread to fill in.
+Header fields are read as plain text: a company written with its homepage — "Freeform (http://freeform.co)" — is stored as "Freeform", since a header field is a name, a role or a place and never a link.
 Within a posting, an ambiguous field is dropped rather than assigned. A wrong location silently hides a job from the user's filter; a missing one leaves it visible.
 Salary is deliberately not parsed from these postings: the formats vary too much to read without occasionally inventing a figure, and the raw text is kept in the description.
 

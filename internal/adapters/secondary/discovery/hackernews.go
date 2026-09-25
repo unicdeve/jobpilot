@@ -256,14 +256,36 @@ func firstNonEmptyLine(text string) string {
 	return ""
 }
 
-// splitHeaderFields splits the convention's pipe-delimited header.
+// splitHeaderFields splits the convention's pipe-delimited header, and
+// reduces each field to plain text.
 func splitHeaderFields(header string) []string {
 	parts := strings.Split(header, "|")
 	fields := make([]string, 0, len(parts))
 	for _, part := range parts {
-		fields = append(fields, strings.TrimSpace(part))
+		fields = append(fields, plainHeaderField(part))
 	}
 	return fields
+}
+
+var (
+	markdownLinkPattern = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	emptyParensPattern  = regexp.MustCompile(`\(\s*\)|\[\s*\]`)
+)
+
+// plainHeaderField is a header field as a person would write it by hand.
+//
+// The header is read after the comment's HTML has become markdown, and a
+// company written with its homepage — "Freeform (http://freeform.co)" —
+// arrives as "Freeform ([http://freeform.co](http://freeform.co))". Stored
+// as-is, that is the company's name everywhere it is shown. A header field
+// is a name, a role or a place, never a link, so links are reduced to their
+// text and URLs are dropped; the apply link is read from the whole comment,
+// not from here.
+func plainHeaderField(field string) string {
+	field = markdownLinkPattern.ReplaceAllString(field, "$1")
+	field = hnURLPattern.ReplaceAllString(field, "")
+	field = emptyParensPattern.ReplaceAllString(field, "")
+	return strings.Join(strings.Fields(field), " ")
 }
 
 func remoteTypeFromFields(fields []string) string {
