@@ -31,6 +31,7 @@ import type {
   ApplicationStateTransition,
   Candidate,
   CoverLetter,
+  DiscoveryResult,
   Job,
   JobMatch,
   JobPage,
@@ -485,7 +486,7 @@ export function useDeleteCredential(opts?: MutationOpts<void, CredentialRef>) {
 
 /// useRunSavedSearch discovers jobs with a saved search's criteria and
 /// stores whatever matched, so every cached job list is then stale.
-export function useRunSavedSearch(opts?: MutationOpts<Job[], string>) {
+export function useRunSavedSearch(opts?: MutationOpts<DiscoveryResult, string>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({

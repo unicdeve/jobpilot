@@ -252,10 +252,12 @@ func (c *Client) SetDefaultSavedSearch(ctx context.Context, id string) (*domain.
 }
 
 // RunSavedSearch runs discovery with a saved search's criteria.
-func (c *Client) RunSavedSearch(ctx context.Context, id string) ([]*domain.Job, error) {
-	var jobs []*domain.Job
-	_, err := c.do(ctx, http.MethodPost, "/v1/searches/"+url.PathEscape(id)+"/run", nil, &jobs)
-	return jobs, err
+func (c *Client) RunSavedSearch(ctx context.Context, id string) (*domain.DiscoveryResult, error) {
+	var result domain.DiscoveryResult
+	if _, err := c.do(ctx, http.MethodPost, "/v1/searches/"+url.PathEscape(id)+"/run", nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // GetJob returns one stored job by ID.
@@ -268,10 +270,12 @@ func (c *Client) GetJob(ctx context.Context, id string) (*domain.Job, error) {
 }
 
 // SearchJobs runs a job search against criteria.
-func (c *Client) SearchJobs(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
-	var jobs []*domain.Job
-	_, err := c.do(ctx, http.MethodPost, "/v1/jobs/search", criteria, &jobs)
-	return jobs, err
+func (c *Client) SearchJobs(ctx context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error) {
+	var result domain.DiscoveryResult
+	if _, err := c.do(ctx, http.MethodPost, "/v1/jobs/search", criteria, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // ImportJob imports a specific job by URL.

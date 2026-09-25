@@ -1,7 +1,7 @@
 // How stored values read on screen. Sources report these fields in their own
 // vocabulary, so anything not recognised is shown as-is rather than guessed.
 
-import type { Job } from "./types";
+import type { DiscoveryResult, Job } from "./types";
 
 export const SOURCE_LABELS: Record<string, string> = {
   arbeitnow: "Arbeitnow",
@@ -113,4 +113,29 @@ export function scoreTone(score: number): string {
   if (score >= 75) return "bg-success/12 text-success";
   if (score >= 50) return "bg-warning/14 text-warning";
   return "bg-muted text-muted-foreground";
+}
+
+/// discoverySummary is what a finished search says: how many jobs matched,
+/// how many of them are new, and which sources were not heard from, since a
+/// thin result from a source that did not answer is not a thin market.
+export function discoverySummary(result: DiscoveryResult): { message: string; complete: boolean } {
+  const found = result.jobs.length;
+  const sentences = [
+    found === 0
+      ? "No jobs matched this search."
+      : `Found ${found} matching ${found === 1 ? "job" : "jobs"}, ${result.new === 0 ? "none" : result.new} new.`,
+  ];
+
+  const unreachable = result.sources.filter((s) => s.status === "unreachable").map((s) => sourceLabel(s.source_id));
+  const failed = result.sources.filter((s) => s.status === "failed").map((s) => sourceLabel(s.source_id));
+  if (unreachable.length > 0) sentences.push(`Couldn’t reach ${joinNames(unreachable)}.`);
+  if (failed.length > 0) sentences.push(`${joinNames(failed)} answered with an error.`);
+
+  return { message: sentences.join(" "), complete: unreachable.length + failed.length === 0 };
+}
+
+/// joinNames lists names as a sentence does: "A", "A and B", "A, B and C".
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }

@@ -90,7 +90,7 @@ func (s *RemoteOKSource) Search(ctx context.Context, _ domain.SearchCriteria) ([
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach RemoteOK: %w", err)
+		return nil, fmt.Errorf("failed to reach RemoteOK: %w: %w", ports.ErrSourceUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

@@ -101,7 +101,7 @@ func (s *ArbeitnowSource) fetch(ctx context.Context) ([]domain.Job, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach arbeitnow: %w", err)
+		return nil, fmt.Errorf("failed to reach arbeitnow: %w: %w", ports.ErrSourceUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

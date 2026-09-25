@@ -1,10 +1,10 @@
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 
 interface Toast {
   id: number;
   message: string;
-  variant: "error" | "success";
+  variant: "error" | "warning" | "success";
 }
 
 interface ToastContextValue {
@@ -37,17 +37,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             className="flex items-start gap-2.5 rounded-lg bg-popover px-3.5 py-3 text-[13px] text-popover-foreground shadow-lg ring-1 ring-border select-text"
           >
-            {t.variant === "error" ? (
-              <CircleAlert className="mt-px size-4 shrink-0 text-destructive" />
-            ) : (
-              <CircleCheck className="mt-px size-4 shrink-0 text-success" />
-            )}
+            <ToastIcon variant={t.variant} />
             <span className="min-w-0 break-words">{t.message}</span>
           </div>
         ))}
       </div>
     </ToastContext.Provider>
   );
+}
+
+function ToastIcon({ variant }: { variant: Toast["variant"] }) {
+  switch (variant) {
+    case "error":
+      return <CircleAlert className="mt-px size-4 shrink-0 text-destructive" />;
+    case "warning":
+      return <TriangleAlert className="mt-px size-4 shrink-0 text-warning" />;
+    case "success":
+      return <CircleCheck className="mt-px size-4 shrink-0 text-success" />;
+  }
 }
 
 export function useToast(): ToastContextValue {

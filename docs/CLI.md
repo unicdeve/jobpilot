@@ -15,7 +15,7 @@ This document lists the currently implemented CLI commands for the JobPilot.
 - `jobpilot-cli resume delete [id]`: Deletes a specific resume by its ID.
 
 ## Job Discovery
-- `jobpilot-cli search run`: Discovers jobs using your default saved search. Pass `--saved <name-or-id>` to run a different one, or give keywords for a one-off search. Discovery always needs criteria — the public job boards do no filtering of their own, so a search with nothing set would import every posting on every board. Requires internet access.
+- `jobpilot-cli search run`: Discovers jobs using your default saved search. Pass `--saved <name-or-id>` to run a different one, or give keywords for a one-off search. Discovery always needs criteria — the public job boards do no filtering of their own, so a search with nothing set would import every posting on every board. Requires internet access. It reports how many of the jobs it found are new, and names any source that could not be reached or answered with an error, since results without that source may be incomplete. When no source can be reached it says so and exits with an error; jobs already found stay available through `search list`.
 - `jobpilot-cli search saved list`: Lists your saved searches; `*` marks the default.
 - `jobpilot-cli search saved add [name]`: Saves a named search. Criteria flags: `--keywords`, `--title`, `--location`, `--remote`, `--employment`, `--salary-min`, `--salary-max`, `--exclude-company` (repeatable). The first search you save becomes the default.
 - `jobpilot-cli search saved edit [name-or-id]`: Replaces a saved search's criteria; `--name` renames it.

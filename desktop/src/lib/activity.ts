@@ -39,6 +39,8 @@ const ACTION_LABELS: Record<string, string> = {
   skip_field: "Left a field for you",
   fill_field: "Filled a field",
   scout_started: "Started",
+  source_unreachable: "Could not reach a job source",
+  source_failed: "A job source answered with an error",
   sources_searched: "Searched the job sources",
   jobs_collected: "Collected jobs to consider",
   job_rejected: "Passed over a job",

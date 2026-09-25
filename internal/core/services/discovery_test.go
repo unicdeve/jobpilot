@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,11 +33,11 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-		assert.Equal(t, "Backend Engineer", jobs[0].Title)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, "Backend Engineer", result.Jobs[0].Title)
 		assert.Equal(t, 1, jobRepo.saveCalls)
 	})
 
@@ -48,38 +50,55 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 		source := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "New title"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "title"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "title"})
 
 		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-		assert.Equal(t, "job-1", jobs[0].ID)
-		assert.Equal(t, "Existing title", jobs[0].Title)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, "job-1", result.Jobs[0].ID)
+		assert.Equal(t, "Existing title", result.Jobs[0].Title)
 		assert.Equal(t, 1, jobRepo.saveCalls, "the duplicate should not trigger a second save")
 	})
 
-	t.Run("a failing source is skipped, others still contribute results", func(t *testing.T) {
+	t.Run("a failing source is reported, others still contribute results", func(t *testing.T) {
 		t.Parallel()
 		jobRepo := newFakeJobRepository()
 		failing := searchableSource("broken", nil, errors.New("source down"))
 		working := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}}, nil)
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{failing, working}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		require.NoError(t, err)
-		assert.Len(t, jobs, 1)
+		assert.Len(t, result.Jobs, 1)
+		assert.Equal(t, []domain.SourceOutcome{
+			{SourceID: "broken", SourceName: "broken", Status: domain.SourceStatusFailed},
+			{SourceID: "mock", SourceName: "mock", Status: domain.SourceStatusOK, Found: 1},
+		}, result.Sources, "every source is accounted for, in registration order")
 	})
 
 	t.Run("a source without CanSearch is not queried", func(t *testing.T) {
 		t.Parallel()
 		jobRepo := newFakeJobRepository()
 		noSearch := &fakeJobSource{id: "no-search", capabilities: ports.SourceCapabilities{CanSearch: false}}
-		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{noSearch}, nil, nil, nil)
+		working := searchableSource("mock", []domain.Job{{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer"}}, nil)
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{noSearch, working}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
 
 		require.NoError(t, err)
-		assert.Empty(t, jobs)
+		assert.Zero(t, noSearch.searchCalls)
+		require.Len(t, result.Sources, 1, "a source that cannot search is not an outcome either")
+		assert.Equal(t, "mock", result.Sources[0].SourceID)
+	})
+
+	t.Run("no source that can search is an error, not an empty result", func(t *testing.T) {
+		t.Parallel()
+		noSearch := &fakeJobSource{id: "no-search", capabilities: ports.SourceCapabilities{CanSearch: false}}
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{noSearch}, nil, nil, nil)
+
+		_, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+
+		require.ErrorIs(t, err, ErrNoSearchableSource)
 	})
 
 	t.Run("save error propagates", func(t *testing.T) {
@@ -543,12 +562,12 @@ func TestJobDiscoveryService_Search_FiltersSourcesThatCannot(t *testing.T) {
 		}
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
 
 		require.NoError(t, err)
-		require.Len(t, jobs, 2, "the designer should not be imported")
+		require.Len(t, result.Jobs, 2, "the designer should not be imported")
 		assert.Equal(t, 2, jobRepo.saveCalls, "only matching jobs reach storage")
-		titles := []string{jobs[0].Title, jobs[1].Title}
+		titles := []string{result.Jobs[0].Title, result.Jobs[1].Title}
 		assert.ElementsMatch(t, []string{"Backend Engineer", "Engineer, Backend (Go)"}, titles)
 	})
 
@@ -564,10 +583,10 @@ func TestJobDiscoveryService_Search_FiltersSourcesThatCannot(t *testing.T) {
 		}
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend engineer"})
 
 		require.NoError(t, err)
-		assert.Len(t, jobs, 1)
+		assert.Len(t, result.Jobs, 1)
 	})
 
 	t.Run("criteria beyond keywords are applied", func(t *testing.T) {
@@ -580,13 +599,219 @@ func TestJobDiscoveryService_Search_FiltersSourcesThatCannot(t *testing.T) {
 		}
 		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
 
-		jobs, err := svc.Search(context.Background(), domain.SearchCriteria{
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{
 			Title:             "engineer",
 			ExcludedCompanies: []string{"Globex"},
 		})
 
 		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-		assert.Equal(t, "Backend Engineer", jobs[0].Title)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, "Backend Engineer", result.Jobs[0].Title)
 	})
+}
+
+// unreachable is the error a connector returns when its source gave no
+// answer at all.
+func unreachable(source string) error {
+	return fmt.Errorf("failed to reach %s: %w: dial tcp: no such host", source, ports.ErrSourceUnreachable)
+}
+
+func TestJobDiscoveryService_Search_WhenSourcesDoNotAnswer(t *testing.T) {
+	t.Parallel()
+	criteria := domain.SearchCriteria{Keywords: "backend"}
+	backend := []domain.Job{{CanonicalURL: "https://acme.example/1", Title: "Backend Engineer"}}
+
+	t.Run("none reachable is ErrSourcesUnreachable, and nothing is written", func(t *testing.T) {
+		t.Parallel()
+		jobRepo := newFakeJobRepository()
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{
+			searchableSource("a", nil, unreachable("a")),
+			searchableSource("b", nil, unreachable("b")),
+		}, nil, nil, nil)
+
+		result, err := svc.Search(context.Background(), criteria)
+
+		require.ErrorIs(t, err, ErrSourcesUnreachable)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "needs internet access")
+		assert.Zero(t, jobRepo.saveCalls)
+	})
+
+	t.Run("none answering, one reached, is ErrAllSourcesFailed naming each", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{
+			searchableSource("a", nil, unreachable("a")),
+			searchableSource("b", nil, errors.New("b returned non-OK status: 500")),
+		}, nil, nil, nil)
+
+		_, err := svc.Search(context.Background(), criteria)
+
+		require.ErrorIs(t, err, ErrAllSourcesFailed)
+		assert.NotErrorIs(t, err, ErrSourcesUnreachable)
+		assert.EqualError(t, err, "no job source answered: a could not be reached; b answered with an error")
+	})
+
+	t.Run("some answering is a result that says which did not", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{
+			searchableSource("a", nil, unreachable("a")),
+			searchableSource("b", backend, nil),
+		}, nil, nil, nil)
+
+		result, err := svc.Search(context.Background(), criteria)
+
+		require.NoError(t, err)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, []domain.SourceOutcome{
+			{SourceID: "a", SourceName: "a", Status: domain.SourceStatusUnreachable},
+		}, result.Unanswered())
+	})
+
+	t.Run("a cancelled search is reported as cancelled, not offline", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{
+			searchableSource("a", nil, unreachable("a")),
+		}, nil, nil, nil)
+
+		_, err := svc.Search(ctx, criteria)
+
+		require.ErrorIs(t, err, context.Canceled)
+		assert.NotErrorIs(t, err, ErrSourcesUnreachable)
+	})
+
+	t.Run("a panicking source is one failed source, not a crashed daemon", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{
+			&panickingJobSource{id: "a"},
+			searchableSource("b", backend, nil),
+		}, nil, nil, nil)
+
+		result, err := svc.Search(context.Background(), criteria)
+
+		require.NoError(t, err)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, domain.SourceStatusFailed, result.Sources[0].Status)
+	})
+}
+
+func TestJobDiscoveryService_Search_CountsNewJobs(t *testing.T) {
+	t.Parallel()
+	jobRepo := newFakeJobRepository()
+	require.NoError(t, jobRepo.Save(context.Background(), &domain.Job{CanonicalURL: "https://acme.example/known", Title: "Backend Engineer"}))
+	source := searchableSource("board", []domain.Job{
+		{CanonicalURL: "https://acme.example/known", Title: "Backend Engineer"},
+		{CanonicalURL: "https://acme.example/fresh", Title: "Backend Developer"},
+		{CanonicalURL: "https://acme.example/designer", Title: "Product Designer"},
+	}, nil)
+	svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, nil, nil, nil)
+
+	result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+
+	require.NoError(t, err)
+	assert.Len(t, result.Jobs, 2, "the known job is still returned")
+	assert.Equal(t, 1, result.New, "but only the fresh one is new")
+	assert.Equal(t, 2, result.Sources[0].Found, "found counts matches, known or not")
+}
+
+// Two sources listing the same posting store it once, however their
+// answers interleave, and always from the source registered first.
+func TestJobDiscoveryService_Search_DeduplicatesAcrossSources(t *testing.T) {
+	t.Parallel()
+	shared := "https://acme.example/shared"
+	for range 20 {
+		jobRepo := newFakeJobRepository()
+		svc := NewJobDiscoveryService(jobRepo, []ports.JobSource{
+			searchableSource("first", []domain.Job{{CanonicalURL: shared, Title: "Backend Engineer", SourceID: "first"}}, nil),
+			searchableSource("second", []domain.Job{{CanonicalURL: shared, Title: "Backend Engineer", SourceID: "second"}}, nil),
+		}, nil, nil, nil)
+
+		result, err := svc.Search(context.Background(), domain.SearchCriteria{Keywords: "backend"})
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, jobRepo.saveCalls)
+		assert.Equal(t, 1, result.New)
+		stored, err := jobRepo.GetByCanonicalURL(context.Background(), shared)
+		require.NoError(t, err)
+		assert.Equal(t, "first", stored.SourceID)
+	}
+}
+
+// Sources are asked at once: a source that has not answered does not hold
+// back the others. Each source here waits until every source has been
+// asked, which only happens if they are asked concurrently — asked in turn,
+// the first would wait forever and the test would time out.
+func TestJobDiscoveryService_Search_AsksSourcesConcurrently(t *testing.T) {
+	t.Parallel()
+	const count = 3
+	var asked sync.WaitGroup
+	asked.Add(count)
+	sources := make([]ports.JobSource, 0, count)
+	for i := range count {
+		sources = append(sources, &barrierJobSource{
+			id:    fmt.Sprintf("source-%d", i),
+			asked: &asked,
+			jobs:  []domain.Job{{CanonicalURL: fmt.Sprintf("https://acme.example/%d", i), Title: "Backend Engineer"}},
+		})
+	}
+	svc := NewJobDiscoveryService(newFakeJobRepository(), sources, nil, nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := svc.Search(ctx, domain.SearchCriteria{Keywords: "backend"})
+
+	require.NoError(t, err, "a source waited for another that was never asked")
+	assert.Len(t, result.Jobs, count)
+}
+
+// barrierJobSource answers only once every source sharing its WaitGroup has
+// been asked, or fails when the context ends first.
+type barrierJobSource struct {
+	id    string
+	asked *sync.WaitGroup
+	jobs  []domain.Job
+}
+
+func (b *barrierJobSource) ID() string   { return b.id }
+func (b *barrierJobSource) Name() string { return b.id }
+func (b *barrierJobSource) Capabilities() ports.SourceCapabilities {
+	return ports.SourceCapabilities{CanSearch: true}
+}
+
+func (b *barrierJobSource) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+	b.asked.Done()
+	everyoneAsked := make(chan struct{})
+	go func() {
+		b.asked.Wait()
+		close(everyoneAsked)
+	}()
+	select {
+	case <-everyoneAsked:
+		return b.jobs, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (b *barrierJobSource) GetJob(context.Context, string) (*domain.Job, error) {
+	return nil, errors.New("not supported")
+}
+
+// panickingJobSource stands in for a connector whose parser met input it
+// did not expect.
+type panickingJobSource struct{ id string }
+
+func (p *panickingJobSource) ID() string   { return p.id }
+func (p *panickingJobSource) Name() string { return p.id }
+func (p *panickingJobSource) Capabilities() ports.SourceCapabilities {
+	return ports.SourceCapabilities{CanSearch: true}
+}
+
+func (p *panickingJobSource) Search(context.Context, domain.SearchCriteria) ([]domain.Job, error) {
+	panic("index out of range")
+}
+
+func (p *panickingJobSource) GetJob(context.Context, string) (*domain.Job, error) {
+	return nil, errors.New("not supported")
 }

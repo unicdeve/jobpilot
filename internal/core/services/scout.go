@@ -20,7 +20,7 @@ const ScoutTaskType = domain.AgentTaskScoutRun
 // capability, not to remember not to use it. JobDiscoveryService.ImportJob
 // can open a browser; it is not on this interface.
 type ScoutJobFinder interface {
-	Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error)
+	Search(ctx context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error)
 	ListJobs(ctx context.Context, filter domain.JobFilter, limit, offset int) (*domain.JobPage, error)
 }
 
@@ -283,8 +283,19 @@ func (s *ScoutService) collectJobs(
 		if err != nil {
 			return nil, fmt.Errorf("failed to search the job sources: %w", err)
 		}
+		// A source that did not answer is its own step, so a run that
+		// considered fewer jobs than usual says why.
+		unanswered := found.Unanswered()
+		for _, source := range unanswered {
+			action, output := "source_failed", "answered with an error"
+			if source.Status == domain.SourceStatusUnreachable {
+				action, output = "source_unreachable", "could not be reached"
+			}
+			s.record(ctx, runID, action, "error", source.SourceName, output)
+		}
 		s.record(ctx, runID, "sources_searched", "ok", search.Name,
-			fmt.Sprintf("%d jobs returned", len(found)))
+			fmt.Sprintf("%d jobs returned, %d new; %d of %d sources answered",
+				len(found.Jobs), found.New, len(found.Sources)-len(unanswered), len(found.Sources)))
 	}
 
 	page, err := s.finder.ListJobs(ctx, domain.JobFilter{}, maxJobsConsideredPerRun, 0)

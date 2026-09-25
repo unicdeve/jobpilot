@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -98,69 +99,169 @@ func (s *JobDiscoveryService) ListJobs(ctx context.Context, filter domain.JobFil
 // failure and point the user at configuring a search instead.
 var ErrEmptyCriteria = errors.New("a job search needs at least one criterion: neither public source filters server-side, so an unrestricted search imports every posting on the board rather than the jobs you want")
 
+// ErrSourcesUnreachable is returned when no job source could be reached at
+// all, which is what running without internet access looks like
+// (docs/02_features/04_job_discovery.md AC-006). Stored jobs are untouched
+// and remain readable through ListJobs.
+var ErrSourcesUnreachable = errors.New("could not reach any job source: finding new jobs needs internet access, and the jobs already found are still available")
+
+// ErrAllSourcesFailed is returned when no job source answered with jobs and
+// at least one of them was reached, so the internet connection does not
+// explain it. The wrapped message names each source and how it failed.
+var ErrAllSourcesFailed = errors.New("no job source answered")
+
+// ErrNoSearchableSource is returned when discovery has no source that can
+// search. It is a wiring mistake rather than something the user did, and
+// an empty result would hide it.
+var ErrNoSearchableSource = errors.New("no job source that can search is configured")
+
 // Search executes a search across all registered sources and deduplicates results.
 //
 // Criteria must narrow something: see ErrEmptyCriteria. Results from any
 // source that cannot filter server-side are filtered here, against
 // domain.SearchCriteria.Matches, so that filtering is a guarantee of
 // discovery rather than a convention each connector re-implements.
-func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
+//
+// A source that fails does not fail the search (AC-008), but it is not
+// silent either: the result reports how every source answered. Only when no
+// source answers is the search an error — ErrSourcesUnreachable when none
+// could be reached, ErrAllSourcesFailed otherwise — and nothing is written.
+func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error) {
 	if criteria.IsEmpty() {
 		return nil, ErrEmptyCriteria
 	}
 
-	allJobs := make([]domain.Job, 0)
-
-	// In a production app, these would run in parallel.
+	sources := make([]ports.JobSource, 0, len(s.sources))
 	for _, source := range s.sources {
-		capabilities := source.Capabilities()
-		if !capabilities.CanSearch {
-			continue
-		}
-
-		jobs, err := source.Search(ctx, criteria)
-		if err != nil {
-			// Log and continue with other sources: a single source failing
-			// shouldn't fail the whole search.
-			slog.WarnContext(ctx, "job source search failed", "source", source.ID(), "error", err)
-			continue
-		}
-
-		if capabilities.FiltersServerSide {
-			// The source applied the criteria itself; re-filtering here
-			// would second-guess a better-informed match.
-			allJobs = append(allJobs, jobs...)
-			continue
-		}
-		for _, job := range jobs {
-			if criteria.Matches(job) {
-				allJobs = append(allJobs, job)
-			}
+		if source.Capabilities().CanSearch {
+			sources = append(sources, source)
 		}
 	}
+	if len(sources) == 0 {
+		return nil, ErrNoSearchableSource
+	}
 
-	finalJobs := make([]*domain.Job, 0, len(allJobs))
-	for _, job := range allJobs {
-		// Deduplicate by canonical URL
+	answers := askSources(ctx, sources, criteria)
+	// A cancelled caller makes every source look unreachable; that says
+	// nothing about the sources, so it is reported as what it is.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	result := &domain.DiscoveryResult{
+		Jobs:    make([]*domain.Job, 0),
+		Sources: make([]domain.SourceOutcome, len(sources)),
+	}
+	matched := make([]domain.Job, 0)
+	answered := false
+	for i, source := range sources {
+		answer := answers[i]
+		outcome := domain.SourceOutcome{SourceID: source.ID(), SourceName: source.Name(), Status: domain.SourceStatusOK}
+		if answer.err != nil {
+			outcome.Status = domain.SourceStatusFailed
+			if errors.Is(answer.err, ports.ErrSourceUnreachable) {
+				outcome.Status = domain.SourceStatusUnreachable
+			}
+			slog.WarnContext(ctx, "job source search failed", "source", source.ID(), "status", outcome.Status, "error", answer.err)
+			result.Sources[i] = outcome
+			continue
+		}
+		answered = true
+
+		jobs := answer.jobs
+		if !source.Capabilities().FiltersServerSide {
+			// Filtered here, not trusted: see FiltersServerSide.
+			jobs = make([]domain.Job, 0, len(answer.jobs))
+			for _, job := range answer.jobs {
+				if criteria.Matches(job) {
+					jobs = append(jobs, job)
+				}
+			}
+		}
+		outcome.Found = len(jobs)
+		result.Sources[i] = outcome
+		matched = append(matched, jobs...)
+	}
+	if !answered {
+		return nil, noAnswerError(result.Sources)
+	}
+
+	// Stored one at a time, in the order the sources are registered, so a
+	// posting two sources both list is stored once and by the same source
+	// on every run.
+	for _, job := range matched {
 		existing, err := s.repo.GetByCanonicalURL(ctx, job.CanonicalURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check for duplicate job: %w", err)
 		}
 
 		if existing != nil {
-			finalJobs = append(finalJobs, existing)
+			result.Jobs = append(result.Jobs, existing)
 			continue
 		}
 
-		// New job, save it
 		jobCopy := job
 		if err := s.repo.Save(ctx, &jobCopy); err != nil {
 			return nil, fmt.Errorf("failed to save discovered job: %w", err)
 		}
-		finalJobs = append(finalJobs, &jobCopy)
+		result.Jobs = append(result.Jobs, &jobCopy)
+		result.New++
 	}
 
-	return finalJobs, nil
+	return result, nil
+}
+
+// sourceAnswer is what one source returned to a search.
+type sourceAnswer struct {
+	jobs []domain.Job
+	err  error
+}
+
+// askSources searches every source at once and returns their answers in the
+// sources' order.
+//
+// Concurrently because a source that does not answer holds the search for
+// its whole timeout: asked in turn, the five public sources could keep a
+// user waiting 100 seconds to learn they are offline, where at once it is
+// the slowest timeout alone.
+func askSources(ctx context.Context, sources []ports.JobSource, criteria domain.SearchCriteria) []sourceAnswer {
+	answers := make([]sourceAnswer, len(sources))
+	var wg sync.WaitGroup
+	for i, source := range sources {
+		wg.Go(func() {
+			// A connector parses what an external API sent it. A panic in
+			// that code is one failed source, not a crashed daemon: net/http
+			// recovers a panicking handler but not a goroutine it started.
+			defer func() {
+				if r := recover(); r != nil {
+					answers[i] = sourceAnswer{err: fmt.Errorf("source %s panicked: %v", source.ID(), r)}
+				}
+			}()
+			jobs, err := source.Search(ctx, criteria)
+			answers[i] = sourceAnswer{jobs: jobs, err: err}
+		})
+	}
+	wg.Wait()
+	return answers
+}
+
+// noAnswerError is the error for a search no source answered, which is
+// ErrSourcesUnreachable when none of them could be reached.
+func noAnswerError(outcomes []domain.SourceOutcome) error {
+	reasons := make([]string, 0, len(outcomes))
+	allUnreachable := true
+	for _, outcome := range outcomes {
+		if outcome.Status == domain.SourceStatusUnreachable {
+			reasons = append(reasons, outcome.SourceName+" could not be reached")
+			continue
+		}
+		allUnreachable = false
+		reasons = append(reasons, outcome.SourceName+" answered with an error")
+	}
+	if allUnreachable {
+		return ErrSourcesUnreachable
+	}
+	return fmt.Errorf("%w: %s", ErrAllSourcesFailed, strings.Join(reasons, "; "))
 }
 
 // GetJob returns one stored job by ID. Like ListJobs it reads local history

@@ -114,6 +114,14 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   screen re-ran a live search just to show a list. Both now read stored
   history instead.
 
+- Source failures and being offline (`docs/02_features/04_job_discovery.md` AC-006, AC-008): a search reports how every source answered, in a `{jobs, new, sources}` result, instead of logging a failing source and carrying on.
+  Before, an offline search failed at all five sources, logged each, and told the user it had found 0 jobs.
+  Connectors now mark a source that gave no answer at all with `ports.ErrSourceUnreachable`; when every source is unreachable the search fails with a message that says finding new jobs needs internet access (503), and when every source failed with at least one reached it names each (502).
+  Some sources failing is still a result, and the CLI, the desktop's Discover menu (a warning toast) and a Scout's trail (`source_unreachable` and `source_failed` steps) each name them.
+  What a source said is logged and never returned, since a transport error carries its URL and a keyed source's URL carries its key.
+  Sources are asked at once, so a search that cannot reach them fails after the slowest timeout (30 seconds) rather than after all of them in turn (100); a connector that panics is one failed source rather than a crashed daemon.
+  A search also counts the jobs that are new to it, so a repeated search no longer reads as having found everything again.
+
 - Saved searches (`docs/02_features/04_job_discovery.md` AC-001,
   `docs/02_features/13_settings.md`): named sets of criteria the user keeps
   and picks between, one of them the default. Stored in `saved_searches`

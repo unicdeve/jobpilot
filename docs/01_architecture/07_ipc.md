@@ -27,14 +27,20 @@ external source and reading local history are different operations with
 different failure modes, so they are different endpoints.
 
 - `POST /v1/jobs/search` queries every registered job source, stores what it
-  finds, and returns it. It needs internet access and it writes.
+  finds, and returns it in a `{"jobs": [...], "new": N, "sources": [...]}`
+  envelope, where `sources` says how each source answered (`ok`,
+  `unreachable` or `failed`) and `new` counts the jobs not stored before. It
+  needs internet access and it writes.
 - `GET /v1/jobs` returns jobs already stored, paginated (`limit`, `offset`)
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
 
 `POST /v1/jobs/search` rejects empty criteria with 400 rather than importing
-every posting both boards return. Saved searches live under `/v1/searches`
+every posting both boards return.
+A search that some sources did not answer is still a 200, naming them.
+One that no source answered is 503 when none could be reached, which is what
+being offline looks like, and 502 when at least one was reached and failed. Saved searches live under `/v1/searches`
 (list, create, get, update, delete, and `POST /v1/searches/{id}/default`),
 and `POST /v1/searches/{id}/run` discovers using a saved search's criteria.
 That last one exists so no client has to read a search, hold its criteria and

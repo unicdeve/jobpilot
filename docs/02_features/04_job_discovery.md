@@ -104,6 +104,11 @@ Duplicate jobs are not created repeatedly for the same canonical job.
 ### AC-006
 When internet access is unavailable, discovery fails clearly without corrupting existing history.
 
+Discovery tells being offline apart from a broken source.
+A connector marks a source that gave no answer at all as unreachable (`docs/04_connectors/00_connector_sdk.md`), and when every source is unreachable the search fails with a message saying that finding new jobs needs internet access and that the jobs already found are still available.
+It writes nothing in that case: `POST /v1/jobs/search` and `POST /v1/searches/{id}/run` answer 503.
+Before this, each failing source was only logged, so an offline search reported "0 jobs found" as if the market were empty.
+
 Already-discovered jobs stay readable in that state: `GET /v1/jobs` (the
 desktop Jobs screen and `jobpilot-cli search list`) reads stored history
 only and contacts no source. Searching for *new* jobs is the operation that
@@ -128,3 +133,12 @@ job title on fails clearly rather than saving a placeholder job record.
 
 ### AC-008
 Source failures do not prevent successful results from other sources.
+
+They are not silent either.
+A search returns how every source answered alongside its jobs, and the CLI, the desktop's Discover menu and a Scout's trail each name the sources that could not be reached or answered with an error, because a result missing a source may be incomplete.
+Only when no source answers is the search an error: 503 when none could be reached, 502 when one was reached and failed, naming each.
+
+Sources are asked at once rather than in turn.
+Their timeouts run up to 30 seconds each, so asked in turn the five public sources could keep a user waiting 100 seconds to learn they were offline.
+
+A search also reports how many of its jobs are new, since a repeated search returns the jobs it found before as well.

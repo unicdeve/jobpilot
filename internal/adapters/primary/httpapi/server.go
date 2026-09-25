@@ -418,11 +418,29 @@ func handleRunSavedSearch(searches *services.SavedSearchService, discovery *serv
 			return
 		}
 
-		jobs, err := discovery.Search(r.Context(), search.Criteria)
-		if writeErrIfAny(w, err) {
+		result, err := discovery.Search(r.Context(), search.Criteria)
+		if err != nil {
+			writeError(w, searchStatus(err), err)
 			return
 		}
-		writeJSON(w, http.StatusOK, jobs)
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+// searchStatus is the HTTP status for a discovery error. No source reached
+// is the daemon's upstream being unavailable, and every source failing
+// having been reached is a bad gateway, so neither reads as JobPilot
+// itself failing.
+func searchStatus(err error) int {
+	switch {
+	case errors.Is(err, services.ErrEmptyCriteria):
+		return http.StatusBadRequest
+	case errors.Is(err, services.ErrSourcesUnreachable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, services.ErrAllSourcesFailed):
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
 	}
 }
 
@@ -552,15 +570,12 @@ func handleSearchJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 			return
 		}
 
-		jobs, err := svc.Search(r.Context(), criteria)
-		if errors.Is(err, services.ErrEmptyCriteria) {
-			writeError(w, http.StatusBadRequest, err)
+		result, err := svc.Search(r.Context(), criteria)
+		if err != nil {
+			writeError(w, searchStatus(err), err)
 			return
 		}
-		if writeErrIfAny(w, err) {
-			return
-		}
-		writeJSON(w, http.StatusOK, jobs)
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

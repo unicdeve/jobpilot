@@ -131,7 +131,7 @@ func (s *HackerNewsSource) latestHiringThread(ctx context.Context) (string, erro
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to reach Hacker News: %w", err)
+		return "", fmt.Errorf("failed to reach Hacker News: %w: %w", ports.ErrSourceUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -170,7 +170,7 @@ func (s *HackerNewsSource) fetchItem(ctx context.Context, id string) (*hnItem, e
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach Hacker News: %w", err)
+		return nil, fmt.Errorf("failed to reach Hacker News: %w: %w", ports.ErrSourceUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

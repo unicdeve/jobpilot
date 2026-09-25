@@ -14,6 +14,7 @@ import type {
   ApplicationStateTransition,
   Candidate,
   CoverLetter,
+  DiscoveryResult,
   Job,
   JobMatch,
   JobListFilter,
@@ -59,7 +60,7 @@ export interface ApiClient {
   /// default page size.
   listJobs(filter: JobListFilter, limit: number, offset: number): Promise<JobPage>;
   getJob(id: string): Promise<Job>;
-  searchJobs(criteria: SearchCriteria): Promise<Job[]>;
+  searchJobs(criteria: SearchCriteria): Promise<DiscoveryResult>;
 
   listSavedSearches(): Promise<SavedSearch[]>;
   createSavedSearch(name: string, criteria: SearchCriteria): Promise<SavedSearch>;
@@ -75,7 +76,7 @@ export interface ApiClient {
   /// runSavedSearch discovers jobs using a saved search's criteria. The
   /// daemon reads the criteria itself, so no caller has to hold them and
   /// post them back — the shape that allowed an empty search to be sent.
-  runSavedSearch(id: string): Promise<Job[]>;
+  runSavedSearch(id: string): Promise<DiscoveryResult>;
   importJob(url: string): Promise<Job>;
 
   listScouts(): Promise<Scout[]>;
@@ -208,7 +209,7 @@ export function createApiClient(port: number): ApiClient {
       return request<JobPage>(baseUrl, "GET", "/v1/jobs" + (query ? `?${query}` : ""));
     },
     getJob: (id) => request<Job>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
-    searchJobs: (criteria) => request<Job[]>(baseUrl, "POST", "/v1/jobs/search", criteria),
+    searchJobs: (criteria) => request<DiscoveryResult>(baseUrl, "POST", "/v1/jobs/search", criteria),
 
     listSavedSearches: () => request<SavedSearch[]>(baseUrl, "GET", "/v1/searches"),
     createSavedSearch: (name, criteria) =>
@@ -258,7 +259,7 @@ export function createApiClient(port: number): ApiClient {
     setDefaultSavedSearch: (id) =>
       request<SavedSearch>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
     runSavedSearch: (id) =>
-      request<Job[]>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
+      request<DiscoveryResult>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
     importJob: (url) => request<Job>(baseUrl, "POST", "/v1/jobs/import", { url }),
 
     analyzeMatch: (candidateId, jobId) =>

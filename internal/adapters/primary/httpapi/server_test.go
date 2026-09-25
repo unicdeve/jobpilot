@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -336,18 +337,35 @@ func (f *fakeLLMProvider) TestConnectivity(_ context.Context) error { return nil
 func (f *fakeLLMProvider) Provider() string { return "fake" }
 
 type fakeJobSource struct {
+	// id and name default to "fake" and "Fake Source".
+	id, name     string
 	searchResult []domain.Job
+	searchErr    error
 	getJobResult *domain.Job
 	searchCalls  int
 }
 
-func (f *fakeJobSource) ID() string   { return "fake" }
-func (f *fakeJobSource) Name() string { return "Fake Source" }
+func (f *fakeJobSource) ID() string {
+	if f.id == "" {
+		return "fake"
+	}
+	return f.id
+}
+
+func (f *fakeJobSource) Name() string {
+	if f.name == "" {
+		return "Fake Source"
+	}
+	return f.name
+}
 func (f *fakeJobSource) Capabilities() ports.SourceCapabilities {
 	return ports.SourceCapabilities{CanSearch: true, CanGetJob: true}
 }
 func (f *fakeJobSource) Search(_ context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
 	f.searchCalls++
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
 	return f.searchResult, nil
 }
 func (f *fakeJobSource) GetJob(_ context.Context, _ string) (*domain.Job, error) {
@@ -913,10 +931,17 @@ func TestClient_JobSearchAndImport(t *testing.T) {
 	ctx := context.Background()
 
 	source.searchResult = []domain.Job{{CanonicalURL: "https://example.com/job/1", Title: "Engineer", CompanyName: "Acme"}}
-	jobs, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "engineer"})
+	result, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "engineer"})
 	require.NoError(t, err)
-	require.Len(t, jobs, 1)
-	require.Equal(t, "Engineer", jobs[0].Title)
+	require.Len(t, result.Jobs, 1)
+	require.Equal(t, "Engineer", result.Jobs[0].Title)
+	assert.Equal(t, 1, result.New)
+	assert.Equal(t, []domain.SourceOutcome{{SourceID: "fake", SourceName: "Fake Source", Status: domain.SourceStatusOK, Found: 1}}, result.Sources)
+
+	again, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "engineer"})
+	require.NoError(t, err)
+	require.Len(t, again.Jobs, 1)
+	assert.Zero(t, again.New, "a job already stored is not new")
 
 	source.getJobResult = &domain.Job{CanonicalURL: "https://example.com/job/2", Title: "Designer", CompanyName: "Acme"}
 	job, err := client.ImportJob(ctx, "https://example.com/job/2")
@@ -1319,9 +1344,9 @@ func TestClient_GetJob(t *testing.T) {
 	}
 	discovered, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "backend"})
 	require.NoError(t, err)
-	require.Len(t, discovered, 1)
+	require.Len(t, discovered.Jobs, 1)
 
-	job, err := client.GetJob(ctx, discovered[0].ID)
+	job, err := client.GetJob(ctx, discovered.Jobs[0].ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Backend Engineer", job.Title)
 	assert.Equal(t, "Acme", job.CompanyName)
@@ -1367,10 +1392,10 @@ func TestClient_SavedSearchLifecycle(t *testing.T) {
 		{CanonicalURL: "https://example.com/job/1", Title: "Design Lead", CompanyName: "Acme"},
 		{CanonicalURL: "https://example.com/job/2", Title: "Backend Engineer", CompanyName: "Acme"},
 	}
-	jobs, err := client.RunSavedSearch(ctx, second.ID)
+	result, err := client.RunSavedSearch(ctx, second.ID)
 	require.NoError(t, err)
-	require.Len(t, jobs, 1, "only jobs matching the saved criteria are imported")
-	assert.Equal(t, "Design Lead", jobs[0].Title)
+	require.Len(t, result.Jobs, 1, "only jobs matching the saved criteria are imported")
+	assert.Equal(t, "Design Lead", result.Jobs[0].Title)
 
 	require.NoError(t, client.DeleteSavedSearch(ctx, second.ID))
 	searches, err = client.ListSavedSearches(ctx)
@@ -1712,11 +1737,11 @@ func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
 	source.searchResult = []domain.Job{
 		{CanonicalURL: "https://example.com/job/outcome", Title: "Engineer", CompanyName: "Acme"},
 	}
-	jobs, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "Engineer"})
+	discovered, err := client.SearchJobs(ctx, domain.SearchCriteria{Keywords: "Engineer"})
 	require.NoError(t, err)
-	require.NotEmpty(t, jobs)
+	require.NotEmpty(t, discovered.Jobs)
 
-	app, err := client.CreateApplication(ctx, jobs[0].ID, profile.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, discovered.Jobs[0].ID, profile.ID, "", domain.ApplicationModeReview)
 	require.NoError(t, err)
 
 	next, err := client.ListAllowedTransitions(ctx, app.ID)
@@ -1852,4 +1877,94 @@ func TestUpdateProfile_BlankDatesAreNotAnError(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, saved.Experiences, 1)
 	require.True(t, saved.Experiences[0].StartDate.IsZero(), "a blank date is no date")
+}
+
+// discoveryServer serves discovery alone, over the given sources.
+func discoveryServer(t *testing.T, sources ...ports.JobSource) *Client {
+	t.Helper()
+
+	ts := httptest.NewServer(NewHandler(Services{
+		Discovery: services.NewJobDiscoveryService(newFakeJobRepository(), sources, nil, nil, nil),
+		Searches:  services.NewSavedSearchService(newFakeSavedSearchRepository()),
+	}))
+	t.Cleanup(ts.Close)
+
+	_, portStr, err := net.SplitHostPort(ts.Listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+	return NewClient(port)
+}
+
+// A source that fails is reported, and never in its own words: a transport
+// error names the URL it requested, which for a keyed source carries the key.
+func TestServer_SearchJobs_ReportsSourcesThatDidNotAnswer(t *testing.T) {
+	t.Parallel()
+	const secret = "app_key=THIS-MUST-NEVER-BE-SERVED"
+	leakyErr := fmt.Errorf("GET https://api.example/search?%s: dial tcp: no route to host: %w", secret, ports.ErrSourceUnreachable)
+	criteria := domain.SearchCriteria{Keywords: "engineer"}
+	engineer := []domain.Job{{CanonicalURL: "https://example.com/job/1", Title: "Engineer"}}
+
+	t.Run("some sources failing is still a result, naming them", func(t *testing.T) {
+		t.Parallel()
+		client := discoveryServer(t,
+			&fakeJobSource{id: "up", name: "Up", searchResult: engineer},
+			&fakeJobSource{id: "down", name: "Down", searchErr: leakyErr},
+			&fakeJobSource{id: "broken", name: "Broken", searchErr: errors.New("status 500 for " + secret)},
+		)
+
+		body, err := rawResponse(t, client, http.MethodPost, "/v1/jobs/search", criteria)
+		require.NoError(t, err)
+		assert.NotContains(t, body, secret)
+
+		result, err := client.SearchJobs(context.Background(), criteria)
+		require.NoError(t, err)
+		require.Len(t, result.Jobs, 1)
+		assert.Equal(t, []domain.SourceOutcome{
+			{SourceID: "down", SourceName: "Down", Status: domain.SourceStatusUnreachable},
+			{SourceID: "broken", SourceName: "Broken", Status: domain.SourceStatusFailed},
+		}, result.Unanswered())
+	})
+
+	t.Run("no source reachable is 503 and says internet access is needed", func(t *testing.T) {
+		t.Parallel()
+		client := discoveryServer(t, &fakeJobSource{searchErr: leakyErr})
+
+		status, err := rawStatus(t, client, http.MethodPost, "/v1/jobs/search", criteria)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusServiceUnavailable, status)
+
+		body, err := rawResponse(t, client, http.MethodPost, "/v1/jobs/search", criteria)
+		require.NoError(t, err)
+		assert.Contains(t, body, "needs internet access")
+		assert.NotContains(t, body, secret)
+	})
+
+	t.Run("no source answering, one of them reached, is 502", func(t *testing.T) {
+		t.Parallel()
+		client := discoveryServer(t,
+			&fakeJobSource{id: "down", name: "Down", searchErr: leakyErr},
+			&fakeJobSource{id: "broken", name: "Broken", searchErr: errors.New("status 500 for " + secret)},
+		)
+
+		status, err := rawStatus(t, client, http.MethodPost, "/v1/jobs/search", criteria)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadGateway, status)
+
+		body, err := rawResponse(t, client, http.MethodPost, "/v1/jobs/search", criteria)
+		require.NoError(t, err)
+		assert.Contains(t, body, "Down could not be reached; Broken answered with an error")
+		assert.NotContains(t, body, secret)
+	})
+
+	t.Run("a saved search run reports the same way", func(t *testing.T) {
+		t.Parallel()
+		client := discoveryServer(t, &fakeJobSource{searchErr: leakyErr})
+		search, err := client.CreateSavedSearch(context.Background(), "Go", criteria)
+		require.NoError(t, err)
+
+		status, err := rawStatus(t, client, http.MethodPost, "/v1/searches/"+search.ID+"/run", nil)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusServiceUnavailable, status)
+	})
 }

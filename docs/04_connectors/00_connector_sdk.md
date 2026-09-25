@@ -59,6 +59,24 @@ Note the distinction between the two flags. `CanSearch: false` means the
 source is skipped entirely and contributes nothing — it does not mean "can
 search but cannot filter", which is `FiltersServerSide: false`.
 
+### Unreachable is not the same as failed
+
+A connector's `Search` error is reported to the user, so it has to say which of two things happened.
+
+- **Unreachable** — the source gave no answer: no connection, no name resolution, or no response before the timeout.
+  The connector wraps the error from its HTTP client's `Do` with `ports.ErrSourceUnreachable`, and nothing else.
+- **Failed** — the source answered, but not with jobs: an error status, or a body the connector could not read.
+  The connector returns an ordinary error.
+
+The difference is what lets discovery tell the user they are offline.
+When every source is unreachable the search fails with `ErrSourcesUnreachable`, which says that finding new jobs needs internet access; when any of them was reached, the failure is the source's rather than the connection's.
+
+A connector's error text never reaches a client.
+Transport errors name the URL they requested, and a source that needs a key can carry it in the query string, so the daemon logs the detail and reports only the source and its status.
+
+A connector need not be safe against its own panics.
+Discovery asks every source at once, each in its own goroutine, and treats a panic as that source failing.
+
 ## Initial strategy
 
 Prioritize stable/public sources and ATS platforms rather than making scraping the foundation.

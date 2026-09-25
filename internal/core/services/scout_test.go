@@ -67,16 +67,20 @@ func (f *fakeScoutRepository) Delete(_ context.Context, id string) error {
 // stays local must not reach out at all.
 type fakeScoutJobFinder struct {
 	jobs         []*domain.Job
+	sources      []domain.SourceOutcome
 	searchCalls  int
 	searchErr    error
 	listErr      error
 	searchedWith domain.SearchCriteria
 }
 
-func (f *fakeScoutJobFinder) Search(_ context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error) {
+func (f *fakeScoutJobFinder) Search(_ context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error) {
 	f.searchCalls++
 	f.searchedWith = criteria
-	return f.jobs, f.searchErr
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return &domain.DiscoveryResult{Jobs: f.jobs, Sources: f.sources}, nil
 }
 
 func (f *fakeScoutJobFinder) ListJobs(_ context.Context, _ domain.JobFilter, _, _ int) (*domain.JobPage, error) {
@@ -240,6 +244,47 @@ func TestScoutRun_ContactsNoEmployer(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, f.finder.searchCalls)
 		assert.Equal(t, "Go", f.finder.searchedWith.Keywords)
+	})
+
+	t.Run("a fetching scout records each source that did not answer", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		f := newScoutFixture(t, []*domain.Job{job("job-1", "Go Engineer", "Acme")},
+			map[string]int{"job-1": 95}, domain.SearchCriteria{Keywords: "Go"},
+			func(s *domain.Scout) { s.Source = domain.ScoutSourceFetch })
+		f.finder.sources = []domain.SourceOutcome{
+			{SourceID: "remotive", SourceName: "Remotive", Status: domain.SourceStatusUnreachable},
+			{SourceID: "remoteok", SourceName: "RemoteOK", Status: domain.SourceStatusFailed},
+			{SourceID: "himalayas", SourceName: "Himalayas", Status: domain.SourceStatusOK, Found: 1},
+		}
+
+		report, err := f.svc.Run(ctx, f.scout.ID)
+		require.NoError(t, err, "a source not answering does not fail the run")
+
+		events, err := f.events.ListByRun(ctx, report.RunID)
+		require.NoError(t, err)
+		steps := map[string]*domain.AgentEvent{}
+		for _, event := range events {
+			steps[event.Action] = event
+		}
+		require.Contains(t, steps, "source_unreachable")
+		assert.Equal(t, "Remotive", steps["source_unreachable"].InputSummary)
+		assert.Equal(t, "error", steps["source_unreachable"].Status)
+		require.Contains(t, steps, "source_failed")
+		assert.Equal(t, "RemoteOK", steps["source_failed"].InputSummary)
+		assert.Contains(t, steps["sources_searched"].OutputSummary, "1 of 3 sources answered")
+	})
+
+	t.Run("a fetching scout no source answered fails, saying why", func(t *testing.T) {
+		t.Parallel()
+		f := newScoutFixture(t, nil, nil, domain.SearchCriteria{Keywords: "Go"},
+			func(s *domain.Scout) { s.Source = domain.ScoutSourceFetch })
+		f.finder.searchErr = ErrSourcesUnreachable
+
+		_, err := f.svc.Run(context.Background(), f.scout.ID)
+
+		require.ErrorIs(t, err, ErrSourcesUnreachable)
+		assert.Empty(t, f.matcher.calls, "nothing is scored when nothing was found")
 	})
 
 	// The stronger guarantee is structural rather than behavioural:

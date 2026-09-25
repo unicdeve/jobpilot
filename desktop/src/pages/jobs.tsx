@@ -26,7 +26,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { jobLocation, relativeTime, REMOTE_LABELS, remoteLabel, scoreTone, SOURCE_LABELS, sourceLabel } from "../lib/format";
+import { discoverySummary, jobLocation, relativeTime, REMOTE_LABELS, remoteLabel, scoreTone, SOURCE_LABELS, sourceLabel } from "../lib/format";
 import {
   activeFilterCount,
   type JobFilters,
@@ -421,7 +421,10 @@ function DiscoverMenu() {
   const { notify } = useToast();
   const { data: searches } = useSavedSearches();
   const runSearch = useRunSavedSearch({
-    onSuccess: (found) => notify(`Found ${found.length} matching ${found.length === 1 ? "job" : "jobs"}.`, "success"),
+    onSuccess: (result) => {
+      const { message, complete } = discoverySummary(result);
+      notify(message, complete ? "success" : "warning");
+    },
     onError: (err) => notify(String(err)),
   });
 

@@ -409,13 +409,13 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 				return err
 			}
 
-			var jobs []*domain.Job
+			var result *domain.DiscoveryResult
 			switch {
 			case saved != "" && len(args) > 0:
 				return fmt.Errorf("give either --saved or keywords, not both")
 
 			case len(args) > 0:
-				jobs, err = client.SearchJobs(ctx, domain.SearchCriteria{Keywords: strings.Join(args, " ")})
+				result, err = client.SearchJobs(ctx, domain.SearchCriteria{Keywords: strings.Join(args, " ")})
 
 			default:
 				search, resolveErr := resolveSavedSearch(ctx, client, saved)
@@ -423,19 +423,23 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 					return resolveErr
 				}
 				fmt.Printf("Running saved search %q…\n", search.Name)
-				jobs, err = client.RunSavedSearch(ctx, search.ID)
+				result, err = client.RunSavedSearch(ctx, search.ID)
 			}
 			if err != nil {
 				return fmt.Errorf("searching for jobs: %w", err)
 			}
 
-			if len(jobs) == 0 {
+			if unanswered := result.Unanswered(); len(unanswered) > 0 {
+				fmt.Printf("⚠️  %s — results may be incomplete.\n", describeUnansweredSources(unanswered))
+			}
+
+			if len(result.Jobs) == 0 {
 				fmt.Println("No jobs found matching your criteria.")
 				return nil
 			}
 
-			fmt.Printf("Found %d jobs:\n", len(jobs))
-			for i, j := range jobs {
+			fmt.Printf("Found %d jobs (%d new):\n", len(result.Jobs), result.New)
+			for i, j := range result.Jobs {
 				fmt.Printf("%d. %s at %s (ID: %s)\n", i+1, j.Title, j.CompanyName, j.ID)
 			}
 			return nil
@@ -1377,4 +1381,35 @@ func printScoutReport(report *domain.ScoutRunReport) {
 	if report.Created > 0 {
 		fmt.Println("\nThese are waiting for your review. Nothing has been sent.")
 	}
+}
+
+// describeUnansweredSources names the sources a search did not hear from,
+// grouped by why: "Couldn't reach Remotive and RemoteOK; Himalayas answered
+// with an error".
+func describeUnansweredSources(sources []domain.SourceOutcome) string {
+	var unreachable, failed []string
+	for _, source := range sources {
+		if source.Status == domain.SourceStatusUnreachable {
+			unreachable = append(unreachable, source.SourceName)
+		} else {
+			failed = append(failed, source.SourceName)
+		}
+	}
+
+	var parts []string
+	if len(unreachable) > 0 {
+		parts = append(parts, "Couldn't reach "+joinNames(unreachable))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, joinNames(failed)+" answered with an error")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// joinNames lists names as a sentence does: "A", "A and B", "A, B and C".
+func joinNames(names []string) string {
+	if len(names) <= 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }

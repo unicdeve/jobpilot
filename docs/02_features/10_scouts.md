@@ -36,6 +36,9 @@ The second was declined — see "Why nothing submits" below.
 4. Create an application, in the ordinary initial state, for each job that
    clears the rules.
 5. Record the run and every decision in it in the agent trail.
+   A fetching Scout records each source that could not be reached or
+   answered with an error as its own step, so a run that considered fewer
+   jobs than usual says why. A run no source answered fails.
 
 ## Boundaries
 

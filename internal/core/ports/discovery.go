@@ -6,8 +6,20 @@ package ports
 
 import (
 	"context"
+	"errors"
+
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
+
+// ErrSourceUnreachable marks a source that gave no answer at all: no
+// connection, no name resolution, or no response before its timeout. It is
+// what being offline looks like from inside a connector.
+//
+// A connector wraps the error from its HTTP client's Do with it, and only
+// that error: a source that answered with an error status or with a body it
+// could not read was reached, and failed in a way the user's internet
+// connection does not explain.
+var ErrSourceUnreachable = errors.New("source unreachable")
 
 // JobSource defines the interface for a job discovery connector.
 type JobSource interface {

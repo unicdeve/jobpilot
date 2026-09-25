@@ -180,6 +180,28 @@ export interface JobPage {
   total: number;
 }
 
+/// SourceStatus is how one job source answered a search. "unreachable" is
+/// no answer at all, which is what being offline looks like; "failed" is an
+/// answer that was not jobs.
+export type SourceStatus = "ok" | "unreachable" | "failed";
+
+/// SourceOutcome mirrors domain.SourceOutcome. It carries no error text:
+/// the daemon logs the detail and never returns it.
+export interface SourceOutcome {
+  source_id: string;
+  source_name: string;
+  status: SourceStatus;
+  found: number;
+}
+
+/// DiscoveryResult mirrors domain.DiscoveryResult: the jobs a search
+/// matched, how many were not stored before, and how each source answered.
+export interface DiscoveryResult {
+  jobs: Job[];
+  new: number;
+  sources: SourceOutcome[];
+}
+
 /// SearchCriteria mirrors domain.SearchCriteria. Every field here is applied
 /// by the daemon; fields no source could populate were removed rather than
 /// accepted and ignored.
