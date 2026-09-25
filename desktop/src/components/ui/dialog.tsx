@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
+import { usePortalContainer } from "@/lib/portal-container"
 
 const Dialog = DialogPrimitive.Root
 const DialogTrigger = DialogPrimitive.Trigger
@@ -8,7 +9,7 @@ const DialogClose = DialogPrimitive.Close
 
 function DialogContent({ className, children, ...props }: DialogPrimitive.Popup.Props) {
   return (
-    <DialogPrimitive.Portal>
+    <DialogPrimitive.Portal container={usePortalContainer()}>
       <DialogPrimitive.Backdrop
         data-slot="dialog-backdrop"
         className="fixed inset-0 z-50 bg-black/40 transition-opacity duration-150 data-closed:opacity-0"

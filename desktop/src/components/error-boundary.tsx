@@ -3,6 +3,9 @@ import { Button } from "./ui/button";
 
 interface Props {
   children: ReactNode;
+  /// A change of resetKey clears a caught error, so moving to another item
+  /// gets a fresh attempt without remounting what is around it.
+  resetKey?: string;
 }
 
 interface State {
@@ -14,6 +17,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(previous: Props) {
+    if (this.state.error && previous.resetKey !== this.props.resetKey) this.setState({ error: null });
   }
 
   render() {

@@ -404,10 +404,12 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   stored jobs with `useInfiniteQuery` over `GET /v1/jobs` (50 at a time,
   fetching the next page when a sentinel scrolls into view, with a real
   "Load more" button behind it for keyboard users and for the case where the
-  observer never fires). Screen scroll positions survive navigation via
-  `desktop/src/lib/use-scroll-restoration.ts` — see
-  `docs/01_architecture/02_desktop.md` for why React Router's own
-  `ScrollRestoration` does not apply to this layout.
+  observer never fires). Sections stay alive between visits: the shell
+  hides the ones not showing with React's `<Activity>` instead of
+  unmounting them, so selection, search, drafts, open dialogs and scroll
+  positions survive navigation with no restoring code — see "Sections and
+  navigation state" in `docs/01_architecture/02_desktop.md`. The sidebar
+  and ⌘1–⌘7 return to where a section was left.
 
 - Job-centric desktop navigation (`docs/01_architecture/02_desktop.md`): a
   job detail route (`/jobs/:id`, served by `GET /v1/jobs/{id}` and

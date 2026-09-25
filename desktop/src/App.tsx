@@ -6,17 +6,6 @@ import { DaemonProvider } from "./lib/daemon";
 import "./lib/platform";
 import { ThemeProvider } from "./lib/theme";
 import { ToastProvider } from "./lib/toast";
-import { Activity, NoRunSelected } from "./pages/activity";
-import { ActivityRun } from "./pages/activity-run";
-import { ApplicationDetail } from "./pages/application-detail";
-import { Applications, NoApplicationSelected } from "./pages/applications";
-import { Scouts } from "./pages/scouts";
-import { Dashboard } from "./pages/dashboard";
-import { JobDetail } from "./pages/job-detail";
-import { Jobs, NoJobSelected } from "./pages/jobs";
-import { Profile } from "./pages/profile";
-import { Resumes } from "./pages/resumes";
-import { Settings } from "./pages/settings";
 import { Welcome } from "./pages/welcome";
 
 // The daemon is a local process reached over loopback, so refetching is
@@ -28,6 +17,11 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
       retry: 1,
       refetchOnWindowFocus: false,
+      // A section the user has left stays rendered but hidden, and a hidden
+      // section's queries have no observers. Collecting them after the
+      // default five minutes would empty a list the user expects to come
+      // back to as they left it, scroll position and all.
+      gcTime: 60 * 60_000,
     },
   },
 });
@@ -56,28 +50,13 @@ function App() {
                   </div>
                 }
               />
-              <Route element={<Layout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="jobs" element={<Jobs />}>
-                  <Route index element={<NoJobSelected />} />
-                  <Route path=":id" element={<JobDetail />} />
-                </Route>
-                {/* Matches were folded into Jobs: a match is a job with a
-                    score, ranked under Jobs → Analyzed. */}
-                <Route path="matches" element={<Navigate to="/jobs?view=analyzed" replace />} />
-                <Route path="applications" element={<Applications />}>
-                  <Route index element={<NoApplicationSelected />} />
-                  <Route path=":id" element={<ApplicationDetail />} />
-                </Route>
-                <Route path="scouts" element={<Scouts />} />
-                <Route path="activity" element={<Activity />}>
-                  <Route index element={<NoRunSelected />} />
-                  <Route path=":id" element={<ActivityRun />} />
-                </Route>
-                <Route path="profile" element={<Profile />} />
-                <Route path="resumes" element={<Resumes />} />
-                <Route path="settings" element={<Settings />} />
-              </Route>
+              {/* Matches were folded into Jobs: a match is a job with a
+                  score, ranked under Jobs → Analyzed. */}
+              <Route path="matches" element={<Navigate to="/jobs?view=analyzed" replace />} />
+              {/* Every other path is a section of the app shell, which does
+                  its own routing so that sections stay alive between visits
+                  (see components/layout.tsx and sections.tsx). */}
+              <Route path="*" element={<Layout />} />
             </Routes>
           </HashRouter>
         </DaemonProvider>

@@ -129,30 +129,28 @@ opened externally. See `docs/07_security/00_threat_model.md`.
 Anything else that displays external text should go through it rather than
 reaching for a second renderer.
 
-## Scrolling
+## Sections and navigation state
 
-The window never scrolls. The sidebar is fixed and the `<main>` region beside
-it is the app's only scrolling element, which rules out React Router's
-`ScrollRestoration` twice over: it requires a data router (this app uses
-`<HashRouter>` with `<Routes>`), and it restores the window's position rather
-than an inner element's. `desktop/src/lib/use-scroll-restoration.ts` records
-each route's position and puts it back, and the app shell owns it because the
-app shell owns the scrolling element.
+Each sidebar screen is a section (`desktop/src/sections.tsx`), and the app shell keeps a section alive while another is showing, as a tab in a native app is.
+Leaving Jobs and coming back finds it as it was: the same job selected, the same search and filters, a half-typed search or dialog, and every scroll position inside it.
+Nothing saves or restores any of that; it is never torn down.
 
-Restoring is not a single assignment. A screen's content arrives after the
-effect runs — a cached query renders at once, but a loading one, fonts and
-images all change the height afterwards — so the hook retries via a
-`ResizeObserver` until the content is tall enough for the saved position to be
-reachable, and gives up the moment the user scrolls themselves rather than
-yanking them away from where they chose to be.
+Every React router unmounts a route that stops matching, so this is the shell's doing rather than the router's (`desktop/src/components/layout.tsx`):
 
-This depends on the query cache: a list that refetched from empty on every
-visit would have nothing to scroll back into.
+- The top-level `<Routes>` sends every path but `/welcome` to the shell, which routes within sections itself.
+- A section is rendered from its first visit on, inside React's `<Activity>`, which hides the inactive ones with `display: none`, keeps their DOM and state, and destroys their effects, so a hidden screen holds no subscriptions or timers.
+- Each section has its own `<Routes location={…}>` with the location it was left at, so a hidden section keeps seeing its own path and query string rather than the window's.
+- The sidebar links and the ⌘1–⌘7 shortcuts go back to where a section was left; from inside a section, its link goes to the section's list with nothing selected, keeping the list's search and filters.
+  A link elsewhere in the app, such as a Dashboard figure, goes where it points.
+- Dialogs, menus, popovers and selects portal into a container inside their section (`desktop/src/lib/portal-container.ts`), since a portal sits outside the DOM `<Activity>` hides; a dialog left open goes away with its section and is there again on return.
+- Each section scrolls in its own box, and a split view's panes scroll on their own inside it.
+  Both WKWebView and Chromium keep an element's scroll position across `display: none`, so no position is recorded.
 
-A split view is the exception. It fills `<main>` rather than growing it, and
-each pane scrolls on its own; the list keeps its position without help,
-because selecting an item changes only the detail pane and the list is never
-unmounted.
+The window never scrolls.
+React Router's `ScrollRestoration`, which restores the window's position and needs a data router, has nothing to do here.
+
+This depends on the query cache holding what a hidden section shows.
+A hidden section's queries have no observers, so the cache keeps unobserved data for an hour (`gcTime`) rather than the default five minutes; a list that emptied while hidden would come back loading, at the top.
 
 ## Communication
 
