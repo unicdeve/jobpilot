@@ -67,7 +67,7 @@ func (f *fakeCandidateRepository) GetFirstCandidate(_ context.Context) (*domain.
 	for _, c := range f.candidates {
 		return c, nil
 	}
-	return nil, fmt.Errorf("no candidate profile found")
+	return nil, ports.ErrNoCandidate
 }
 
 // fakeResumeRepository is an in-memory ports.ResumeRepository for tests.

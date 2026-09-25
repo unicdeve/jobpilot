@@ -63,7 +63,7 @@ func (f *fakeCandidateRepository) GetFirstCandidate(_ context.Context) (*domain.
 	for _, c := range f.candidates {
 		return c, nil
 	}
-	return nil, fmt.Errorf("no candidate profile found")
+	return nil, ports.ErrNoCandidate
 }
 
 type fakeResumeRepository struct {
@@ -995,6 +995,19 @@ func TestClient_NotFoundSurfacesServerError(t *testing.T) {
 	_, err := client.GetProfile(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no candidate profile found")
+}
+
+// No profile is how every installation starts, so it is a 404 rather than a
+// server failure. The desktop reads a 404 as "no profile yet" and caches
+// that; a 500 it treated as an error to refetch, which, while every screen
+// remounted on a pending profile, never stopped.
+func TestServer_GetProfile_NoProfileIsNotFound(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	status, err := rawStatus(t, client, http.MethodGet, "/v1/profile", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, status)
 }
 
 func TestClient_ApplicationLifecycle(t *testing.T) {

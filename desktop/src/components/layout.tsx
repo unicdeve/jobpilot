@@ -286,12 +286,16 @@ function useNavigationShortcuts(hrefFor: HrefFor) {
 /// rather than traps: the screens' own empty states still say what is
 /// missing for anyone who would rather look around first.
 function RequireSetup({ children }: { children: React.ReactNode }) {
-  const { isPending, isError: noProfile } = useProfile();
+  const { data: profile, dataUpdatedAt, errorUpdatedAt } = useProfile();
 
   // Deciding before the answer arrives would either flash the dashboard or
-  // redirect someone who has a profile.
-  if (isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (noProfile && !setupSkipped()) return <Navigate to="/welcome" replace />;
+  // redirect someone who has a profile. Only the first answer is waited for:
+  // a query that failed with no data reads as pending again while it
+  // refetches, and unmounting the screens then remounts them, which
+  // refetches again — a request loop for as long as the daemon is down.
+  const answered = dataUpdatedAt > 0 || errorUpdatedAt > 0;
+  if (!answered) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (profile === null && !setupSkipped()) return <Navigate to="/welcome" replace />;
 
   return <>{children}</>;
 }

@@ -88,16 +88,17 @@ export const keys = {
 
 // --- queries ---
 
-/// useProfile loads the single candidate profile. A daemon that has no
-/// profile yet answers with an error rather than an empty body, so this is
-/// not retried: "no profile" is an ordinary first-run state, not a transient
-/// failure, and screens read it off isError.
+/// useProfile loads the single candidate profile, which is null until one
+/// is created. "No profile" is an ordinary first-run state, so it is data
+/// rather than an error: an errored query with no data is refetched by
+/// every component that mounts it and reads as pending meanwhile, and
+/// RequireSetup, which unmounts the screens while the profile is pending,
+/// turned that into a loop of requests that never settled.
 export function useProfile() {
   const api = useApi();
-  return useQuery<Candidate>({
+  return useQuery<Candidate | null>({
     queryKey: keys.profile,
     queryFn: () => api.getProfile(),
-    retry: false,
   });
 }
 
@@ -106,7 +107,7 @@ export function useProfile() {
 /// profile rather than fetching it again per screen.
 export function useCandidateId() {
   const { data, isPending, isError } = useProfile();
-  return { candidateId: data?.id ?? null, isPending, isError };
+  return { candidateId: data?.id ?? null, isPending, isError, noProfile: data === null };
 }
 
 /// useJobCount reports how many jobs are stored locally. `total` describes

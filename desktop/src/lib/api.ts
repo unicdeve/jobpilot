@@ -41,12 +41,31 @@ import type {
  */
 export type ScoutInput = Omit<Scout, "id" | "last_run_at" | "created_at" | "updated_at">;
 
-export class ApiError extends Error {}
+/// ApiError is a failed daemon request. status is the HTTP status, absent
+/// when the daemon could not be reached at all.
+///
+/// Its message is shown to the user as it is, so it reads as a sentence:
+/// the daemon's errors are Go's, which start in lower case, and String(err)
+/// would otherwise put "Error: " in front of every one.
+export class ApiError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message.charAt(0).toUpperCase() + message.slice(1));
+    this.status = status;
+  }
+
+  override toString(): string {
+    return this.message;
+  }
+}
 
 export interface ApiClient {
   health(): Promise<void>;
 
-  getProfile(): Promise<Candidate>;
+  /// getProfile resolves to null when there is no profile yet, which is how
+  /// every installation starts rather than something that went wrong.
+  getProfile(): Promise<Candidate | null>;
   updateProfile(profile: Candidate): Promise<Candidate>;
   initializeProfile(profile: Partial<Candidate>): Promise<Candidate>;
 
@@ -151,8 +170,11 @@ async function request<T>(
     method,
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  }).catch((err) => {
-    throw new ApiError(`failed to reach jobpilot daemon: ${err}`);
+  }).catch((err: unknown) => {
+    // fetch says only "Failed to fetch", whatever went wrong, so the detail
+    // goes to the console rather than in front of the user.
+    console.error(err);
+    throw new ApiError("could not reach the JobPilot daemon; it may have stopped");
   });
 
   if (!res.ok) {
@@ -163,7 +185,7 @@ async function request<T>(
     } catch {
       // response wasn't JSON; keep the generic status message
     }
-    throw new ApiError(message);
+    throw new ApiError(message, res.status);
   }
 
   if (res.status === 204) return undefined as T;
@@ -179,7 +201,11 @@ export function createApiClient(port: number): ApiClient {
   return {
     health: () => request<void>(baseUrl, "GET", "/v1/health"),
 
-    getProfile: () => request<Candidate>(baseUrl, "GET", "/v1/profile"),
+    getProfile: () =>
+      request<Candidate>(baseUrl, "GET", "/v1/profile").catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }),
     updateProfile: (profile) => request<Candidate>(baseUrl, "PUT", "/v1/profile", profile),
     initializeProfile: (profile) =>
       request<Candidate>(baseUrl, "POST", "/v1/onboarding/profile", profile),

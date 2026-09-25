@@ -83,10 +83,9 @@ const LINK_LABELS: Record<LinkKind, string> = {
 
 export function Profile() {
   const { notify } = useToast();
-  // A daemon with no candidate yet answers getProfile with an error, so an
-  // errored query means "first run", not a failure to show the user.
-  const { data: saved, isPending, isError: noProfileYet } = useProfile();
-  const exists = !noProfileYet;
+  // No profile yet is null, which is first run: the form creates one.
+  const { data: saved, isPending } = useProfile();
+  const exists = saved != null;
 
   // The form is an editable draft over whatever is saved. Keeping edits
   // separate from the cached profile means a background refetch can never

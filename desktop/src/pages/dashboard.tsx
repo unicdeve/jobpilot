@@ -25,7 +25,7 @@ const CLOSED: ApplicationState[] = ["REJECTED", "WITHDRAWN", "NO_RESPONSE"];
 /// applying to, and what ran on their behalf. Every figure on it is a link
 /// to the list it counts.
 export function Dashboard() {
-  const { candidateId, isPending: profilePending, isError: noProfile } = useCandidateId();
+  const { candidateId, isPending: profilePending, noProfile } = useCandidateId();
   const { data: profile } = useProfile();
 
   // Reads stored history; deliberately not a live source search, which would

@@ -250,6 +250,12 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   `GET /v1/applications/{id}/transitions` serves the state machine's own answer, so the desktop offers the moves that will work instead of all nine states with an error for most of them, and the CLI's `application show` lists them too.
   The desktop asks the question directly when an application is approved, shows when it was submitted, groups the Applications list by whose move it is, and puts a count of what is waiting on the user on the Dashboard.
   `jobpilot-cli application submitted <id>` is the same act under the name a user would look for.
+- No profile yet is an answer, not an error: `GET /v1/profile` is a 404 for an installation that has none (`ports.ErrNoCandidate`), and the desktop reads it as `null`.
+  It was a 500, which the desktop kept as an errored query, and that turned into a request loop that left the app on "Loading…" for anyone who skipped first-run setup.
+  An errored query with no data reads as pending while it refetches, the setup gate unmounted every screen while the profile was pending, and each screen remounting refetched it — thousands of requests a minute against a fresh install.
+  The gate now waits only for the first answer, which also stops a slower form of the loop while the daemon is down.
+  An error from the daemon now reads as a sentence, without the "Error: " that had been in front of every one.
+
 - Desktop first-run setup (`/welcome`, `docs/02_features/01_onboarding.md`):
   the four things an installation needs — LLM provider, candidate profile,
   optional resume, saved search — in the CLI `onboard` order, since

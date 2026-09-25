@@ -203,6 +203,11 @@ func handleInitializeProfile(svc *services.OnboardingService) http.HandlerFunc {
 func handleGetProfile(repo ports.CandidateRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		profile, err := repo.GetFirstCandidate(r.Context())
+		// No profile yet is a new installation, not a server failure.
+		if errors.Is(err, ports.ErrNoCandidate) {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		if writeErrIfAny(w, err) {
 			return
 		}

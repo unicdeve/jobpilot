@@ -2,8 +2,15 @@ package ports
 
 import (
 	"context"
+	"errors"
+
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
+
+// ErrNoCandidate is returned by CandidateRepository.GetFirstCandidate when
+// no profile exists yet. That is the ordinary state of a new installation,
+// not a failure, so callers can tell it apart from a database error.
+var ErrNoCandidate = errors.New("no candidate profile found")
 
 // CandidateRepository persists and retrieves candidate profiles.
 type CandidateRepository interface {

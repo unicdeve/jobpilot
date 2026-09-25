@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // CandidateRepository is a ports.CandidateRepository backed by SQLite.
@@ -146,7 +147,7 @@ func (r *CandidateRepository) GetFirstCandidate(ctx context.Context) (*domain.Ca
 	candidate, err := scanCandidate(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("no candidate profile found")
+			return nil, ports.ErrNoCandidate
 		}
 		return nil, fmt.Errorf("failed to get first candidate: %w", err)
 	}

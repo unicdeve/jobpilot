@@ -69,13 +69,14 @@ export function Welcome() {
   const { notify } = useToast();
 
   const { data: llm, isPending: llmPending } = useLLMSettings();
-  const { data: profile, isPending: profilePending, isError: noProfile } = useProfile();
+  const { data, isPending: profilePending } = useProfile();
+  const profile = data ?? undefined;
   const { data: resumes } = useResumes(profile?.id ?? null);
   const { data: searches, isPending: searchesPending } = useSavedSearches();
 
   const done = {
     llm: !!llm?.provider,
-    profile: !noProfile,
+    profile: !!profile,
     resume: (resumes?.length ?? 0) > 0,
     search: (searches?.length ?? 0) > 0,
   };
