@@ -1,20 +1,28 @@
+import { FileText, Upload } from "lucide-react";
+import { useState } from "react";
+import { ConfirmDialog } from "../components/confirm";
 import { EmptyState } from "../components/empty-state";
+import { Page, Panel } from "../components/page";
+import { Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { dateTime, relativeTime } from "../lib/format";
 import { useCandidateId, useDeleteResume, useImportResume, useResumes } from "../lib/queries";
-import { useToast } from "../lib/toast";
 import { pickResumeFile } from "../lib/resume-file";
+import { useToast } from "../lib/toast";
+import type { Resume } from "../lib/types";
 
 export function Resumes() {
   const { notify } = useToast();
   const { candidateId } = useCandidateId();
-  const { data: resumes } = useResumes(candidateId);
+  const { data: resumes, isPending } = useResumes(candidateId);
+  const [deleting, setDeleting] = useState<Resume | null>(null);
 
   const importMutation = useImportResume({
     onSuccess: () => notify("Resume imported.", "success"),
     onError: (err) => notify(String(err)),
   });
   const deleteMutation = useDeleteResume({
+    onSuccess: () => setDeleting(null),
     onError: (err) => notify(String(err)),
   });
 
@@ -23,11 +31,6 @@ export function Resumes() {
     const path = await pickResumeFile();
     if (!path) return;
     importMutation.mutate({ candidateId, filePath: path });
-  };
-
-  const remove = (id: string) => {
-    if (!candidateId) return;
-    deleteMutation.mutate({ id, candidateId });
   };
 
   if (!candidateId) {
@@ -41,33 +44,57 @@ export function Resumes() {
     );
   }
 
+  const importButton = (
+    <Button size="sm" onClick={importResume} disabled={importMutation.isPending}>
+      <Upload data-icon="inline-start" />
+      {importMutation.isPending ? "Importing…" : "Import resume"}
+    </Button>
+  );
+
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Resumes</h1>
-        <Button onClick={importResume} disabled={importMutation.isPending}>
-          {importMutation.isPending ? "Importing…" : "Import resume"}
-        </Button>
-      </div>
-      {!resumes || resumes.length === 0 ? (
-        <p className="text-sm text-slate-500">No resumes imported yet.</p>
+    <Page title="Resumes" actions={importButton}>
+      <p className="mb-5 text-sm text-muted-foreground">
+        A resume is attached to the applications you start with it. PDF, Word and text files are read into plain text,
+        which stays on this computer.
+      </p>
+
+      {isPending ? (
+        <Loading />
+      ) : !resumes || resumes.length === 0 ? (
+        <Panel className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+          <FileText className="size-8 stroke-[1.25] text-muted-foreground/60" />
+          <p className="text-sm font-medium text-subtle-foreground">No resumes yet</p>
+          <p className="max-w-sm text-sm text-muted-foreground">Import one to attach it to your applications.</p>
+        </Panel>
       ) : (
-        <div className="space-y-2">
+        <Panel className="divide-y divide-border">
           {resumes.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{r.name}</p>
-                  <p className="text-xs text-slate-500">{r.original_file_path}</p>
-                </div>
-                <Button variant="destructive" onClick={() => remove(r.id)}>
-                  Delete
-                </Button>
-              </CardContent>
-            </Card>
+            <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+              <FileText className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium">{r.name}</p>
+                <p className="truncate text-xs text-muted-foreground" title={r.original_file_path}>
+                  <span title={dateTime(r.created_at)}>Imported {relativeTime(r.created_at)}</span> ·{" "}
+                  {r.original_file_path}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setDeleting(r)}>
+                Delete
+              </Button>
+            </div>
           ))}
-        </div>
+        </Panel>
       )}
-    </div>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Delete “${deleting?.name}”?`}
+        description="JobPilot’s copy is removed. The original file on your computer is not touched."
+        confirmLabel="Delete resume"
+        onConfirm={() => deleting && candidateId && deleteMutation.mutate({ id: deleting.id, candidateId })}
+        pending={deleteMutation.isPending}
+      />
+    </Page>
   );
 }

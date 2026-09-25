@@ -78,7 +78,10 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   configured. Himalayas is the only one that reliably reports a salary range
   with its currency and period; Hacker News carries postings that exist on
   no job board, read from a convention nothing enforces, where a comment
-  that does not fit is skipped rather than guessed at.
+  that does not fit is skipped rather than guessed at. Its header fields
+  are reduced to plain text, because a company written with its homepage
+  had been stored with the link inside its name; migration
+  `00013_hackernews_company_links.sql` repaired the rows already stored.
   Google is deliberately not among them: a request to google.com/search
   returns a JavaScript gate and zero result links, and getting past it is
   the one thing ADR-0013 and ADR-0014 say the product never does. The
@@ -341,14 +344,21 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   running daemon; all other calls go from TypeScript straight to the
   daemon's loopback API via a typed client
   (`desktop/src/lib/api.ts`) mirroring `internal/adapters/primary/httpapi/client.go`.
-  Screens: Dashboard, Profile, Resumes, Jobs, Matches, Applications (the
-  review/approval UI — state transitions, cover letter versions,
-  question resolution), Settings. Accessible components are generated via
-  the shadcn/ui CLI (Button, Card, Badge, Input, Textarea, Label, Select,
-  Checkbox), per `02_desktop.md`; a small `StatusBadge`/`FormField` wrapper
-  in `desktop/src/components/` layers the app's per-state colors and
-  label+control pairing on top of those primitives. Not built: any
-  settings category beyond LLM provider/model (unimplemented backend).
+  Screens: Dashboard, Jobs, Applications (the review/approval UI — state
+  transitions, cover letter versions, question resolution), Scouts,
+  Activity, Profile, Resumes, Settings. Accessible components are generated
+  via the shadcn/ui CLI, per `02_desktop.md`.
+  The look and feel follows the rules in `02_desktop.md`: colours are theme
+  tokens only, with a light and a dark theme and a System / Light / Dark
+  choice under Settings → Appearance kept in the desktop's own storage; the
+  platform's own font; a grouped sidebar with ⌘1–⌘7 and ⌘, shortcuts and a
+  count of applications waiting on the user; and Jobs, Applications and
+  Activity as split views, a list beside the selected item. On macOS the
+  title bar is drawn over the sidebar (`src-tauri/tauri.macos.conf.json`).
+  Matches is no longer a screen of its own: a match is a job with a score,
+  ranked under Jobs → Analyzed, and `/matches` redirects there.
+  Not built: any settings category beyond appearance, the model, job
+  searches and API keys (unimplemented backend).
 
 - Agent Activity (`docs/02_features/12_agent_activity.md`): the desktop's
   Activity screen lists every agent run — browser preparation and scout runs
@@ -388,8 +398,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 - Job-centric desktop navigation (`docs/01_architecture/02_desktop.md`): a
   job detail route (`/jobs/:id`, served by `GET /v1/jobs/{id}` and
   `jobpilot-cli search show`) shows a stored job with its match, its
-  applications, and the actions that create either. Jobs, Matches and
-  Applications all link to it, and matches and applications show the job's
+  applications, and the actions that create either. Jobs, the analyzed-jobs
+  view and Applications all link to it, and applications show the job's
   title instead of a bare `job_id`. The forms that asked the user to paste a
   job ID (Matches, Applications) and a resume ID (Applications) are gone:
   analysis starts from the job, an application starts from the job with its
@@ -453,8 +463,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
   USAJOBS and The Muse all refuse an unauthenticated request.
 - No user-configurable prompt customization for matching (Phase 3).
-- The Desktop app has no import progress/loading polish beyond basic
-  "Loading…" text.
+- The desktop has no progress indicator for a long import or discovery
+  beyond its button's label; a resume read by a slow model shows
+  "Reading…" for as long as it takes.
 - Some core entities from `docs/01_architecture/04_database.md` are still
   not separate tables: `JobSource` (jobs reference their source only by
   free-text ID), `Prompt` and `Notification` (no schema home yet for prompt
@@ -503,6 +514,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   under ADR-0009 and is deferred, as is unattended preparation in the
   browser.
   `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
+  "Assist does not interact with external application forms" is enforced in core: `BrowserWorkerService.PrepareApplication` refuses an Assist application before a browser opens (`409` over HTTP). It had been stated and not checked.
 - The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
   It now asks whether a challenge is being posed rather than whether a vendor's script is present: a CAPTCHA iframe blocks only when it is visible and tall enough to cover the form, and the interstitial phrases are matched against rendered text rather than page source.
   Both of those were false positives with teeth. Real ATS forms carry an invisible reCAPTCHA (measured on Ashby: 256x60, `visibility: hidden`) while being entirely fillable, and the words appear in the scripts of pages that work perfectly well, so the previous "any frame URL containing recaptcha" rule would have failed every application the worker could reach.

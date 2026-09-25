@@ -1,6 +1,10 @@
-import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { DetailSection, Toolbar } from "../components/page";
+import { splitBackClass } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
-import { Card, CardContent, CardTitle } from "../components/ui/card";
+import { ErrorLine, Loading } from "../components/status-line";
+import { Button } from "../components/ui/button";
 import {
   actionLabel,
   formatDuration,
@@ -9,6 +13,7 @@ import {
   stepOutput,
   taskLabel,
 } from "../lib/activity";
+import { dateTime } from "../lib/format";
 import { useActivityRun } from "../lib/queries";
 import type { AgentEvent, AgentRunSummary } from "../lib/types";
 
@@ -20,61 +25,65 @@ import type { AgentEvent, AgentRunSummary } from "../lib/types";
 /// (docs/02_features/12_agent_activity.md).
 export function ActivityRun() {
   const { id } = useParams<{ id: string }>();
+  const { search } = useLocation();
   const { data, error } = useActivityRun(id);
 
-  if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
-  if (!data) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (error) return <ErrorLine error={error} />;
+  if (!data) return <Loading />;
 
   const { run, events } = data;
+  const duration = runDuration(run);
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <RunHeader run={run} />
+    <div className="min-h-full">
+      <Toolbar
+        className="px-5"
+        leading={
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className={splitBackClass}
+            aria-label="Back to activity"
+            render={<Link to={{ pathname: "/activity", search }} />}
+          >
+            <ArrowLeft />
+          </Button>
+        }
+        actions={<SubjectLink run={run} />}
+      />
 
-      {run.error && (
-        <Card>
-          <CardContent>
-            <CardTitle>Why it stopped</CardTitle>
-            <p className="mt-1 text-sm text-red-700">{run.error}</p>
-          </CardContent>
-        </Card>
-      )}
+      <article className="max-w-3xl px-8 pt-6 pb-12">
+        <header>
+          <div className="flex items-start gap-3">
+            <h2 className="min-w-0 flex-1 text-xl leading-tight font-semibold">{runSubject(run)}</h2>
+            <StatusBadge value={run.status} className="mt-1 shrink-0" />
+          </div>
+          <p className="mt-1 text-sm text-subtle-foreground">
+            {taskLabel(run.task_type)} · {dateTime(run.started_at)}
+            {duration ? <> · took {duration}</> : run.status === "running" && <> · still running</>}
+          </p>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground select-text">{run.id}</p>
+        </header>
 
-      <Card>
-        <CardContent>
-          <CardTitle>Steps</CardTitle>
+        {run.error && (
+          <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/8 px-4 py-3">
+            <p className="text-sm font-medium text-destructive">Why it stopped</p>
+            <p className="mt-0.5 text-sm text-subtle-foreground select-text">{run.error}</p>
+          </div>
+        )}
+
+        <DetailSection title="Steps" description={`${events.length} recorded, in order.`}>
           {events.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">No steps recorded.</p>
+            <p className="text-sm text-muted-foreground">No steps recorded.</p>
           ) : (
-            <ol className="mt-2 divide-y divide-slate-100">
+            <ol className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
               {events.map((event) => (
                 <Step key={event.id} event={event} />
               ))}
             </ol>
           )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function RunHeader({ run }: { run: AgentRunSummary }) {
-  const duration = runDuration(run);
-  return (
-    <div>
-      <Link to="/activity" className="text-sm text-slate-500 hover:underline">
-        ← Activity
-      </Link>
-      <div className="mt-1 flex items-start gap-3">
-        <h1 className="text-xl font-semibold">{runSubject(run)}</h1>
-        <StatusBadge value={run.status} className="mt-1 shrink-0" />
-      </div>
-      <p className="text-sm text-slate-600">
-        {taskLabel(run.task_type)} · {new Date(run.started_at).toLocaleString()}
-        {duration ? <> · took {duration}</> : run.status === "running" && <> · still running</>}
-        <SubjectLink run={run} />
-      </p>
-      <p className="mt-1 font-mono text-xs text-slate-400">{run.id}</p>
+        </DetailSection>
+      </article>
     </div>
   );
 }
@@ -83,22 +92,18 @@ function RunHeader({ run }: { run: AgentRunSummary }) {
 function SubjectLink({ run }: { run: AgentRunSummary }) {
   if (run.task_type === "prepare_application" && run.application_id && run.job_title) {
     return (
-      <>
-        {" · "}
-        <Link to={`/applications/${run.application_id}`} className="hover:underline">
-          View application
-        </Link>
-      </>
+      <Button size="sm" variant="ghost" render={<Link to={`/applications/${run.application_id}`} />}>
+        View application
+        <ChevronRight data-icon="inline-end" />
+      </Button>
     );
   }
   if (run.task_type === "scout_run" && run.scout_id && run.scout_name) {
     return (
-      <>
-        {" · "}
-        <Link to="/scouts" className="hover:underline">
-          View scouts
-        </Link>
-      </>
+      <Button size="sm" variant="ghost" render={<Link to="/scouts" />}>
+        View scouts
+        <ChevronRight data-icon="inline-end" />
+      </Button>
     );
   }
   return null;
@@ -108,20 +113,20 @@ function Step({ event }: { event: AgentEvent }) {
   const failed = event.status !== "" && event.status !== "ok";
   const output = stepOutput(event.action, event.output_summary);
   return (
-    <li className="flex items-start justify-between gap-4 py-2.5 first:pt-1 last:pb-0">
+    <li className="flex items-start justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-sm font-medium">
+        <p className="text-[13px] font-medium">
           {actionLabel(event.action)}
           {event.input_summary && (
-            <span className="font-normal text-slate-600">: {event.input_summary}</span>
+            <span className="font-normal break-words text-subtle-foreground select-text">: {event.input_summary}</span>
           )}
         </p>
         {output && (
-          <p className={`mt-0.5 text-sm break-words ${failed ? "text-red-700" : "text-slate-500"}`}>
+          <p className={`mt-0.5 text-[13px] break-words select-text ${failed ? "text-destructive" : "text-muted-foreground"}`}>
             {output}
           </p>
         )}
-        <p className="mt-0.5 text-xs text-slate-400">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           <span className="font-mono">{event.action}</span>
           {event.tool && <> · {event.tool}</>}
           {event.duration_ms > 0 && <> · {formatDuration(event.duration_ms)}</>}

@@ -48,8 +48,8 @@ export function SearchTemplatePicker({
     return groups.find((group) => group.id === activeGroupId) ?? groups[0];
   }, [groups, activeGroupId]);
 
-  if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
-  if (isPending || !activeGroup) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (error) return <p className="text-sm text-destructive">{String(error.message)}</p>;
+  if (isPending || !activeGroup) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   const toggle = (templateId: string) =>
     setSelected((current) => {
@@ -78,10 +78,10 @@ export function SearchTemplatePicker({
   const groupFullySelected = activeGroup.templates.every((template) => selected.has(template.id));
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 p-3">
+    <div className="space-y-3 rounded-md border border-border p-3">
       <div>
         <h3 className="font-medium">Start from a template</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           A search matches only jobs containing every word you set, so a narrow one finds almost
           nothing. These criteria were measured against live postings from every source. Adopt
           several — a copy becomes yours to edit, and nothing links it back here.
@@ -102,7 +102,7 @@ export function SearchTemplatePicker({
       </div>
 
       <div className="flex items-start justify-between gap-3">
-        <p className="text-xs text-slate-500">{activeGroup.summary}</p>
+        <p className="text-xs text-muted-foreground">{activeGroup.summary}</p>
         <Button
           size="xs"
           variant="ghost"
@@ -119,7 +119,7 @@ export function SearchTemplatePicker({
           return (
             <li key={template.id}>
               <label
-                className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-slate-50"
+                className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-accent"
                 htmlFor={`template-${template.id}`}
               >
                 <Checkbox
@@ -135,7 +135,7 @@ export function SearchTemplatePicker({
                       {describeTemplateCriteria(template.criteria)}
                     </Badge>
                   </span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
                     {template.summary}
                   </span>
                 </span>
@@ -156,11 +156,11 @@ export function SearchTemplatePicker({
               ? "Add searches"
               : `Add ${selected.size} ${selected.size === 1 ? "search" : "searches"}`}
         </Button>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         {selected.size > 0 && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             Selected across all groups, not just this one.
           </span>
         )}

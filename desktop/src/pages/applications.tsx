@@ -1,9 +1,11 @@
-import { Link } from "react-router-dom";
-import { EmptyState, fillsContentArea } from "../components/empty-state";
+import { Send } from "lucide-react";
+import { Link, Outlet, useMatch } from "react-router-dom";
+import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pane";
+import { SplitView } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
-import { Card, CardContent } from "../components/ui/card";
+import { relativeTime } from "../lib/format";
 import { useApplications, useCandidateId, useJobsByID } from "../lib/queries";
-import type { Application, ApplicationState } from "../lib/types";
+import type { Application, ApplicationState, Job } from "../lib/types";
 
 /// Applications are grouped by who the next move belongs to. A flat list
 /// sorted by nothing in particular buries the two that need the user today
@@ -32,6 +34,31 @@ function groupOf(application: Application) {
 }
 
 export function Applications() {
+  const hasSelection = useMatch("/applications/:id") !== null;
+  return (
+    <SplitView
+      hasSelection={hasSelection}
+      list={
+        <ListPane title="Applications">
+          <ApplicationList />
+        </ListPane>
+      }
+      detail={<Outlet />}
+    />
+  );
+}
+
+export function NoApplicationSelected() {
+  return (
+    <NoSelection
+      icon={<Send />}
+      title="No application selected"
+      description="Choose an application to review its answers, cover letter and next step."
+    />
+  );
+}
+
+function ApplicationList() {
   const { candidateId } = useCandidateId();
   const { data: applications, error, isPending } = useApplications(candidateId);
 
@@ -40,78 +67,71 @@ export function Applications() {
 
   if (!candidateId) {
     return (
-      <EmptyState
-        title="No candidate profile yet"
-        description="Applications are generated from your profile, so JobPilot needs one before you can start any."
-        actionLabel="Create your profile"
-        actionTo="/profile"
-      />
+      <ListNote>
+        Applications are built from your profile.{" "}
+        <Link to="/profile" className="underline">
+          Create one
+        </Link>{" "}
+        to start.
+      </ListNote>
+    );
+  }
+  if (error) return <ListNote tone="error">{error.message}</ListNote>;
+  if (isPending) return <ListNote>Loading…</ListNote>;
+  if (applications.length === 0) {
+    return (
+      <ListNote>
+        No applications yet. Open a job in{" "}
+        <Link to="/jobs" className="underline">
+          Jobs
+        </Link>{" "}
+        and choose Start application.
+      </ListNote>
     );
   }
 
-  if (error) return <p className="text-sm text-red-600">{String(error.message)}</p>;
-  if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
-
   return (
-    // A full-height column so an empty state below the heading centres in
-    // what is left, rather than pushing the page past the fold.
-    <div className={`flex flex-col ${fillsContentArea}`}>
-      <h1 className="mb-4 text-xl font-semibold">Applications</h1>
+    <>
+      {GROUPS.map((group, index) => {
+        const inGroup = applications
+          .filter((app) => groupOf(app) === index)
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+        if (inGroup.length === 0) return null;
 
-      {applications.length === 0 ? (
-        <EmptyState
-          className="min-h-0 flex-1"
-          title="No applications yet"
-          description="Open a job and start an application there — its cover letter and questions then live on this page."
-          actionLabel="Browse jobs"
-          actionTo="/jobs"
-        />
-      ) : (
-        <div className="space-y-6">
-          {GROUPS.map((group, index) => {
-            const inGroup = applications.filter((app) => groupOf(app) === index);
-            if (inGroup.length === 0) return null;
+        return (
+          <section key={group.title}>
+            <div className="sticky top-0 z-10 border-b border-border bg-background/90 px-4 pt-3 pb-2 backdrop-blur-sm">
+              <h2 className="text-xs font-semibold">
+                {group.title} <span className="font-normal text-muted-foreground">{inGroup.length}</span>
+              </h2>
+              <p className="text-xs text-muted-foreground">{group.hint}</p>
+            </div>
+            {inGroup.map((app) => (
+              <ApplicationRow key={app.id} application={app} job={jobs.get(app.job_id)} />
+            ))}
+          </section>
+        );
+      })}
+    </>
+  );
+}
 
-            return (
-              <section key={group.title}>
-                <div className="mb-2 flex items-baseline gap-2">
-                  <h2 className="text-sm font-semibold text-slate-900">{group.title}</h2>
-                  <span className="text-xs text-slate-500">{group.hint}</span>
-                </div>
-                <div className="space-y-2">
-                  {inGroup.map((app) => {
-                    const job = jobs.get(app.job_id);
-                    return (
-                      <Link key={app.id} to={`/applications/${app.id}`} className="block">
-                        <Card className="hover:ring-foreground/20">
-                          <CardContent className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium">
-                                {job ? (
-                                  <>
-                                    {job.title}{" "}
-                                    <span className="font-normal text-slate-500">
-                                      at {job.company_name}
-                                    </span>
-                                  </>
-                                ) : (
-                                  <span className="text-slate-500">Loading job…</span>
-                                )}
-                              </p>
-                              <p className="text-xs text-slate-500">Mode: {app.mode}</p>
-                            </div>
-                            <StatusBadge value={app.state} />
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+function ApplicationRow({ application, job }: { application: Application; job: Job | undefined }) {
+  return (
+    <ListItem to={`/applications/${application.id}`}>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-[13px] leading-snug font-medium">
+            {job ? job.title : <span className="text-muted-foreground">Loading job…</span>}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-subtle-foreground">{job?.company_name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {application.mode === "assist" ? "Assist" : "Review"} · updated{" "}
+            {relativeTime(application.updated_at) ?? "recently"}
+          </p>
         </div>
-      )}
-    </div>
+        <StatusBadge value={application.state} className="mt-0.5 shrink-0" />
+      </div>
+    </ListItem>
   );
 }

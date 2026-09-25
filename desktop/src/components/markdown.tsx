@@ -23,7 +23,7 @@ import remarkGfm from "remark-gfm";
 ///     dangerous URL schemes, and this refuses anything else that survives.
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="space-y-2 text-sm text-slate-700">
+    <div className="space-y-2 text-sm text-subtle-foreground select-text">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>
@@ -38,7 +38,7 @@ function ExternalLink({ href, children }: { href?: string; children?: React.Reac
   return (
     <a
       href={href}
-      className="text-slate-900 underline underline-offset-2"
+      className="text-foreground underline underline-offset-2"
       onClick={(event) => {
         // The webview would otherwise navigate away from the app itself.
         event.preventDefault();
@@ -52,30 +52,30 @@ function ExternalLink({ href, children }: { href?: string; children?: React.Reac
 
 const components: Components = {
   a: ({ href, children }) => <ExternalLink href={href}>{children}</ExternalLink>,
-  img: ({ alt }) => (alt ? <span className="text-slate-500">[image: {alt}]</span> : null),
+  img: ({ alt }) => (alt ? <span className="text-muted-foreground">[image: {alt}]</span> : null),
 
-  h1: ({ children }) => <h2 className="mt-4 text-base font-semibold text-slate-900">{children}</h2>,
-  h2: ({ children }) => <h3 className="mt-4 text-sm font-semibold text-slate-900">{children}</h3>,
-  h3: ({ children }) => <h4 className="mt-3 text-sm font-semibold text-slate-800">{children}</h4>,
-  h4: ({ children }) => <h5 className="mt-3 text-sm font-medium text-slate-800">{children}</h5>,
-  h5: ({ children }) => <h6 className="mt-3 text-sm font-medium text-slate-800">{children}</h6>,
-  h6: ({ children }) => <h6 className="mt-3 text-sm font-medium text-slate-800">{children}</h6>,
+  h1: ({ children }) => <h2 className="mt-4 text-base font-semibold text-foreground">{children}</h2>,
+  h2: ({ children }) => <h3 className="mt-4 text-sm font-semibold text-foreground">{children}</h3>,
+  h3: ({ children }) => <h4 className="mt-3 text-sm font-semibold text-subtle-foreground">{children}</h4>,
+  h4: ({ children }) => <h5 className="mt-3 text-sm font-medium text-subtle-foreground">{children}</h5>,
+  h5: ({ children }) => <h6 className="mt-3 text-sm font-medium text-subtle-foreground">{children}</h6>,
+  h6: ({ children }) => <h6 className="mt-3 text-sm font-medium text-subtle-foreground">{children}</h6>,
 
   p: ({ children }) => <p className="leading-relaxed">{children}</p>,
   ul: ({ children }) => <ul className="list-outside list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="list-outside list-decimal space-y-1 pl-5">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-slate-200 pl-3 text-slate-600">{children}</blockquote>
+    <blockquote className="border-l-2 border-border pl-3 text-subtle-foreground">{children}</blockquote>
   ),
-  hr: () => <hr className="border-slate-200" />,
+  hr: () => <hr className="border-border" />,
 
   code: ({ children }) => (
-    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs">{children}</code>
+    <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
   ),
   pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-md bg-slate-100 p-3 font-mono text-xs">{children}</pre>
+    <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">{children}</pre>
   ),
 
   // Job descriptions converted from HTML often carry salary or benefit
@@ -86,7 +86,7 @@ const components: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-b border-slate-200 py-1 pr-3 font-medium text-slate-900">{children}</th>
+    <th className="border-b border-border py-1 pr-3 font-medium text-foreground">{children}</th>
   ),
-  td: ({ children }) => <td className="border-b border-slate-100 py-1 pr-3">{children}</td>,
+  td: ({ children }) => <td className="border-b border-border py-1 pr-3">{children}</td>,
 };

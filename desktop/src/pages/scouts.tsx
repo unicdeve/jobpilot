@@ -1,26 +1,42 @@
+import { ChevronRight, Ellipsis, Plus, Radar } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ConfirmDialog } from "../components/confirm";
 import { EmptyState } from "../components/empty-state";
 import { FormField } from "../components/form-field";
+import { Page, Panel, Section } from "../components/page";
+import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { runDuration } from "../lib/activity";
+import type { ScoutInput } from "../lib/api";
+import { dateTime, relativeTime } from "../lib/format";
 import {
   useCreateScout,
   useDeleteScout,
   useRunScout,
   useSavedSearches,
-  useScoutRunEvents,
   useScoutRuns,
   useScouts,
   useUpdateScout,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Scout, ScoutRunReport, ScoutSource } from "../lib/types";
-import type { ScoutInput } from "../lib/api";
+import type { SavedSearch, Scout, ScoutRunReport, ScoutSource } from "../lib/types";
 
-const selectClass =
-  "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900";
+const SOURCE_LABELS: Record<ScoutSource, string> = {
+  local: "Jobs already saved here",
+  sources: "Fetch from the job boards first",
+};
 
 const emptyScout = (savedSearchId: string): ScoutInput => ({
   name: "",
@@ -31,33 +47,30 @@ const emptyScout = (savedSearchId: string): ScoutInput => ({
   is_enabled: true,
 });
 
+const toInput = (scout: Scout): ScoutInput => ({
+  name: scout.name,
+  saved_search_id: scout.saved_search_id,
+  min_match_score: scout.min_match_score,
+  max_applications_per_run: scout.max_applications_per_run,
+  source: scout.source,
+  is_enabled: scout.is_enabled,
+});
+
 export function Scouts() {
   const { notify } = useToast();
   const { data: scouts } = useScouts();
   const { data: searches } = useSavedSearches();
   const { data: runs } = useScoutRuns(10);
 
-  const [draft, setDraft] = useState<ScoutInput | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // editing is the scout being edited, or "new"; null when the editor is shut.
+  const [editing, setEditing] = useState<Scout | "new" | null>(null);
+  const [deleting, setDeleting] = useState<Scout | null>(null);
   const [report, setReport] = useState<ScoutRunReport | null>(null);
-  const [openRunId, setOpenRunId] = useState<string | null>(null);
 
-  const createScout = useCreateScout({
-    onSuccess: () => {
-      notify("Scout created.", "success");
-      setDraft(null);
-    },
+  const deleteScout = useDeleteScout({
+    onSuccess: () => setDeleting(null),
     onError: (err) => notify(String(err)),
   });
-  const updateScout = useUpdateScout({
-    onSuccess: () => {
-      notify("Scout saved.", "success");
-      setDraft(null);
-      setEditingId(null);
-    },
-    onError: (err) => notify(String(err)),
-  });
-  const deleteScout = useDeleteScout({ onError: (err) => notify(String(err)) });
   const runScout = useRunScout({
     onSuccess: (result) => {
       setReport(result);
@@ -73,88 +86,223 @@ export function Scouts() {
 
   const searchName = (id: string) => searches?.find((s) => s.id === id)?.name ?? "a deleted search";
 
-  const startCreating = () => {
-    if (!searches?.length) return;
-    setEditingId(null);
-    setDraft(emptyScout(searches[0].id));
-  };
-
-  const startEditing = (scout: Scout) => {
-    setEditingId(scout.id);
-    setDraft({
-      name: scout.name,
-      saved_search_id: scout.saved_search_id,
-      min_match_score: scout.min_match_score,
-      max_applications_per_run: scout.max_applications_per_run,
-      source: scout.source,
-      is_enabled: scout.is_enabled,
-    });
-  };
-
-  const save = () => {
-    if (!draft) return;
-    if (editingId) {
-      updateScout.mutate({ id: editingId, scout: draft });
-      return;
-    }
-    createScout.mutate(draft);
-  };
-
   // A scout runs a saved search, so without one there is nothing to run.
-  if (!searches || searches.length === 0) {
+  if (searches && searches.length === 0) {
     return (
       <EmptyState
         title="No saved searches yet"
         description="A scout runs a saved search on your behalf, so it needs one to work from."
         actionLabel="Create a search"
-        actionTo="/jobs"
+        actionTo="/settings?section=searches"
       />
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Scouts</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            A scout runs a saved search, scores what it finds against your profile, and creates
-            applications for you to review. It never contacts an employer and never submits.
-          </p>
-        </div>
-        <Button onClick={startCreating}>New scout</Button>
-      </div>
+    <Page
+      title="Scouts"
+      width="wide"
+      actions={
+        <Button size="sm" onClick={() => setEditing("new")} disabled={!searches}>
+          <Plus data-icon="inline-start" />
+          New scout
+        </Button>
+      }
+    >
+      <p className="max-w-2xl text-sm text-muted-foreground">
+        A scout runs one of your saved searches, scores what it finds against your profile, and creates applications
+        for you to review. It never contacts an employer and never submits.
+      </p>
 
-      {draft && (
-        <Card className="mb-4">
-          <CardContent className="space-y-3">
-            <h2 className="font-medium">{editingId ? "Edit scout" : "New scout"}</h2>
+      <Section title="Your scouts" className="mt-6">
+        {!scouts || scouts.length === 0 ? (
+          <Panel className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+            <Radar className="size-8 stroke-[1.25] text-muted-foreground/60" />
+            <p className="text-sm font-medium text-subtle-foreground">No scouts yet</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Create one to have JobPilot shortlist jobs from a saved search for you.
+            </p>
+          </Panel>
+        ) : (
+          <Panel className="divide-y divide-border">
+            {scouts.map((scout) => (
+              <div key={scout.id} className="flex items-center gap-4 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium">
+                    {scout.name}
+                    {!scout.is_enabled && (
+                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">
+                        Paused
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-xs text-subtle-foreground">
+                    {searchName(scout.saved_search_id)} · score ≥ {scout.min_match_score} · up to{" "}
+                    {scout.max_applications_per_run} per run ·{" "}
+                    {scout.source === "local" ? "saved jobs" : "fetches from the job boards"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {scout.last_run_at ? (
+                      <span title={dateTime(scout.last_run_at)}>Last ran {relativeTime(scout.last_run_at)}</span>
+                    ) : (
+                      "Hasn’t run yet"
+                    )}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runScout.mutate(scout.id)}
+                  disabled={runScout.isPending || !scout.is_enabled}
+                >
+                  {runScout.isPending && runScout.variables === scout.id ? "Running…" : "Run now"}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button size="icon-sm" variant="ghost" aria-label={`More for ${scout.name}`} />}
+                  >
+                    <Ellipsis />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditing(scout)}>Edit…</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(scout)}>
+                      Delete…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </Panel>
+        )}
+      </Section>
+
+      {report && <RunReport report={report} onDismiss={() => setReport(null)} />}
+
+      {runs && runs.length > 0 && (
+        <Section
+          title="Recent runs"
+          actions={
+            <Link to="/activity?kind=scout_run" className="text-xs text-muted-foreground hover:text-foreground">
+              All scout runs
+            </Link>
+          }
+        >
+          <Panel className="divide-y divide-border">
+            {runs.map((run) => {
+              const duration = runDuration(run);
+              return (
+                <Link
+                  key={run.id}
+                  to={`/activity/${run.id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px]">
+                      <span title={dateTime(run.started_at)}>{relativeTime(run.started_at)}</span>
+                      {duration && <span className="text-muted-foreground"> · took {duration}</span>}
+                    </p>
+                    {run.error && <p className="mt-0.5 truncate text-xs text-destructive">{run.error}</p>}
+                  </div>
+                  <StatusBadge value={run.status} />
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </Link>
+              );
+            })}
+          </Panel>
+        </Section>
+      )}
+
+      {editing && searches && (
+        <ScoutEditor scout={editing === "new" ? null : editing} searches={searches} onClose={() => setEditing(null)} />
+      )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Delete “${deleting?.name}”?`}
+        description="The scout stops, and its past runs stay in Activity. Applications it created are kept."
+        confirmLabel="Delete scout"
+        onConfirm={() => deleting && deleteScout.mutate(deleting.id)}
+        pending={deleteScout.isPending}
+      />
+    </Page>
+  );
+}
+
+function ScoutEditor({
+  scout,
+  searches,
+  onClose,
+}: {
+  scout: Scout | null;
+  searches: SavedSearch[];
+  onClose: () => void;
+}) {
+  const { notify } = useToast();
+  const [draft, setDraft] = useState<ScoutInput>(scout ? toInput(scout) : emptyScout(searches[0].id));
+  const searchLabels = Object.fromEntries(searches.map((s) => [s.id, s.name]));
+
+  const createScout = useCreateScout({
+    onSuccess: () => {
+      notify("Scout created.", "success");
+      onClose();
+    },
+    onError: (err) => notify(String(err)),
+  });
+  const updateScout = useUpdateScout({
+    onSuccess: () => {
+      notify("Scout saved.", "success");
+      onClose();
+    },
+    onError: (err) => notify(String(err)),
+  });
+
+  const save = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (scout) updateScout.mutate({ id: scout.id, scout: draft });
+    else createScout.mutate(draft);
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <form onSubmit={save}>
+          <DialogTitle>{scout ? "Edit scout" : "New scout"}</DialogTitle>
+          <DialogDescription>A scout creates applications for you to review. It never submits.</DialogDescription>
+
+          <div className="mt-5 flex flex-col gap-4">
             <FormField label="Name" htmlFor="scout-name">
               <Input
                 id="scout-name"
+                autoFocus
                 value={draft.name}
                 placeholder="Daily Go roles"
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
             </FormField>
 
-            <FormField label="Saved search" htmlFor="scout-search">
-              <select
-                id="scout-search"
-                className={selectClass}
+            <FormField
+              label="Saved search"
+              htmlFor="scout-search"
+              hint="The search decides which jobs count, including salary floor, excluded companies and location."
+            >
+              <Select
+                items={searchLabels}
                 value={draft.saved_search_id}
-                onChange={(e) => setDraft({ ...draft, saved_search_id: e.target.value })}
+                onValueChange={(value) => value && setDraft({ ...draft, saved_search_id: value })}
               >
-                {searches.map((search) => (
-                  <option key={search.id} value={search.id}>
-                    {search.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500">
-                The search decides which jobs count — including salary floor, excluded companies
-                and location. Change those on the search itself.
-              </p>
+                <SelectTrigger id="scout-search" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {searches.map((search) => (
+                    <SelectItem key={search.id} value={search.id}>
+                      {search.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
 
             <div className="grid grid-cols-2 gap-3">
@@ -165,9 +313,7 @@ export function Scouts() {
                   min={0}
                   max={100}
                   value={draft.min_match_score}
-                  onChange={(e) =>
-                    setDraft({ ...draft, min_match_score: Number(e.target.value) })
-                  }
+                  onChange={(e) => setDraft({ ...draft, min_match_score: Number(e.target.value) })}
                 />
               </FormField>
               <FormField label="Most applications per run" htmlFor="scout-ceiling">
@@ -177,139 +323,48 @@ export function Scouts() {
                   min={1}
                   max={50}
                   value={draft.max_applications_per_run}
-                  onChange={(e) =>
-                    setDraft({ ...draft, max_applications_per_run: Number(e.target.value) })
-                  }
+                  onChange={(e) => setDraft({ ...draft, max_applications_per_run: Number(e.target.value) })}
                 />
               </FormField>
             </div>
 
             <FormField label="Where to look" htmlFor="scout-source">
-              <select
-                id="scout-source"
-                className={selectClass}
+              <Select
+                items={SOURCE_LABELS}
                 value={draft.source}
-                onChange={(e) => setDraft({ ...draft, source: e.target.value as ScoutSource })}
+                onValueChange={(value) => value && setDraft({ ...draft, source: value as ScoutSource })}
               >
-                <option value="local">Jobs already saved here</option>
-                <option value="sources">Fetch from the job boards first</option>
-              </select>
+                <SelectTrigger id="scout-source" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
 
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={draft.is_enabled}
-                onChange={(e) => setDraft({ ...draft, is_enabled: e.target.checked })}
+                onCheckedChange={(checked) => setDraft({ ...draft, is_enabled: checked === true })}
               />
               Enabled
             </label>
-
-            <div className="flex gap-2">
-              <Button onClick={save} disabled={createScout.isPending || updateScout.isPending}>
-                {editingId ? "Save scout" : "Create scout"}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setDraft(null);
-                  setEditingId(null);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!scouts || scouts.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No scouts yet. Create one to have JobPilot shortlist jobs for you.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {scouts.map((scout) => (
-            <Card key={scout.id}>
-              <CardContent className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {scout.name}
-                    {!scout.is_enabled && (
-                      <span className="ml-2 text-xs font-normal text-slate-500">disabled</span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {searchName(scout.saved_search_id)} · score ≥ {scout.min_match_score} · up to{" "}
-                    {scout.max_applications_per_run} per run ·{" "}
-                    {scout.source === "local" ? "saved jobs" : "fetches from sources"}
-                  </p>
-                  {scout.last_run_at && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Last run {new Date(scout.last_run_at).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    onClick={() => runScout.mutate(scout.id)}
-                    disabled={runScout.isPending || !scout.is_enabled}
-                  >
-                    {runScout.isPending ? "Running…" : "Run now"}
-                  </Button>
-                  <Button variant="secondary" onClick={() => startEditing(scout)}>
-                    Edit
-                  </Button>
-                  <Button variant="destructive" onClick={() => deleteScout.mutate(scout.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {report && <RunReport report={report} onDismiss={() => setReport(null)} />}
-
-      {runs && runs.length > 0 && (
-        <div className="mt-8">
-          <h2 className="mb-2 font-medium">Recent runs</h2>
-          <div className="space-y-2">
-            {runs.map((run) => (
-              <Card key={run.id}>
-                <CardContent>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between text-left"
-                    onClick={() => setOpenRunId(openRunId === run.id ? null : run.id)}
-                  >
-                    <span className="text-sm">
-                      {new Date(run.started_at).toLocaleString()} · {run.status}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {openRunId === run.id ? "Hide" : "What it did"}
-                    </span>
-                  </button>
-                  {run.error && <p className="mt-1 text-sm text-red-600">{run.error}</p>}
-                  {openRunId === run.id && (
-                    <>
-                      <RunTrail runId={run.id} />
-                      <Link
-                        to={`/activity/${run.id}`}
-                        className="mt-2 inline-block text-xs text-slate-500 underline"
-                      >
-                        Open in Activity
-                      </Link>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
           </div>
-        </div>
-      )}
-    </div>
+
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+            <Button type="submit" disabled={!draft.name.trim() || createScout.isPending || updateScout.isPending}>
+              {scout ? "Save scout" : "Create scout"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -318,69 +373,43 @@ export function Scouts() {
 function RunReport({ report, onDismiss }: { report: ScoutRunReport; onDismiss: () => void }) {
   const verdicts = report.verdicts ?? [];
   return (
-    <Card className="mt-4">
-      <CardContent>
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="font-medium">
-              Considered {report.considered} job{report.considered === 1 ? "" : "s"}, created{" "}
-              {report.created} application{report.created === 1 ? "" : "s"}
-            </h2>
-            {report.ceiling_hit && (
-              <p className="mt-1 text-sm text-slate-600">
-                Stopped at this scout's per-run limit. Run it again for more.
-              </p>
-            )}
-            {report.error && <p className="mt-1 text-sm text-red-600">{report.error}</p>}
-          </div>
-          <Button variant="secondary" onClick={onDismiss}>
-            Dismiss
-          </Button>
-        </div>
-
-        {verdicts.length > 0 && (
-          <ul className="mt-3 space-y-1 text-sm">
-            {verdicts.map((verdict) => (
-              <li key={verdict.job_id} className="flex gap-2">
-                <span className={verdict.eligible ? "text-green-600" : "text-slate-400"}>
-                  {verdict.eligible ? "✓" : "–"}
-                </span>
-                <span className="min-w-0">
-                  <span className="font-medium">{verdict.job_title}</span>
-                  <span className="text-slate-600"> — {verdict.reason}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {report.created > 0 && (
-          <p className="mt-3 text-sm">
-            <Link className="underline" to="/applications">
+    <Section
+      title={`Considered ${report.considered} job${report.considered === 1 ? "" : "s"}, created ${report.created} application${report.created === 1 ? "" : "s"}`}
+      description={
+        report.error ? (
+          <span className="text-destructive">{report.error}</span>
+        ) : report.ceiling_hit ? (
+          "Stopped at this scout’s per-run limit. Run it again for more."
+        ) : report.created > 0 ? (
+          <>
+            <Link className="text-foreground underline" to="/applications">
               Review them
             </Link>{" "}
             — nothing has been sent.
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RunTrail({ runId }: { runId: string }) {
-  const { data: events } = useScoutRunEvents(runId);
-  if (!events || events.length === 0) {
-    return <p className="mt-2 text-xs text-slate-500">No steps recorded.</p>;
-  }
-  return (
-    <ul className="mt-2 space-y-1 text-xs text-slate-600">
-      {events.map((event) => (
-        <li key={event.id}>
-          <span className="font-mono">{event.action}</span>
-          {event.input_summary ? `: ${event.input_summary}` : ""}
-          {event.output_summary ? ` — ${event.output_summary}` : ""}
-        </li>
-      ))}
-    </ul>
+          </>
+        ) : undefined
+      }
+      actions={
+        <Button size="sm" variant="ghost" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      }
+    >
+      {verdicts.length > 0 && (
+        <Panel className="divide-y divide-border">
+          {verdicts.map((verdict) => (
+            <div key={verdict.job_id} className="flex items-start gap-3 px-4 py-2">
+              <StatusBadge value={verdict.eligible ? "allowed" : "denied"} className="mt-0.5 shrink-0" />
+              <p className="min-w-0 text-[13px]">
+                <Link to={`/jobs/${verdict.job_id}`} className="font-medium hover:underline">
+                  {verdict.job_title}
+                </Link>
+                <span className="text-muted-foreground"> — {verdict.reason}</span>
+              </p>
+            </div>
+          ))}
+        </Panel>
+      )}
+    </Section>
   );
 }

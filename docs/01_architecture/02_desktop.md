@@ -14,6 +14,43 @@
 
 The application should feel close to a native desktop application rather than a website placed in a window.
 
+## Look and feel
+
+The goal above is met by a handful of rules, and a screen that breaks one is what makes the app read as a website again.
+
+**Colour is a token, never a literal.**
+`desktop/src/index.css` defines every colour for a light theme (`:root`) and a dark one (`.dark`), and screens use the tokens — `text-muted-foreground`, `bg-card`, `border-border` — never `text-slate-500`.
+A literal looks right in one theme and wrong in the other, and before this rule 21 files held 276 of them, which is why the app had no dark theme even though the dark tokens existed.
+Status colours are roles (`success`, `warning`, `info`, `highlight`, `destructive`), used as a tint behind text of the same tone: `bg-success/12 text-success`.
+`StatusBadge` maps every state the daemon reports to a tone and a readable label; a raw value such as `READY_FOR_REVIEW` is never shown.
+
+**The theme is the user's, and follows the OS by default.**
+System, Light or Dark, under Settings → Appearance.
+The choice is kept in the desktop's own storage rather than the daemon, because how this window looks is a preference of this device and the CLI has no use for it.
+It is applied before React renders, so the first frame is already right, and it is passed to the native window so the title bar matches.
+
+**The platform's font, and its conventions.**
+San Francisco on macOS, Segoe UI on Windows, the desktop's own font on Linux.
+Chrome is not text-selectable and buttons show the arrow cursor, as native controls do; text a person reads or copies opts back in with `select-text`.
+
+**The window.**
+It opens at 1280×820 and cannot be made smaller than 1000×640.
+On macOS the title bar is drawn over the window's content (`src-tauri/tauri.macos.conf.json`), so the sidebar runs to the top edge and toolbars are drag regions; Windows and Linux keep their standard frame.
+
+**Navigation.**
+A grouped sidebar with icons, in the order of the ⌘1–⌘7 shortcuts (Ctrl on Windows and Linux), with Settings at the bottom on ⌘,.
+Its only badge is the number of applications waiting on the user, because it is the only count that asks for something.
+
+**Lists beside their items.**
+Jobs, Applications and Activity are split views (`components/split-view.tsx`): the list keeps its place and scroll while the selected item changes, and a window too narrow for both shows one, with a way back.
+A list's filters live in the URL, so a link can open a filtered list and selecting an item keeps the list as it was.
+Other screens are a page (`components/page.tsx`): a sticky toolbar with the title and actions, then titled sections.
+
+**Few boxes.**
+A section is a heading, not a card; a bordered `Panel` holds a grouped list or form, divided by hairlines.
+Forms that are not the point of a screen — starting an application, adding a job by URL, editing a scout — open in a dialog.
+Anything that cannot be undone asks first (`components/confirm.tsx`), naming what will happen on the button.
+
 ## Responsibilities
 
 The desktop app handles:
@@ -43,6 +80,10 @@ The lists feed it rather than competing with it. A job on the Jobs list, a
 match, and an application all link to the job they concern, and a match or an
 application shows the job's title rather than its `job_id`. Nothing in the UI
 asks the user to type or paste an identifier.
+
+A match is not a screen of its own. It is a job with a score, so matches are
+the Jobs list's "Analyzed" view, ranked by that score, and the analysis is
+shown on the job.
 
 Matches and applications store only a `job_id`, so those screens fetch the
 jobs they reference one at a time (`useJobsByID`) rather than through a bulk
@@ -105,6 +146,11 @@ yanking them away from where they chose to be.
 
 This depends on the query cache: a list that refetched from empty on every
 visit would have nothing to scroll back into.
+
+A split view is the exception. It fills `<main>` rather than growing it, and
+each pane scrolls on its own; the list keeps its position without help,
+because selecting an item changes only the detail pane and the list is never
+unmounted.
 
 ## Communication
 

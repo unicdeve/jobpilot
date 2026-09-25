@@ -38,8 +38,8 @@ export function EmptyState({
       )}
       data-slot="empty-state"
     >
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      {description && <p className="mt-2 max-w-md text-sm text-slate-500">{description}</p>}
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      {description && <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>}
       {actionLabel && actionTo && (
         <Button className="mt-5" render={<Link to={actionTo}>{actionLabel}</Link>} />
       )}

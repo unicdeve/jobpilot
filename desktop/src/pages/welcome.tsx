@@ -104,13 +104,13 @@ export function Welcome() {
     navigate("/");
   };
 
-  if (loading || step === null) return <p className="p-6 text-sm text-slate-500">Loading…</p>;
+  if (loading || step === null) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>;
   const current = step;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-10">
       <h1 className="text-xl font-semibold">Set up JobPilot</h1>
-      <p className="mt-1 text-sm text-slate-500">
+      <p className="mt-1 text-sm text-muted-foreground">
         Four things, none of them an account. Everything you enter stays on this machine.
       </p>
 
@@ -127,10 +127,10 @@ export function Welcome() {
                 data-state={active ? "active" : complete ? "complete" : "todo"}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   active
-                    ? "bg-slate-900 text-white"
+                    ? "bg-sidebar-accent text-foreground"
                     : complete
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-slate-100 text-slate-500"
+                      ? "bg-success/12 text-success"
+                      : "bg-muted text-muted-foreground"
                 }`}
               >
                 {complete && !active ? "✓ " : `${index + 1}. `}
@@ -162,7 +162,7 @@ export function Welcome() {
       </Card>
 
       <div className="mt-4 text-center">
-        <button type="button" onClick={skip} className="text-xs text-slate-500 underline">
+        <button type="button" onClick={skip} className="text-xs text-muted-foreground underline">
           Skip setup — I'll find my way around
         </button>
       </div>
@@ -194,7 +194,7 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
     <>
       <div>
         <h2 className="font-semibold">Point JobPilot at a local LLM</h2>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           Matching, cover letters and reading a resume all run on a model you host. Nothing is sent
           to a hosted service.
         </p>
@@ -205,7 +205,7 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
       {result && (
         <p
           data-slot="connectivity"
-          className={`text-sm ${result.ok ? "text-emerald-700" : "text-amber-700"}`}
+          className={`text-sm ${result.ok ? "text-success" : "text-warning"}`}
         >
           {result.ok ? result.message : `Saved, but could not connect: ${result.message}`}
         </p>
@@ -213,7 +213,7 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
 
       <div className="flex items-center gap-2">
         <Button
-          variant="secondary"
+          variant="outline"
           onClick={() => save.mutate(draft)}
           disabled={save.isPending || !draft.model.trim()}
         >
@@ -223,10 +223,10 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
           Continue
         </Button>
         {!result && !draft.model.trim() && (
-          <span className="text-xs text-slate-500">A model name is required.</span>
+          <span className="text-xs text-muted-foreground">A model name is required.</span>
         )}
         {result && !result.ok && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             You can continue and start it later — only the AI steps need it.
           </span>
         )}
@@ -267,7 +267,7 @@ function ProfileStep({
       <>
         <div>
           <h2 className="font-semibold">Profile created</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
               "Your candidate profile"}{" "}
             is saved. The <Link className="underline" to="/profile">Profile screen</Link> has the
@@ -286,7 +286,7 @@ function ProfileStep({
     <>
       <div>
         <h2 className="font-semibold">Who are you applying as?</h2>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           JobPilot matches jobs against this and fills applications from it. It never invents
           details you have not given it.
         </p>
@@ -346,7 +346,7 @@ function ProfileStep({
           {create.isPending ? "Creating…" : "Create profile"}
         </Button>
         {!draft.first_name.trim() && (
-          <span className="text-xs text-slate-500">A first name is required.</span>
+          <span className="text-xs text-muted-foreground">A first name is required.</span>
         )}
       </div>
     </>
@@ -446,23 +446,23 @@ function ResumeStep({
     <>
       <div>
         <h2 className="font-semibold">Import a resume</h2>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           Optional. JobPilot converts it to text, keeps it for applications, and reads your details
           out of it so you do not have to type them again.
         </p>
       </div>
 
-      {imported && <p className="text-sm text-emerald-700">A resume is already imported.</p>}
+      {imported && <p className="text-sm text-success">A resume is already imported.</p>}
 
       {!llmConfigured && (
-        <p className="text-sm text-amber-700">
+        <p className="text-sm text-warning">
           Reading details out of a resume needs the AI provider, which is not set up yet. You can
           still import the file — it just will not prefill anything.
         </p>
       )}
 
       <div className="flex items-center gap-2">
-        <Button variant="secondary" onClick={() => void pick()} disabled={busy || !profile}>
+        <Button variant="outline" onClick={() => void pick()} disabled={busy || !profile}>
           {busy ? "Importing…" : "Choose a file"}
         </Button>
         <Button onClick={onNext}>{imported ? "Continue" : "Skip this step"}</Button>
@@ -500,7 +500,7 @@ function SearchStep({
       <>
         <div>
           <h2 className="font-semibold">You have a search</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             That is everything JobPilot needs. Add more of them any time under Settings.
           </p>
         </div>
@@ -513,7 +513,7 @@ function SearchStep({
     <>
       <div>
         <h2 className="font-semibold">What jobs are you looking for?</h2>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           JobPilot only looks for what you ask it to. The job boards do no filtering of their own,
           so without a search it would import every posting on them — it refuses to run instead.
         </p>
@@ -530,7 +530,7 @@ function SearchStep({
           <button
             type="button"
             onClick={() => setWritingOwn(false)}
-            className="self-start text-xs text-slate-500 underline"
+            className="self-start text-xs text-muted-foreground underline"
           >
             Back to the templates
           </button>
@@ -553,7 +553,7 @@ function SearchStep({
           <button
             type="button"
             onClick={() => setWritingOwn(true)}
-            className="self-start text-xs text-slate-500 underline"
+            className="self-start text-xs text-muted-foreground underline"
           >
             Write my own instead
           </button>

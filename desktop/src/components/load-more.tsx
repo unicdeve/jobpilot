@@ -35,7 +35,7 @@ export function LoadMore({
 
   return (
     <div ref={sentinel} className="pt-2">
-      <Button variant="secondary" onClick={fetchNextPage} disabled={isFetchingNextPage}>
+      <Button variant="outline" onClick={fetchNextPage} disabled={isFetchingNextPage}>
         {isFetchingNextPage ? "Loading…" : "Load more"}
       </Button>
     </div>

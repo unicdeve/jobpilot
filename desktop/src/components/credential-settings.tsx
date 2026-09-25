@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Card, CardContent } from "./ui/card";
+import { Panel } from "./page";
+import { SettingsHeading } from "./settings-heading";
 import { FormField } from "./form-field";
 import { useCredentials, useDeleteCredential, useSetCredential } from "../lib/queries";
 import { useToast } from "../lib/toast";
@@ -52,24 +53,24 @@ export function CredentialSettings() {
   const usable = source.trim() !== "" && secret.trim() !== "";
 
   return (
-    <Card>
-      <CardContent className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Job source keys</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Some job sources need an API key. Keys are kept in your operating system's keychain,
-              never in JobPilot's database, and JobPilot cannot show one again once it is stored.
-            </p>
-          </div>
-          {!adding && <Button onClick={() => setAdding(true)}>Add key</Button>}
-        </div>
+    <>
+      <SettingsHeading
+        title="API keys"
+        description="Some job sources need an API key. Keys are kept in your operating system’s keychain, never in JobPilot’s database, and cannot be shown again once stored."
+        actions={
+          !adding && (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              Add key
+            </Button>
+          )
+        }
+      />
 
         {adding && (
           // A form rather than a div: it gives the key field Enter-to-submit,
           // and it is what the browser asks for around a password input.
           <form
-            className="space-y-3 rounded-md border border-slate-200 p-3"
+            className="mb-4 space-y-3 rounded-lg border border-border bg-card p-4"
             onSubmit={(e) => {
               e.preventDefault();
               if (usable && !store.isPending) {
@@ -113,7 +114,7 @@ export function CredentialSettings() {
               />
             </FormField>
 
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               You will not be able to view this key again. Keep your own copy if you need one —
               to change it later, enter it here again.
             </p>
@@ -122,10 +123,10 @@ export function CredentialSettings() {
               <Button type="submit" disabled={!usable || store.isPending}>
                 {store.isPending ? "Storing…" : "Store in keychain"}
               </Button>
-              <Button type="button" variant="secondary" onClick={reset}>
+              <Button type="button" variant="ghost" onClick={reset}>
                 Cancel
               </Button>
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-muted-foreground">
                 Lower-case letters, digits and hyphens for the source and label.
               </span>
             </div>
@@ -133,40 +134,34 @@ export function CredentialSettings() {
         )}
 
         {error ? (
-          <p className="text-sm text-red-600">{String(error.message)}</p>
+          <p className="text-sm text-destructive">{String(error.message)}</p>
         ) : isPending ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : credentials.length === 0 ? (
           !adding && (
-            <p className="text-sm text-slate-500">
-              No keys stored. Every job source JobPilot uses today works without one.
-            </p>
+            <Panel className="px-4 py-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No keys stored. Every job source JobPilot uses today works without one.
+              </p>
+            </Panel>
           )
         ) : (
-          <div className="space-y-2">
+          <Panel className="divide-y divide-border">
             {credentials.map((ref) => (
-              <div
-                key={`${ref.source}/${ref.label}`}
-                className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3"
-              >
+              <div key={`${ref.source}/${ref.label}`} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p className="font-medium">{ref.source}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="text-[13px] font-medium">{ref.source}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {ref.label} · stored in your keychain
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(ref)}
-                >
+                <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(ref)}>
                   Remove
                 </Button>
               </div>
             ))}
-          </div>
+          </Panel>
         )}
-      </CardContent>
-    </Card>
+    </>
   );
 }

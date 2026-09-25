@@ -1,9 +1,11 @@
+import { Upload } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { FormField } from "../components/form-field";
+import { Page, Panel, Section } from "../components/page";
+import { Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import { FormField } from "../components/form-field";
-import { Card, CardContent } from "../components/ui/card";
 import {
   Dialog,
   DialogClose,
@@ -13,7 +15,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import {
   useCheckLLMHealth,
@@ -56,6 +58,17 @@ const emptyProfile: Candidate = {
   experiences: [],
   links: [],
   work_authorizations: [],
+};
+
+/// NO_PREFERENCE stands for an unstated preference in the select, which
+/// cannot hold an empty string as a choice of its own.
+const NO_PREFERENCE = "none";
+
+const REMOTE_LABELS: Record<string, string> = {
+  [NO_PREFERENCE]: "No preference stated",
+  remote: "Remote",
+  hybrid: "Hybrid",
+  onsite: "On-site",
 };
 
 // LINK_LABELS names each kind the way the forms that ask for it do.
@@ -108,7 +121,7 @@ export function Profile() {
   const importing = importResume.isPending || proposeDraft.isPending;
   const busy = importing || checkLLM.isPending;
 
-  if (isPending) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (isPending) return <Loading />;
 
   const profile = draft ?? saved ?? emptyProfile;
 
@@ -230,8 +243,26 @@ export function Profile() {
     }
   };
 
+  const saveButton = (
+    <Button size="sm" onClick={save} disabled={saving || (exists && !draft)}>
+      {saving ? "Saving…" : exists ? "Save" : "Create profile"}
+    </Button>
+  );
+
   return (
-    <div className="max-w-2xl">
+    <Page
+      title="Profile"
+      actions={
+        <>
+          {draft && exists && (
+            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+              Revert
+            </Button>
+          )}
+          {saveButton}
+        </>
+      }
+    >
       <Dialog open={!!llmProblem} onOpenChange={(open) => !open && setLlmProblem(null)}>
         <DialogContent>
           <DialogTitle>
@@ -239,8 +270,8 @@ export function Profile() {
           </DialogTitle>
           <DialogDescription>
             {llmProblem?.configured
-              ? "Prefilling reads your resume with the LLM you configured, and it isn't answering. Check that it's running, then try again."
-              : "Prefilling reads your resume with a local LLM — JobPilot never sends it anywhere else. Choose a provider and model in Settings, then come back and import."}
+              ? "Prefilling reads your resume with the model you configured, and it isn't answering. Check that it's running, then try again."
+              : "Prefilling reads your resume with the model you choose in Settings. Choose a provider and model there, then come back and import."}
           </DialogDescription>
           {llmProblem?.error && (
             <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs break-words text-muted-foreground">
@@ -248,44 +279,36 @@ export function Profile() {
             </p>
           )}
           <DialogFooter>
-            <Button variant="ghost" render={<DialogClose>Not now</DialogClose>} />
-            <Button render={<Link to="/settings">Open settings</Link>} />
+            <DialogClose render={<Button variant="ghost" />}>Not now</DialogClose>
+            <Button render={<Link to="/settings?section=model" />}>Open settings</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        <div className="flex items-center justify-between mb-4 gap-3">
-          <Label htmlFor="overwrite_existing">
-            <Checkbox
-              id="overwrite_existing"
-              checked={overwriteExisting}
-              onCheckedChange={(checked) => setOverwriteExisting(checked === true)}
-            />
-            Overwrite existing fields with resume data
-          </Label>
-          <Button variant="outline" onClick={() => void importResumeToPrefill()} disabled={busy}>
-            {checkLLM.isPending ? "Checking…" : importing ? "Importing…" : "Import resume to prefill"}
-          </Button>
-      </div>
-      {!exists && (
-        <p className="mb-4 text-sm text-slate-500">
-          No candidate profile yet — fill this in to create one, or import a resume to prefill it.
-        </p>
-      )}
-      <Card>
-        <CardContent className="space-y-4">
-          <FormField label="First Name" htmlFor="first_name">
-            <Input
-              id="first_name"
-              value={profile.first_name}
-              onChange={(e) => set("first_name", e.target.value)}
-            />
+
+      <Panel className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium">{exists ? "Fill in from a resume" : "Start from your resume"}</p>
+          <p className="text-xs text-muted-foreground">
+            JobPilot reads the resume and suggests what to put here. Nothing is saved until you review it and save.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-subtle-foreground">
+          <Checkbox checked={overwriteExisting} onCheckedChange={(checked) => setOverwriteExisting(checked === true)} />
+          Replace what’s already filled in
+        </label>
+        <Button size="sm" variant="outline" onClick={() => void importResumeToPrefill()} disabled={busy}>
+          <Upload data-icon="inline-start" />
+          {checkLLM.isPending ? "Checking…" : importing ? "Reading…" : "Import resume"}
+        </Button>
+      </Panel>
+
+      <Section title="Contact" className="mt-8">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="First name" htmlFor="first_name">
+            <Input id="first_name" value={profile.first_name} onChange={(e) => set("first_name", e.target.value)} />
           </FormField>
-          <FormField label="Last Name" htmlFor="last_name">
-            <Input
-              id="last_name"
-              value={profile.last_name}
-              onChange={(e) => set("last_name", e.target.value)}
-            />
+          <FormField label="Last name" htmlFor="last_name">
+            <Input id="last_name" value={profile.last_name} onChange={(e) => set("last_name", e.target.value)} />
           </FormField>
           <FormField label="Email" htmlFor="email">
             <Input id="email" type="email" value={profile.email} onChange={(e) => set("email", e.target.value)} />
@@ -293,105 +316,112 @@ export function Profile() {
           <FormField label="Phone" htmlFor="phone">
             <Input id="phone" value={profile.phone} onChange={(e) => set("phone", e.target.value)} />
           </FormField>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <FormField label="City" htmlFor="location_city">
-              <Input
-                id="location_city"
-                value={profile.location_city}
-                onChange={(e) => set("location_city", e.target.value)}
-              />
-            </FormField>
-            <FormField label="State / region" htmlFor="location_region">
-              <Input
-                id="location_region"
-                value={profile.location_region}
-                onChange={(e) => set("location_region", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Country" htmlFor="location_country">
-              <Input
-                id="location_country"
-                value={profile.location_country}
-                onChange={(e) => set("location_country", e.target.value)}
-              />
-            </FormField>
-          </div>
-          <FormField label="Summary" htmlFor="summary">
-            <Textarea
-              id="summary"
-              rows={3}
-              value={profile.summary}
-              onChange={(e) => set("summary", e.target.value)}
+        </div>
+      </Section>
+
+      <Section title="Location">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField label="City" htmlFor="location_city">
+            <Input id="location_city" value={profile.location_city} onChange={(e) => set("location_city", e.target.value)} />
+          </FormField>
+          <FormField label="State / region" htmlFor="location_region">
+            <Input
+              id="location_region"
+              value={profile.location_region}
+              onChange={(e) => set("location_region", e.target.value)}
             />
           </FormField>
-          <FormField label="How do you want to work?" htmlFor="remote_preference">
-            <select
-              id="remote_preference"
-              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
-              value={profile.remote_preference}
-              onChange={(e) => set("remote_preference", e.target.value as RemotePreference)}
+          <FormField label="Country" htmlFor="location_country">
+            <Input
+              id="location_country"
+              value={profile.location_country}
+              onChange={(e) => set("location_country", e.target.value)}
+            />
+          </FormField>
+        </div>
+      </Section>
+
+      <Section title="About you" description="Used when matching you to jobs and when writing cover letters.">
+        <Textarea
+          id="summary"
+          aria-label="Summary"
+          rows={5}
+          value={profile.summary}
+          onChange={(e) => set("summary", e.target.value)}
+        />
+      </Section>
+
+      <Section title="Availability">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField label="How you want to work" htmlFor="remote_preference">
+            <Select
+              items={REMOTE_LABELS}
+              value={profile.remote_preference || NO_PREFERENCE}
+              onValueChange={(value) =>
+                set("remote_preference", (value === NO_PREFERENCE ? "" : value) as RemotePreference)
+              }
             >
-              <option value="">No preference stated</option>
-              <option value="remote">Remote</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="onsite">Onsite</option>
-            </select>
+              <SelectTrigger id="remote_preference" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(REMOTE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
-
-          <SkillsEditor
-            skills={profile.skills ?? []}
-            onChange={(skills) => set("skills", skills)}
-          />
-
-          <ExperiencesEditor
-            experiences={profile.experiences ?? []}
-            onChange={(experiences) => set("experiences", experiences)}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Notice period (days)" htmlFor="notice_period_days">
-              <Input
-                id="notice_period_days"
-                type="number"
-                min={0}
-                value={profile.notice_period_days ?? ""}
-                onChange={(e) =>
-                  set("notice_period_days", e.target.value === "" ? null : Number(e.target.value))
-                }
-              />
-            </FormField>
-            <FormField label="Earliest start date" htmlFor="earliest_start_date">
-              <Input
-                id="earliest_start_date"
-                type="date"
-                value={profile.earliest_start_date ?? ""}
-                onChange={(e) => set("earliest_start_date", e.target.value || null)}
-              />
-            </FormField>
-          </div>
-
-          <LinksEditor
-            links={profile.links ?? []}
-            onChange={(links) => set("links", links)}
-          />
-
-          <WorkAuthorizationsEditor
-            authorizations={profile.work_authorizations ?? []}
-            onChange={(authorizations) => set("work_authorizations", authorizations)}
-          />
-          <FormField label="Application preferences (tone/length for generated content)" htmlFor="application_preferences">
-            <Textarea
-              id="application_preferences"
-              rows={2}
-              value={profile.application_preferences}
-              onChange={(e) => set("application_preferences", e.target.value)}
+          <FormField label="Notice period (days)" htmlFor="notice_period_days">
+            <Input
+              id="notice_period_days"
+              type="number"
+              min={0}
+              value={profile.notice_period_days ?? ""}
+              onChange={(e) => set("notice_period_days", e.target.value === "" ? null : Number(e.target.value))}
             />
           </FormField>
-          <Button onClick={save} disabled={saving}>
-            {exists ? "Save" : "Create profile"}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+          <FormField label="Earliest start date" htmlFor="earliest_start_date">
+            <Input
+              id="earliest_start_date"
+              type="date"
+              value={profile.earliest_start_date ?? ""}
+              onChange={(e) => set("earliest_start_date", e.target.value || null)}
+            />
+          </FormField>
+        </div>
+      </Section>
+
+      <SkillsEditor skills={profile.skills ?? []} onChange={(skills) => set("skills", skills)} />
+
+      <ExperiencesEditor
+        experiences={profile.experiences ?? []}
+        onChange={(experiences) => set("experiences", experiences)}
+      />
+
+      <LinksEditor links={profile.links ?? []} onChange={(links) => set("links", links)} />
+
+      <WorkAuthorizationsEditor
+        authorizations={profile.work_authorizations ?? []}
+        onChange={(authorizations) => set("work_authorizations", authorizations)}
+      />
+
+      <Section
+        title="Writing preferences"
+        description="How you want cover letters and written answers to sound — tone, length, anything to avoid."
+      >
+        <Textarea
+          id="application_preferences"
+          aria-label="Writing preferences"
+          rows={3}
+          value={profile.application_preferences}
+          onChange={(e) => set("application_preferences", e.target.value)}
+        />
+      </Section>
+
+      <div className="mt-8 flex justify-end border-t border-border pt-5">{saveButton}</div>
+    </Page>
   );
 }
 
@@ -419,13 +449,14 @@ function LinksEditor({
   };
 
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Links</h3>
-        <p className="text-xs text-slate-500">
+    <Section
+      title="Links"
+      description={
+        <>
           Application forms ask for these one at a time, so each has its own box.
-        </p>
-      </div>
+        </>
+      }
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         {LINK_KINDS.map((kind) => (
           <FormField key={kind} label={LINK_LABELS[kind]} htmlFor={`link-${kind}`}>
@@ -438,7 +469,7 @@ function LinksEditor({
           </FormField>
         ))}
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -464,21 +495,21 @@ function WorkAuthorizationsEditor({
     onChange(authorizations.map((auth, i) => (i === index ? { ...auth, ...patch } : auth)));
 
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Work authorization</h3>
-        <p className="text-xs text-slate-500">
-          Per country, matched against where a job is. A country you leave out is one JobPilot
-          will not answer for — it asks you instead.
-        </p>
-      </div>
+    <Section
+      title="Work authorization"
+      description={
+        <>
+          Per country, matched against where a job is. A country you leave out is one JobPilot will not answer for — it asks you instead.
+        </>
+      }
+    >
 
       {authorizations.length === 0 ? (
-        <p className="text-sm text-slate-500">No countries added yet.</p>
+        <p className="text-sm text-muted-foreground">No countries added yet.</p>
       ) : (
         <ul className="space-y-3">
           {authorizations.map((auth, index) => (
-            <li key={auth.id || index} className="flex flex-wrap items-center gap-4 rounded-md border border-slate-200 p-3">
+            <li key={auth.id || index} className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-3">
               <Input
                 aria-label="Country"
                 className="w-48"
@@ -486,23 +517,22 @@ function WorkAuthorizationsEditor({
                 value={auth.country}
                 onChange={(e) => update(index, { country: e.target.value })}
               />
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
+              <label className="flex items-center gap-2 text-sm text-subtle-foreground">
+                <Checkbox
                   checked={auth.is_authorized}
-                  onChange={(e) => update(index, { is_authorized: e.target.checked })}
+                  onCheckedChange={(checked) => update(index, { is_authorized: checked === true })}
                 />
                 Authorized to work here
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
+              <label className="flex items-center gap-2 text-sm text-subtle-foreground">
+                <Checkbox
                   checked={auth.requires_sponsorship}
-                  onChange={(e) => update(index, { requires_sponsorship: e.target.checked })}
+                  onCheckedChange={(checked) => update(index, { requires_sponsorship: checked === true })}
                 />
                 Needs sponsorship
               </label>
               <Button
+                size="sm"
                 variant="ghost"
                 className="ml-auto"
                 onClick={() => onChange(authorizations.filter((_, i) => i !== index))}
@@ -515,7 +545,8 @@ function WorkAuthorizationsEditor({
       )}
 
       <Button
-        variant="secondary"
+        size="sm"
+        variant="outline"
         onClick={() =>
           onChange([
             ...authorizations,
@@ -531,7 +562,7 @@ function WorkAuthorizationsEditor({
       >
         Add a country
       </Button>
-    </section>
+    </Section>
   );
 }
 
@@ -556,17 +587,17 @@ function SkillsEditor({
     onChange(skills.map((skill, i) => (i === index ? { ...skill, ...patch } : skill)));
 
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Skills</h3>
-        <p className="text-xs text-slate-500">
-          Years are optional. A skill without them is never used to answer a "how many years"
-          question — you are asked instead.
-        </p>
-      </div>
+    <Section
+      title="Skills"
+      description={
+        <>
+          Years are optional. A skill without them is never used to answer a "how many years" question — you are asked instead.
+        </>
+      }
+    >
 
       {skills.length === 0 ? (
-        <p className="text-sm text-slate-500">No skills added yet.</p>
+        <p className="text-sm text-muted-foreground">No skills added yet.</p>
       ) : (
         <ul className="space-y-2">
           {skills.map((skill, index) => (
@@ -593,6 +624,7 @@ function SkillsEditor({
                 }
               />
               <Button
+                size="sm"
                 variant="ghost"
                 className="ml-auto"
                 onClick={() => onChange(skills.filter((_, i) => i !== index))}
@@ -604,10 +636,10 @@ function SkillsEditor({
         </ul>
       )}
 
-      <Button variant="secondary" onClick={() => onChange([...skills, toSkill("")])}>
+      <Button size="sm" variant="outline" onClick={() => onChange([...skills, toSkill("")])}>
         Add a skill
       </Button>
-    </section>
+    </Section>
   );
 }
 
@@ -626,23 +658,23 @@ function ExperiencesEditor({
     onChange(experiences.map((item, i) => (i === index ? { ...item, ...patch } : item)));
 
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Work history</h3>
-        <p className="text-xs text-slate-500">
-          Dates are what let JobPilot answer "Current company" and count your years of
-          experience. An entry without them is still kept, it just is not counted.
-        </p>
-      </div>
+    <Section
+      title="Work history"
+      description={
+        <>
+          Dates are what let JobPilot answer "Current company" and count your years of experience. An entry without them is still kept, it just is not counted.
+        </>
+      }
+    >
 
       {experiences.length === 0 ? (
-        <p className="text-sm text-slate-500">No roles added yet.</p>
+        <p className="text-sm text-muted-foreground">No roles added yet.</p>
       ) : (
         <ul className="space-y-4">
           {experiences.map((experience, index) => (
             <li
               key={experience.id || index}
-              className="space-y-3 rounded-md border border-slate-200 p-3"
+              className="space-y-3 rounded-lg border border-border bg-card p-4"
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="Title" htmlFor={`experience-title-${index}`}>
@@ -681,14 +713,13 @@ function ExperiencesEditor({
                 </FormField>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
+              <label className="flex items-center gap-2 text-sm text-subtle-foreground">
+                <Checkbox
                   checked={experience.is_current}
-                  onChange={(e) =>
+                  onCheckedChange={(checked) =>
                     update(index, {
-                      is_current: e.target.checked,
-                      end_date: e.target.checked ? null : experience.end_date,
+                      is_current: checked === true,
+                      end_date: checked === true ? null : experience.end_date,
                     })
                   }
                 />
@@ -705,6 +736,7 @@ function ExperiencesEditor({
               </FormField>
 
               <Button
+                size="sm"
                 variant="ghost"
                 onClick={() => onChange(experiences.filter((_, i) => i !== index))}
               >
@@ -716,7 +748,8 @@ function ExperiencesEditor({
       )}
 
       <Button
-        variant="secondary"
+        size="sm"
+        variant="outline"
         onClick={() =>
           onChange([
             ...experiences,
@@ -735,6 +768,6 @@ function ExperiencesEditor({
       >
         Add a role
       </Button>
-    </section>
+    </Section>
   );
 }

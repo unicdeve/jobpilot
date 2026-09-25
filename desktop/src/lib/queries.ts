@@ -18,7 +18,6 @@ import {
 import { useApi } from "./daemon";
 import type { ScoutInput } from "./api";
 import type {
-  AgentEvent,
   AgentRun,
   AgentRunDetail,
   AgentRunFilter,
@@ -65,7 +64,6 @@ export const keys = {
   credentials: ["credentials"] as const,
   scouts: ["scouts"] as const,
   scoutRuns: ["scout-runs"] as const,
-  scoutRunEvents: (runId: string) => ["scout-run-events", runId] as const,
   activity: {
     all: ["activity"] as const,
     infinite: (filter: AgentRunFilter, pageSize: number) =>
@@ -829,14 +827,5 @@ export function useScoutRuns(limit = 10) {
   return useQuery<AgentRun[]>({
     queryKey: keys.scoutRuns,
     queryFn: () => api.listScoutRuns(limit),
-  });
-}
-
-export function useScoutRunEvents(runId: string | null) {
-  const api = useApi();
-  return useQuery<AgentEvent[]>({
-    queryKey: keys.scoutRunEvents(runId ?? ""),
-    queryFn: () => api.listScoutRunEvents(runId!),
-    enabled: runId !== null,
   });
 }

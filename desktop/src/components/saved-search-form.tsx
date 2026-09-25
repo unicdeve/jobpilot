@@ -187,7 +187,7 @@ export function SavedSearchForm({
         </FormField>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         Jobs must match every criterion you set. Keywords and title match each word in any order.
         Salary bounds keep jobs that do not advertise one, since most boards publish no salary.
       </p>
@@ -197,12 +197,12 @@ export function SavedSearchForm({
           {pending ? "Saving…" : submitLabel}
         </Button>
         {onCancel && (
-          <Button variant="secondary" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
         )}
         {!usable && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             A search needs a name and at least one criterion.
           </span>
         )}
