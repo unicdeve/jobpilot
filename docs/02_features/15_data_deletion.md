@@ -4,7 +4,7 @@
 
 Draft.
 D1 to D10 are decided (2026-09-25).
-Implementation waits on ADR-0021 (D1).
+ADR-0021 (D1) is accepted; implementation is in progress.
 
 ## Purpose
 
