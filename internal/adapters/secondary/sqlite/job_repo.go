@@ -127,10 +127,10 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 	return &j, nil
 }
 
-// keywordFilter builds the WHERE clause and arguments that restrict a job
-// query to rows matching keywords, or empty values when keywords is blank.
+// jobFilterClause builds the WHERE clause and arguments that restrict a job
+// query to rows matching filter, or empty values when filter is empty.
 //
-// Every term must appear, in the title or the company name, in any order —
+// Every keyword term must appear, in the title or the company name, in any order —
 // the same rule domain.SearchCriteria.Matches applies during discovery, and
 // for the same reason: browsing stored jobs and searching sources must not
 // disagree about what a query means. Matching terms rather than the whole
@@ -138,27 +138,44 @@ func (r *JobRepository) GetByCanonicalURL(ctx context.Context, url string) (*dom
 //
 // Terms are bound as parameters, never interpolated: they come straight
 // from a search box.
-func keywordFilter(keywords string) (string, []any) {
-	terms := domain.SearchTerms(keywords)
-	if len(terms) == 0 {
-		return "", nil
-	}
+//
+// The posting date is compared through julianday, which reads the stored
+// form (see connectionPragmas) whatever its precision. A job stored without
+// a posting date holds the zero time, and falls back to its discovery date.
+func jobFilterClause(filter domain.JobFilter) (string, []any) {
+	var clauses []string
+	var args []any
 
-	clauses := make([]string, 0, len(terms))
-	args := make([]any, 0, len(terms)*2)
-	for _, term := range terms {
+	for _, term := range domain.SearchTerms(filter.Keywords) {
 		clauses = append(clauses, "(LOWER(title) LIKE ? OR LOWER(company_name) LIKE ?)")
 		pattern := "%" + term + "%"
 		args = append(args, pattern, pattern)
 	}
+	if filter.SourceID != "" {
+		clauses = append(clauses, "source_id = ?")
+		args = append(args, filter.SourceID)
+	}
+	if filter.RemoteType != "" {
+		clauses = append(clauses, "LOWER(remote_type) = ?")
+		args = append(args, filter.RemoteType)
+	}
+	if !filter.PostedSince.IsZero() {
+		clauses = append(clauses, `julianday(CASE
+			WHEN julianday(posted_at) > julianday('1970-01-01') THEN posted_at
+			ELSE discovered_at END) >= julianday(?)`)
+		args = append(args, filter.PostedSince)
+	}
 
+	if len(clauses) == 0 {
+		return "", nil
+	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
 }
 
-// Count returns how many stored jobs match keywords. Callers paginating
+// Count returns how many stored jobs match filter. Callers paginating
 // through List use it to tell whether more pages remain.
-func (r *JobRepository) Count(ctx context.Context, keywords string) (int, error) {
-	where, args := keywordFilter(keywords)
+func (r *JobRepository) Count(ctx context.Context, filter domain.JobFilter) (int, error) {
+	where, args := jobFilterClause(filter)
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM jobs"+where, args...).Scan(&total); err != nil {
@@ -168,10 +185,10 @@ func (r *JobRepository) Count(ctx context.Context, keywords string) (int, error)
 }
 
 // List returns stored jobs ordered by discovery time, most recent first,
-// optionally filtered by keywords and paginated by limit/offset. It reads
-// only local history and never contacts a job source, so it works offline.
-func (r *JobRepository) List(ctx context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
-	where, args := keywordFilter(keywords)
+// optionally filtered and paginated by limit/offset. It reads only local
+// history and never contacts a job source, so it works offline.
+func (r *JobRepository) List(ctx context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error) {
+	where, args := jobFilterClause(filter)
 
 	query := `SELECT
 		id, canonical_url, source_id, source_job_id, title, company_name,

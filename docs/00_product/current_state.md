@@ -103,7 +103,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 - Stored-jobs read path (`GET /v1/jobs`, `JobDiscoveryService.ListJobs`):
   browsing already-discovered jobs is a separate operation from searching
   sources. It is paginated (`limit`/`offset`, default 50, capped at 200),
-  optionally filtered by a keyword substring over title and company, and
+  optionally filtered by keywords over title and company, source, remote
+  type and posting date (see AC-006), and
   returns a `{jobs, total}` envelope so a client can tell whether more pages
   remain. It reads local history only and contacts no source, which is what
   makes AC-006's "existing history remains usable offline" true in practice:
@@ -385,6 +386,19 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   and a database write. The Dashboard's error text no longer appends
   "has a candidate profile been created yet?" to every failure regardless of
   cause; a missing profile is now its own state.
+
+- Job filters: a filter button beside "Add a job by URL" on the Jobs screen.
+  All jobs filters by posting date, source and work type, sent to the
+  daemon since that list is paged there. Analyzed filters by match score,
+  when the job was analyzed, source and work type, applied in the desktop,
+  which already holds every match. Filters live in the URL like the search.
+- Stored times: from migration 00014 (a Go migration, `migrations_go.go`)
+  every DATETIME is written in UTC as `2006-01-02 15:04:05.999999999-07:00`
+  (`_time_format=sqlite`, `_timezone=UTC` on the connection), which SQLite's
+  date functions read. Before it the driver wrote `time.Time.String`, in
+  the local zone and with a monotonic-clock suffix, so no query could
+  compare dates. The migration rewrites existing values and refuses to
+  guess at one it cannot read.
 
 - Desktop jobs list and scroll restoration: the Jobs screen pages through
   stored jobs with `useInfiniteQuery` over `GET /v1/jobs` (50 at a time,

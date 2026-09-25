@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -117,6 +118,11 @@ func (f *fakeJobRepository) Save(_ context.Context, job *domain.Job) error {
 	if job.ID == "" {
 		job.ID = fmt.Sprintf("job-%d", len(f.jobs)+1)
 	}
+	// As the SQLite repository does, a job saved without a discovery time
+	// was discovered now.
+	if job.DiscoveredAt.IsZero() {
+		job.DiscoveredAt = time.Now()
+	}
 	if _, exists := f.jobs[job.ID]; !exists {
 		f.order = append(f.order, job.ID)
 	}
@@ -137,10 +143,9 @@ func (f *fakeJobRepository) GetByCanonicalURL(_ context.Context, url string) (*d
 	return f.byURL[url], nil
 }
 
-// matching returns saved jobs whose title or company contains keywords, in
-// insertion order, mirroring the SQLite repository's substring rule.
-func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
-	keywords = strings.ToLower(strings.TrimSpace(keywords))
+// matching returns saved jobs filter keeps, in insertion order, mirroring the SQLite repository's substring rule.
+func (f *fakeJobRepository) matching(filter domain.JobFilter) []*domain.Job {
+	keywords := strings.ToLower(strings.TrimSpace(filter.Keywords))
 
 	out := make([]*domain.Job, 0, len(f.order))
 	for _, id := range f.order {
@@ -150,21 +155,35 @@ func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
 			!strings.Contains(strings.ToLower(j.CompanyName), keywords) {
 			continue
 		}
+		if filter.SourceID != "" && j.SourceID != filter.SourceID {
+			continue
+		}
+		if filter.RemoteType != "" && j.RemoteType != filter.RemoteType {
+			continue
+		}
+		if posted := j.PostedAt; !filter.PostedSince.IsZero() {
+			if posted.IsZero() {
+				posted = j.DiscoveredAt
+			}
+			if posted.Before(filter.PostedSince) {
+				continue
+			}
+		}
 		out = append(out, j)
 	}
 	return out
 }
 
-func (f *fakeJobRepository) List(_ context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
-	matched := f.matching(keywords)
+func (f *fakeJobRepository) List(_ context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error) {
+	matched := f.matching(filter)
 	if offset >= len(matched) {
 		return []*domain.Job{}, nil
 	}
 	return matched[offset:min(offset+limit, len(matched))], nil
 }
 
-func (f *fakeJobRepository) Count(_ context.Context, keywords string) (int, error) {
-	return len(f.matching(keywords)), nil
+func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (int, error) {
+	return len(f.matching(filter)), nil
 }
 
 func (f *fakeJobRepository) Delete(_ context.Context, id string) error {
@@ -1153,6 +1172,8 @@ func TestServer_AgentActivity_Errors(t *testing.T) {
 		{"unknown status", "/v1/agent-runs?status=done", http.StatusBadRequest, `unknown status "done"`},
 		{"non-numeric limit", "/v1/agent-runs?limit=all", http.StatusBadRequest, `invalid limit "all"`},
 		{"missing run", "/v1/agent-runs/does-not-exist", http.StatusNotFound, "agent run not found"},
+		{"unknown remote type", "/v1/jobs?remote=anywhere", http.StatusBadRequest, `unknown remote type "anywhere"`},
+		{"unreadable posting date", "/v1/jobs?posted_since=yesterday", http.StatusBadRequest, `invalid posted_since "yesterday"`},
 	}
 
 	for _, tt := range tests {
@@ -1178,8 +1199,8 @@ func TestClient_ListJobs(t *testing.T) {
 	// Discover five jobs so there is stored history to page through. The
 	// source is only used here; listing must not touch it again.
 	source.searchResult = []domain.Job{
-		{CanonicalURL: "https://example.com/job/1", Title: "Backend Engineer", CompanyName: "Acme"},
-		{CanonicalURL: "https://example.com/job/2", Title: "Frontend Engineer", CompanyName: "Acme"},
+		{CanonicalURL: "https://example.com/job/1", Title: "Backend Engineer", CompanyName: "Acme", RemoteType: "remote"},
+		{CanonicalURL: "https://example.com/job/2", Title: "Frontend Engineer", CompanyName: "Acme", RemoteType: "onsite"},
 		{CanonicalURL: "https://example.com/job/3", Title: "Platform Engineer", CompanyName: "Acme"},
 		{CanonicalURL: "https://example.com/job/4", Title: "Product Designer", CompanyName: "Globex"},
 		{CanonicalURL: "https://example.com/job/5", Title: "Data Scientist", CompanyName: "Initech"},
@@ -1192,21 +1213,41 @@ func TestClient_ListJobs(t *testing.T) {
 	}
 
 	t.Run("returns stored jobs and the total", func(t *testing.T) {
-		page, err := client.ListJobs(ctx, "", 0, 0)
+		page, err := client.ListJobs(ctx, domain.JobFilter{}, 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, page.Jobs, 5)
 		assert.Equal(t, 5, page.Total)
 	})
 
 	t.Run("filters by keywords", func(t *testing.T) {
-		page, err := client.ListJobs(ctx, "engineer", 0, 0)
+		page, err := client.ListJobs(ctx, domain.JobFilter{Keywords: "engineer"}, 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, page.Jobs, 3)
 		assert.Equal(t, 3, page.Total)
 	})
 
+	t.Run("filters by remote type", func(t *testing.T) {
+		page, err := client.ListJobs(ctx, domain.JobFilter{RemoteType: "remote"}, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, page.Jobs, 1)
+		assert.Equal(t, "Backend Engineer", page.Jobs[0].Title)
+		assert.Equal(t, 1, page.Total)
+	})
+
+	t.Run("filters by posting date", func(t *testing.T) {
+		// The seeded jobs carry no posting date, so they are judged by when
+		// they were found: just now.
+		page, err := client.ListJobs(ctx, domain.JobFilter{PostedSince: time.Now().Add(-time.Hour)}, 0, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 5, page.Total)
+
+		page, err = client.ListJobs(ctx, domain.JobFilter{PostedSince: time.Now().Add(time.Hour)}, 0, 0)
+		require.NoError(t, err)
+		assert.Zero(t, page.Total)
+	})
+
 	t.Run("paginates, reporting the unpaginated total", func(t *testing.T) {
-		page, err := client.ListJobs(ctx, "", 2, 2)
+		page, err := client.ListJobs(ctx, domain.JobFilter{}, 2, 2)
 		require.NoError(t, err)
 		require.Len(t, page.Jobs, 2)
 		assert.Equal(t, "Platform Engineer", page.Jobs[0].Title)
@@ -1214,7 +1255,7 @@ func TestClient_ListJobs(t *testing.T) {
 	})
 
 	t.Run("an offset past the end is an empty page, not an error", func(t *testing.T) {
-		page, err := client.ListJobs(ctx, "", 10, 500)
+		page, err := client.ListJobs(ctx, domain.JobFilter{}, 10, 500)
 		require.NoError(t, err)
 		assert.Empty(t, page.Jobs)
 		assert.Equal(t, 5, page.Total)
@@ -1222,7 +1263,7 @@ func TestClient_ListJobs(t *testing.T) {
 
 	t.Run("does not contact a job source", func(t *testing.T) {
 		before := source.searchCalls
-		_, err := client.ListJobs(ctx, "", 0, 0)
+		_, err := client.ListJobs(ctx, domain.JobFilter{}, 0, 0)
 		require.NoError(t, err)
 		assert.Equal(t, before, source.searchCalls)
 	})
@@ -1262,7 +1303,7 @@ func TestServer_ListJobs_RejectsInvalidPaging(t *testing.T) {
 func TestServer_ListJobs_EmptyHistory(t *testing.T) {
 	client, _, _ := testServer(t)
 
-	page, err := client.ListJobs(context.Background(), "", 0, 0)
+	page, err := client.ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 
 	require.NoError(t, err)
 	assert.Empty(t, page.Jobs)
@@ -1595,7 +1636,7 @@ func TestServer_SearchJobs_RefusesEmptyCriteria(t *testing.T) {
 	assert.ErrorContains(t, err, "at least one criterion")
 	assert.Zero(t, source.searchCalls, "no source should be contacted")
 
-	page, listErr := client.ListJobs(context.Background(), "", 0, 0)
+	page, listErr := client.ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 	require.NoError(t, listErr)
 	assert.Zero(t, page.Total, "and nothing should have been stored")
 }

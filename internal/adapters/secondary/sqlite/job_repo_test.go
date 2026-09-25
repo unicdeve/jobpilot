@@ -87,7 +87,7 @@ func TestJobRepository_List(t *testing.T) {
 	require.NoError(t, repo.Save(context.Background(), older))
 	require.NoError(t, repo.Save(context.Background(), newer))
 
-	jobs, err := repo.List(context.Background(), "", 10, 0)
+	jobs, err := repo.List(context.Background(), domain.JobFilter{}, 10, 0)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
@@ -107,7 +107,7 @@ func TestJobRepository_List_Pagination(t *testing.T) {
 		}))
 	}
 
-	jobs, err := repo.List(context.Background(), "", 1, 1)
+	jobs, err := repo.List(context.Background(), domain.JobFilter{}, 1, 1)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -159,7 +159,7 @@ func TestJobRepository_List_Keywords(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			jobs, err := repo.List(ctx, tt.keywords, 10, 0)
+			jobs, err := repo.List(ctx, domain.JobFilter{Keywords: tt.keywords}, 10, 0)
 			require.NoError(t, err)
 
 			titles := make([]string, 0, len(jobs))
@@ -168,7 +168,7 @@ func TestJobRepository_List_Keywords(t *testing.T) {
 			}
 			assert.ElementsMatch(t, tt.wantTitle, titles)
 
-			total, err := repo.Count(ctx, tt.keywords)
+			total, err := repo.Count(ctx, domain.JobFilter{Keywords: tt.keywords})
 			require.NoError(t, err)
 			assert.Equal(t, len(tt.wantTitle), total, "Count must agree with List")
 		})
@@ -187,11 +187,11 @@ func TestJobRepository_List_KeywordsAreNotTreatedAsSQL(t *testing.T) {
 
 	// Keywords come straight from a search box, so they are bound as
 	// parameters rather than interpolated. The rows must survive.
-	jobs, err := repo.List(ctx, "'; DROP TABLE jobs; --", 10, 0)
+	jobs, err := repo.List(ctx, domain.JobFilter{Keywords: "'; DROP TABLE jobs; --"}, 10, 0)
 	require.NoError(t, err)
 	assert.Empty(t, jobs)
 
-	remaining, err := repo.Count(ctx, "")
+	remaining, err := repo.Count(ctx, domain.JobFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, remaining, "the jobs table must still be intact")
 }
@@ -203,7 +203,7 @@ func TestJobRepository_Count(t *testing.T) {
 	repo := NewJobRepository(db.Conn())
 	ctx := context.Background()
 
-	total, err := repo.Count(ctx, "")
+	total, err := repo.Count(ctx, domain.JobFilter{})
 	require.NoError(t, err)
 	assert.Zero(t, total, "an empty database counts zero rather than failing")
 
@@ -214,12 +214,12 @@ func TestJobRepository_Count(t *testing.T) {
 		}))
 	}
 
-	total, err = repo.Count(ctx, "")
+	total, err = repo.Count(ctx, domain.JobFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 
 	// Count describes the whole match, independent of any page size.
-	page, err := repo.List(ctx, "", 1, 0)
+	page, err := repo.List(ctx, domain.JobFilter{}, 1, 0)
 	require.NoError(t, err)
 	assert.Len(t, page, 1)
 	assert.Equal(t, 3, total)
@@ -256,13 +256,96 @@ func TestJobRepository_List_MatchesTermsInAnyOrder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			jobs, err := repo.List(ctx, tt.keywords, 10, 0)
+			jobs, err := repo.List(ctx, domain.JobFilter{Keywords: tt.keywords}, 10, 0)
 			require.NoError(t, err)
 			assert.Len(t, jobs, tt.want)
 
-			total, err := repo.Count(ctx, tt.keywords)
+			total, err := repo.Count(ctx, domain.JobFilter{Keywords: tt.keywords})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, total, "Count must agree with List")
 		})
 	}
+}
+
+// Source, remote type and posting date narrow the list, alone and together,
+// and Count agrees with List for each.
+func TestJobRepository_List_Filters(t *testing.T) {
+	t.Parallel()
+
+	repo := NewJobRepository(newTestDB(t).Conn())
+	ctx := context.Background()
+	now := time.Now()
+
+	jobs := []*domain.Job{
+		// Posted two days ago, in a zone other than UTC: the comparison must
+		// be of instants, not of the text.
+		{CanonicalURL: "https://a.example/1", Title: "Go Engineer", SourceID: "arbeitnow", RemoteType: "remote",
+			PostedAt: now.AddDate(0, 0, -2).In(time.FixedZone("WAT", 3600))},
+		{CanonicalURL: "https://a.example/2", Title: "Designer", SourceID: "arbeitnow", RemoteType: "onsite",
+			PostedAt: now.AddDate(0, 0, -20)},
+		{CanonicalURL: "https://h.example/1", Title: "Go Engineer", SourceID: "hackernews", RemoteType: "hybrid",
+			PostedAt: now.AddDate(0, 0, -40)},
+		// No posting date: judged by when it was found, which is now.
+		{CanonicalURL: "https://h.example/2", Title: "SRE", SourceID: "hackernews", RemoteType: "remote"},
+	}
+	for _, job := range jobs {
+		require.NoError(t, repo.Save(ctx, job))
+	}
+
+	tests := []struct {
+		name   string
+		filter domain.JobFilter
+		want   []string
+	}{
+		{"source", domain.JobFilter{SourceID: "hackernews"}, []string{"https://h.example/1", "https://h.example/2"}},
+		{"remote type", domain.JobFilter{RemoteType: "remote"}, []string{"https://a.example/1", "https://h.example/2"}},
+		{"posted within a week", domain.JobFilter{PostedSince: now.AddDate(0, 0, -7)},
+			[]string{"https://a.example/1", "https://h.example/2"}},
+		{"posted within a month", domain.JobFilter{PostedSince: now.AddDate(0, 0, -30)},
+			[]string{"https://a.example/1", "https://a.example/2", "https://h.example/2"}},
+		{"combined with keywords", domain.JobFilter{Keywords: "go", SourceID: "arbeitnow", PostedSince: now.AddDate(0, 0, -7)},
+			[]string{"https://a.example/1"}},
+		{"an unknown source matches nothing", domain.JobFilter{SourceID: "nowhere"}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			listed, err := repo.List(ctx, tt.filter, 10, 0)
+			require.NoError(t, err)
+			var urls []string
+			for _, job := range listed {
+				urls = append(urls, job.CanonicalURL)
+			}
+			assert.ElementsMatch(t, tt.want, urls)
+
+			total, err := repo.Count(ctx, tt.filter)
+			require.NoError(t, err)
+			assert.Equal(t, len(tt.want), total, "Count must agree with List")
+		})
+	}
+}
+
+// Times are written in UTC, in the form SQLite's date functions read, and
+// come back as the same instant.
+func TestJobRepository_StoresTimesInUTC(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	posted := time.Date(2026, 9, 15, 19, 36, 10, 500000000, time.FixedZone("WAT", 3600))
+	job := &domain.Job{CanonicalURL: "https://a.example/1", Title: "Engineer", PostedAt: posted}
+	require.NoError(t, repo.Save(ctx, job))
+
+	var stored string
+	require.NoError(t, db.Conn().QueryRowContext(ctx,
+		`SELECT CAST(posted_at AS TEXT) FROM jobs WHERE id = ?`, job.ID).Scan(&stored))
+	assert.Equal(t, "2026-09-15 18:36:10.5+00:00", stored)
+
+	got, err := repo.GetByID(ctx, job.ID)
+	require.NoError(t, err)
+	assert.True(t, got.PostedAt.Equal(posted))
 }

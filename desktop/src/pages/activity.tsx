@@ -3,24 +3,14 @@ import { Outlet, useMatch, useSearchParams } from "react-router-dom";
 import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pane";
 import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
+import { FILTER_ALL as ALL, FilterSelect } from "../components/filter-select";
 import { StatusBadge } from "../components/status-badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import { runDuration, runSubject, TASK_LABELS, taskLabel } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";
 import { useInfiniteActivity } from "../lib/queries";
 import type { AgentRunFilter, AgentRunStatus, AgentRunSummary, AgentTaskType } from "../lib/types";
 
 const PAGE_SIZE = 50;
-
-/// ALL stands for "no filter" in the selects, which cannot hold an empty
-/// string as a distinct choice.
-const ALL = "all";
 
 const KIND_ITEMS: Record<string, string> = { [ALL]: "All kinds", ...TASK_LABELS };
 
@@ -45,11 +35,11 @@ export function Activity() {
     status: status && status in STATUS_ITEMS && status !== ALL ? (status as AgentRunStatus) : "",
   };
 
-  const setParam = (key: string, value: string | null) =>
+  const setParam = (key: string, value: string) =>
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (value && value !== ALL) next.set(key, value);
+        if (value) next.set(key, value);
         else next.delete(key);
         return next;
       },
@@ -67,14 +57,16 @@ export function Activity() {
               <FilterSelect
                 label="Kind"
                 items={KIND_ITEMS}
-                value={filter.task_type || ALL}
+                value={filter.task_type}
                 onChange={(value) => setParam("kind", value)}
+                className="flex-1"
               />
               <FilterSelect
                 label="Status"
                 items={STATUS_ITEMS}
-                value={filter.status || ALL}
+                value={filter.status}
                 onChange={(value) => setParam("status", value)}
+                className="flex-1"
               />
             </div>
           }
@@ -94,33 +86,6 @@ export function NoRunSelected() {
       title="No run selected"
       description="Choose a run to see each step it took, and why it stopped where it did."
     />
-  );
-}
-
-function FilterSelect({
-  label,
-  items,
-  value,
-  onChange,
-}: {
-  label: string;
-  items: Record<string, string>;
-  value: string;
-  onChange: (value: string | null) => void;
-}) {
-  return (
-    <Select items={items} value={value} onValueChange={onChange}>
-      <SelectTrigger size="sm" aria-label={label} className="min-w-0 flex-1">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(items).map(([itemValue, itemLabel]) => (
-          <SelectItem key={itemValue} value={itemValue}>
-            {itemLabel}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 

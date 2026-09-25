@@ -44,6 +44,8 @@ Its only badge is the number of applications waiting on the user, because it is 
 **Lists beside their items.**
 Jobs, Applications and Activity are split views (`components/split-view.tsx`): the list keeps its place and scroll while the selected item changes, and a window too narrow for both shows one, with a way back.
 A list's filters live in the URL, so a link can open a filtered list and selecting an item keeps the list as it was.
+The Jobs list keeps its filters behind a toolbar button (`lib/job-filters.ts`), which carries a dot while any are set, and the count above the list says when it is filtered.
+A filter is applied by the daemon when the list is paged there (All jobs), and in the desktop when every item is already loaded (Analyzed).
 Other screens are a page (`components/page.tsx`): a sticky toolbar with the title and actions, then titled sections.
 
 **Few boxes.**

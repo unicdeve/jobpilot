@@ -162,6 +162,17 @@ export interface Job {
   raw_source_reference: string;
 }
 
+/// JobListFilter narrows the stored jobs the daemon lists. Every field is
+/// optional; an empty one excludes nothing.
+export interface JobListFilter {
+  keywords?: string;
+  source?: string;
+  remote?: string;
+  /// Keep jobs posted at or after this instant. A job whose source gave no
+  /// posting date is judged by when it was found.
+  postedSince?: Date;
+}
+
 /// JobPage is one page of stored jobs plus the total matching the same
 /// filter, so a caller can tell whether more pages remain.
 export interface JobPage {

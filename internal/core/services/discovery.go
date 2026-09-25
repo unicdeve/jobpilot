@@ -50,15 +50,26 @@ const (
 	maxJobPageSize     = 200
 )
 
+// ErrInvalidJobFilter is returned for a job filter naming a remote type that
+// does not exist. Such a filter would match nothing, which reads as "no
+// jobs" rather than as the mistake it is.
+var ErrInvalidJobFilter = errors.New("invalid job filter")
+
 // ListJobs returns a page of jobs already stored locally, most recently
-// discovered first, optionally filtered by keywords.
+// discovered first, optionally filtered.
 //
 // Unlike Search it never contacts a job source and never writes: it is the
 // read path for browsing discovery history, and it is what keeps that
 // history available without internet access
 // (docs/02_features/04_job_discovery.md AC-006). A limit of zero or less
 // means "the default page size".
-func (s *JobDiscoveryService) ListJobs(ctx context.Context, keywords string, limit, offset int) (*domain.JobPage, error) {
+func (s *JobDiscoveryService) ListJobs(ctx context.Context, filter domain.JobFilter, limit, offset int) (*domain.JobPage, error) {
+	filter.RemoteType = strings.ToLower(strings.TrimSpace(filter.RemoteType))
+	if filter.RemoteType != "" && !domain.ValidRemoteType(filter.RemoteType) {
+		return nil, fmt.Errorf("%w: unknown remote type %q", ErrInvalidJobFilter, filter.RemoteType)
+	}
+	filter.SourceID = strings.TrimSpace(filter.SourceID)
+
 	switch {
 	case limit <= 0:
 		limit = defaultJobPageSize
@@ -69,12 +80,12 @@ func (s *JobDiscoveryService) ListJobs(ctx context.Context, keywords string, lim
 		offset = 0
 	}
 
-	jobs, err := s.repo.List(ctx, keywords, limit, offset)
+	jobs, err := s.repo.List(ctx, filter, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list stored jobs: %w", err)
 	}
 
-	total, err := s.repo.Count(ctx, keywords)
+	total, err := s.repo.Count(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count stored jobs: %w", err)
 	}

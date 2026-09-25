@@ -15,7 +15,9 @@ import {
   useQueryClient,
   type UseMutationOptions,
 } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { useApi } from "./daemon";
+import { since, type TimeRange } from "./job-filters";
 import type { ScoutInput } from "./api";
 import type {
   AgentRun,
@@ -56,8 +58,7 @@ export const keys = {
     all: ["jobs"] as const,
     count: ["jobs", "count"] as const,
     detail: (id: string) => ["jobs", "detail", id] as const,
-    infinite: (keywords: string, pageSize: number) =>
-      ["jobs", "infinite", { keywords, pageSize }] as const,
+    infinite: (filter: StoredJobsFilter, pageSize: number) => ["jobs", "infinite", { ...filter, pageSize }] as const,
   },
   savedSearches: ["saved-searches"] as const,
   searchTemplates: ["search-templates"] as const,
@@ -114,20 +115,43 @@ export function useJobCount() {
   const api = useApi();
   return useQuery({
     queryKey: keys.jobs.count,
-    queryFn: () => api.listJobs("", 1, 0),
+    queryFn: () => api.listJobs({}, 1, 0),
     select: (page: JobPage) => page.total,
   });
+}
+
+/// StoredJobsFilter is what the job list is filtered by. The posting window
+/// is a range rather than an instant so the query key stays the same from
+/// one render to the next.
+export interface StoredJobsFilter {
+  keywords: string;
+  source: string;
+  remote: string;
+  posted: TimeRange | "";
 }
 
 /// useInfiniteJobs pages through stored jobs. Every page already loaded stays
 /// in the cache, so returning to a list that was scrolled several pages deep
 /// renders at the same height it was left at — which is what makes restoring
 /// the scroll position meaningful rather than a jump to a half-built list.
-export function useInfiniteJobs(keywords: string, pageSize: number) {
+export function useInfiniteJobs(filter: StoredJobsFilter, pageSize: number) {
   const api = useApi();
+  // One instant per chosen window, so every page of a list counts back from
+  // the same moment and none shifts between pages.
+  const postedSince = useMemo(() => (filter.posted ? since(filter.posted) : undefined), [filter.posted]);
   return useInfiniteQuery({
-    queryKey: keys.jobs.infinite(keywords, pageSize),
-    queryFn: ({ pageParam }) => api.listJobs(keywords, pageSize, pageParam),
+    queryKey: keys.jobs.infinite(filter, pageSize),
+    queryFn: ({ pageParam }) =>
+      api.listJobs(
+        {
+          keywords: filter.keywords,
+          source: filter.source,
+          remote: filter.remote,
+          postedSince,
+        },
+        pageSize,
+        pageParam,
+      ),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       // The next offset is however many rows are already loaded; total counts

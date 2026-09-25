@@ -109,6 +109,10 @@ desktop Jobs screen and `jobpilot-cli search list`) reads stored history
 only and contacts no source. Searching for *new* jobs is the operation that
 requires internet and reports clearly when it is unavailable.
 
+The stored list can be narrowed by keywords (`q`), source (`source`), remote type (`remote`: `remote`, `hybrid` or `onsite`) and posting date (`posted_since`, an RFC 3339 instant).
+A job whose source gave no posting date is judged by when JobPilot found it, which is also the date the list shows for it.
+An unknown remote type or an unreadable date is refused with 400, rather than matching nothing.
+
 ### AC-007
 Custom job URLs can be submitted for individual job analysis.
 

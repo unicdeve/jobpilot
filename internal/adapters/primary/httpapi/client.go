@@ -116,13 +116,22 @@ func (c *Client) ProposeProfileDraft(ctx context.Context, resumeMarkdown string)
 }
 
 // ListJobs returns a page of jobs already stored locally, most recently
-// discovered first, optionally filtered by keywords. It reads local history
-// only and contacts no job source, so unlike SearchJobs it works offline. A
-// limit of zero means the daemon's default page size.
-func (c *Client) ListJobs(ctx context.Context, keywords string, limit, offset int) (*domain.JobPage, error) {
+// discovered first, optionally filtered. It reads local history only and
+// contacts no job source, so unlike SearchJobs it works offline. A limit of
+// zero means the daemon's default page size.
+func (c *Client) ListJobs(ctx context.Context, filter domain.JobFilter, limit, offset int) (*domain.JobPage, error) {
 	query := url.Values{}
-	if keywords != "" {
-		query.Set("q", keywords)
+	if filter.Keywords != "" {
+		query.Set("q", filter.Keywords)
+	}
+	if filter.SourceID != "" {
+		query.Set("source", filter.SourceID)
+	}
+	if filter.RemoteType != "" {
+		query.Set("remote", filter.RemoteType)
+	}
+	if !filter.PostedSince.IsZero() {
+		query.Set("posted_since", filter.PostedSince.UTC().Format(time.RFC3339))
 	}
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))

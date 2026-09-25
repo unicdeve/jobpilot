@@ -177,11 +177,11 @@ func (f *fakeJobRepository) GetByCanonicalURL(_ context.Context, url string) (*d
 	return j, nil
 }
 
-// matching returns the saved jobs whose title or company contains keywords,
-// in insertion order — the same naive, case-insensitive substring rule the
+// matching returns the saved jobs filter keeps, in insertion order: title
+// or company containing the keywords — the same naive, case-insensitive substring rule the
 // SQLite repository applies.
-func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
-	keywords = strings.ToLower(strings.TrimSpace(keywords))
+func (f *fakeJobRepository) matching(filter domain.JobFilter) []*domain.Job {
+	keywords := strings.ToLower(strings.TrimSpace(filter.Keywords))
 
 	out := make([]*domain.Job, 0, len(f.order))
 	for _, id := range f.order {
@@ -191,17 +191,31 @@ func (f *fakeJobRepository) matching(keywords string) []*domain.Job {
 			!strings.Contains(strings.ToLower(j.CompanyName), keywords) {
 			continue
 		}
+		if filter.SourceID != "" && j.SourceID != filter.SourceID {
+			continue
+		}
+		if filter.RemoteType != "" && j.RemoteType != filter.RemoteType {
+			continue
+		}
+		if posted := j.PostedAt; !filter.PostedSince.IsZero() {
+			if posted.IsZero() {
+				posted = j.DiscoveredAt
+			}
+			if posted.Before(filter.PostedSince) {
+				continue
+			}
+		}
 		out = append(out, j)
 	}
 	return out
 }
 
-func (f *fakeJobRepository) List(_ context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
+func (f *fakeJobRepository) List(_ context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
 
-	matched := f.matching(keywords)
+	matched := f.matching(filter)
 	if offset >= len(matched) {
 		return []*domain.Job{}, nil
 	}
@@ -209,11 +223,11 @@ func (f *fakeJobRepository) List(_ context.Context, keywords string, limit, offs
 	return matched[offset:end], nil
 }
 
-func (f *fakeJobRepository) Count(_ context.Context, keywords string) (int, error) {
+func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (int, error) {
 	if f.countErr != nil {
 		return 0, f.countErr
 	}
-	return len(f.matching(keywords)), nil
+	return len(f.matching(filter)), nil
 }
 
 func (f *fakeJobRepository) Delete(_ context.Context, id string) error {

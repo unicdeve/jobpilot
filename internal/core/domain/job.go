@@ -162,6 +162,37 @@ type SavedSearch struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 }
 
+// Remote types a job can have. A source that does not say leaves it empty.
+const (
+	RemoteTypeRemote = "remote"
+	RemoteTypeHybrid = "hybrid"
+	RemoteTypeOnsite = "onsite"
+)
+
+// ValidRemoteType reports whether value is one of the remote types.
+func ValidRemoteType(value string) bool {
+	switch value {
+	case RemoteTypeRemote, RemoteTypeHybrid, RemoteTypeOnsite:
+		return true
+	}
+	return false
+}
+
+// JobFilter narrows a listing of stored jobs. Every field is optional, and
+// an unset one excludes nothing.
+type JobFilter struct {
+	// Keywords must each appear in the title or the company name.
+	Keywords string
+	// SourceID keeps only the jobs from one source, e.g. "arbeitnow".
+	SourceID string
+	// RemoteType keeps only the jobs of one remote type.
+	RemoteType string
+	// PostedSince keeps the jobs posted at or after it. A job whose source
+	// gave no posting date is judged by when JobPilot found it, which is
+	// the same date the job list shows for it.
+	PostedSince time.Time
+}
+
 // JobPage is one page of stored jobs together with the total number of jobs
 // matching the same filter, so a caller paginating through history can tell
 // whether more pages remain without fetching them.

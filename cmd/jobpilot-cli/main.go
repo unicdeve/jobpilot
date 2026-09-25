@@ -469,7 +469,28 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 				return err
 			}
 
-			page, err := client.ListJobs(ctx, keywords, limit, offset)
+			source, err := cmd.Flags().GetString("source")
+			if err != nil {
+				return err
+			}
+			remote, err := cmd.Flags().GetString("remote")
+			if err != nil {
+				return err
+			}
+			postedWithin, err := cmd.Flags().GetInt("posted-within-days")
+			if err != nil {
+				return err
+			}
+			if postedWithin < 0 {
+				return fmt.Errorf("--posted-within-days must not be negative")
+			}
+
+			filter := domain.JobFilter{Keywords: keywords, SourceID: source, RemoteType: remote}
+			if postedWithin > 0 {
+				filter.PostedSince = time.Now().AddDate(0, 0, -postedWithin)
+			}
+
+			page, err := client.ListJobs(ctx, filter, limit, offset)
 			if err != nil {
 				return fmt.Errorf("listing jobs: %w", err)
 			}
@@ -495,6 +516,9 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 		},
 	}
 	listCmd.Flags().String("keywords", "", "Only list jobs whose title or company matches these keywords")
+	listCmd.Flags().String("source", "", "Only list jobs from this source, e.g. arbeitnow")
+	listCmd.Flags().String("remote", "", "Only list remote, hybrid or onsite jobs")
+	listCmd.Flags().Int("posted-within-days", 0, "Only list jobs posted in the last this many days")
 	listCmd.Flags().Int("limit", 0, "Maximum jobs to list (default 50, maximum 200)")
 	listCmd.Flags().Int("offset", 0, "Skip this many jobs before listing")
 	cmd.AddCommand(listCmd)

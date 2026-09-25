@@ -18,7 +18,7 @@ func TestDSN_CarriesEveryConnectionPragma(t *testing.T) {
 	assert.True(t, len(got) > len("/tmp/jobpilot/test.db"))
 	assert.Equal(t, "/tmp/jobpilot/test.db", got[:len("/tmp/jobpilot/test.db")])
 
-	for _, want := range []string{"_busy_timeout=5000", "_journal_mode=WAL", "_foreign_keys=on"} {
+	for _, want := range []string{"_busy_timeout=5000", "_journal_mode=WAL", "_foreign_keys=on", "_time_format=sqlite", "_timezone=UTC"} {
 		assert.Contains(t, got, want)
 	}
 }

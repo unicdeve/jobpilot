@@ -79,7 +79,7 @@ func (f *fakeScoutJobFinder) Search(_ context.Context, criteria domain.SearchCri
 	return f.jobs, f.searchErr
 }
 
-func (f *fakeScoutJobFinder) ListJobs(_ context.Context, _ string, _, _ int) (*domain.JobPage, error) {
+func (f *fakeScoutJobFinder) ListJobs(_ context.Context, _ domain.JobFilter, _, _ int) (*domain.JobPage, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}

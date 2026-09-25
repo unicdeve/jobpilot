@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/unicdev/jobpilot/internal/core/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +24,7 @@ func TestListQueries_ReturnEmptySliceNotNil_WhenNoRowsMatch(t *testing.T) {
 	candidate := saveTestCandidate(t, db)
 	ctx := context.Background()
 
-	jobs, err := NewJobRepository(db.Conn()).List(ctx, "", 10, 0)
+	jobs, err := NewJobRepository(db.Conn()).List(ctx, domain.JobFilter{}, 10, 0)
 	require.NoError(t, err)
 	assert.NotNil(t, jobs)
 	assert.Empty(t, jobs)

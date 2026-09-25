@@ -21,7 +21,7 @@ const ScoutTaskType = domain.AgentTaskScoutRun
 // can open a browser; it is not on this interface.
 type ScoutJobFinder interface {
 	Search(ctx context.Context, criteria domain.SearchCriteria) ([]*domain.Job, error)
-	ListJobs(ctx context.Context, keywords string, limit, offset int) (*domain.JobPage, error)
+	ListJobs(ctx context.Context, filter domain.JobFilter, limit, offset int) (*domain.JobPage, error)
 }
 
 // ScoutMatcher scores a job against a candidate.
@@ -287,7 +287,7 @@ func (s *ScoutService) collectJobs(
 			fmt.Sprintf("%d jobs returned", len(found)))
 	}
 
-	page, err := s.finder.ListJobs(ctx, "", maxJobsConsideredPerRun, 0)
+	page, err := s.finder.ListJobs(ctx, domain.JobFilter{}, maxJobsConsideredPerRun, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read stored jobs: %w", err)
 	}

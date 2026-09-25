@@ -36,10 +36,20 @@ type DB struct {
 //   - foreign_keys: SQLite defaults this off and it is per-connection, so
 //     without it here the schema's foreign keys are only enforced on whatever
 //     connection happened to run the pragma.
+//   - _time_format=sqlite and _timezone=UTC: without them the driver writes
+//     a time.Time as time.Time.String — "2026-09-15 19:36:10.57 +0100 WAT
+//     m=+195.6" — in whatever zone the value carries. SQLite's date
+//     functions cannot read that, and values in different zones do not
+//     compare as strings, so no query could ask "posted this week". Every
+//     time is instead written in UTC as "2006-01-02 15:04:05.999999999-07:00",
+//     which julianday() understands and which orders correctly as text.
+//     Migration 00014 rewrites the values stored before this.
 var connectionPragmas = url.Values{
 	"_busy_timeout": {"5000"},
 	"_journal_mode": {"WAL"},
 	"_foreign_keys": {"on"},
+	"_time_format":  {"sqlite"},
+	"_timezone":     {"UTC"},
 }
 
 // dsn builds the modernc.org/sqlite connection string for dbPath.
@@ -100,7 +110,8 @@ func (db *DB) migrationProvider() (*goose.Provider, error) {
 		return nil, fmt.Errorf("failed to load embedded migrations: %w", err)
 	}
 
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.conn, migrations)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.conn, migrations,
+		goose.WithGoMigrations(goMigrations()...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create migration provider: %w", err)
 	}

@@ -3,7 +3,7 @@
 
 import type { Job } from "./types";
 
-const SOURCE_LABELS: Record<string, string> = {
+export const SOURCE_LABELS: Record<string, string> = {
   arbeitnow: "Arbeitnow",
   remotive: "Remotive",
   remoteok: "RemoteOK",
@@ -16,14 +16,14 @@ export function sourceLabel(sourceId: string): string {
   return SOURCE_LABELS[sourceId] ?? sourceId;
 }
 
-const REMOTE_LABELS: Record<string, string> = {
+export const REMOTE_LABELS = {
   remote: "Remote",
   hybrid: "Hybrid",
   onsite: "On-site",
-};
+} as const;
 
 export function remoteLabel(remoteType: string): string | undefined {
-  return REMOTE_LABELS[remoteType?.toLowerCase()];
+  return (REMOTE_LABELS as Record<string, string>)[remoteType?.toLowerCase()];
 }
 
 /// employmentLabel returns a label only for the handful of employment types

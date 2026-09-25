@@ -96,7 +96,11 @@ func main() {
 				if s.State == goose.StateApplied {
 					applied = s.AppliedAt.Format("2006-01-02 15:04:05")
 				}
-				fmt.Printf("%-3d %-50s %s\n", s.Source.Version, s.Source.Path, applied)
+				path := s.Source.Path
+				if path == "" {
+					path = "(Go migration, see migrations_go.go)"
+				}
+				fmt.Printf("%-3d %-50s %s\n", s.Source.Version, path, applied)
 			}
 		}
 

@@ -507,7 +507,24 @@ func handleListJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 			return
 		}
 
-		page, err := svc.ListJobs(r.Context(), query.Get("q"), limit, offset)
+		filter := domain.JobFilter{
+			Keywords:   query.Get("q"),
+			SourceID:   query.Get("source"),
+			RemoteType: query.Get("remote"),
+		}
+		if raw := query.Get("posted_since"); raw != "" {
+			filter.PostedSince, err = time.Parse(time.RFC3339, raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("invalid posted_since %q: must be an RFC 3339 time", raw))
+				return
+			}
+		}
+
+		page, err := svc.ListJobs(r.Context(), filter, limit, offset)
+		if errors.Is(err, services.ErrInvalidJobFilter) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		if writeErrIfAny(w, err) {
 			return
 		}

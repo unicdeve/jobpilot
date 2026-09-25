@@ -325,7 +325,7 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 		t.Parallel()
 		svc := NewJobDiscoveryService(seedJobs(t, 3), nil, nil, nil, nil)
 
-		page, err := svc.ListJobs(context.Background(), "", 0, 0)
+		page, err := svc.ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 
 		require.NoError(t, err)
 		assert.Len(t, page.Jobs, 4)
@@ -339,7 +339,7 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 		source := searchableSource("mock", nil, errors.New("source must not be contacted"))
 		svc := NewJobDiscoveryService(seedJobs(t, 2), []ports.JobSource{source}, nil, nil, nil)
 
-		page, err := svc.ListJobs(context.Background(), "", 0, 0)
+		page, err := svc.ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 
 		require.NoError(t, err)
 		assert.Equal(t, 3, page.Total)
@@ -350,12 +350,12 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 		t.Parallel()
 		svc := NewJobDiscoveryService(seedJobs(t, 3), nil, nil, nil, nil)
 
-		byTitle, err := svc.ListJobs(context.Background(), "engineer", 0, 0)
+		byTitle, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "engineer"}, 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, byTitle.Jobs, 3)
 		assert.Equal(t, 3, byTitle.Total)
 
-		byCompany, err := svc.ListJobs(context.Background(), "globex", 0, 0)
+		byCompany, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "globex"}, 0, 0)
 		require.NoError(t, err)
 		require.Len(t, byCompany.Jobs, 1)
 		assert.Equal(t, "Designer", byCompany.Jobs[0].Title)
@@ -366,18 +366,18 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 		t.Parallel()
 		svc := NewJobDiscoveryService(seedJobs(t, 5), nil, nil, nil, nil)
 
-		first, err := svc.ListJobs(context.Background(), "engineer", 2, 0)
+		first, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "engineer"}, 2, 0)
 		require.NoError(t, err)
 		require.Len(t, first.Jobs, 2)
 		assert.Equal(t, "Engineer 1", first.Jobs[0].Title)
 		assert.Equal(t, 5, first.Total, "total must describe the whole result, not the page")
 
-		second, err := svc.ListJobs(context.Background(), "engineer", 2, 2)
+		second, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "engineer"}, 2, 2)
 		require.NoError(t, err)
 		require.Len(t, second.Jobs, 2)
 		assert.Equal(t, "Engineer 3", second.Jobs[0].Title)
 
-		past, err := svc.ListJobs(context.Background(), "engineer", 2, 99)
+		past, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "engineer"}, 2, 99)
 		require.NoError(t, err)
 		assert.Empty(t, past.Jobs)
 		assert.Equal(t, 5, past.Total)
@@ -403,7 +403,7 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 				var gotLimit int
 				spy := &limitSpyJobRepository{fakeJobRepository: seedJobs(t, 1), gotLimit: &gotLimit}
 
-				_, err := NewJobDiscoveryService(spy, nil, nil, nil, nil).ListJobs(context.Background(), "", tt.limit, 0)
+				_, err := NewJobDiscoveryService(spy, nil, nil, nil, nil).ListJobs(context.Background(), domain.JobFilter{}, tt.limit, 0)
 
 				require.NoError(t, err)
 				assert.Equal(t, tt.wantLimit, gotLimit)
@@ -415,11 +415,39 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 		t.Parallel()
 		svc := NewJobDiscoveryService(seedJobs(t, 3), nil, nil, nil, nil)
 
-		page, err := svc.ListJobs(context.Background(), "engineer", 0, -10)
+		page, err := svc.ListJobs(context.Background(), domain.JobFilter{Keywords: "engineer"}, 0, -10)
 
 		require.NoError(t, err)
 		require.NotEmpty(t, page.Jobs)
 		assert.Equal(t, "Engineer 1", page.Jobs[0].Title)
+	})
+
+	t.Run("an unknown remote type is refused rather than matching nothing", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(seedJobs(t, 1), nil, nil, nil, nil)
+
+		_, err := svc.ListJobs(context.Background(), domain.JobFilter{RemoteType: "anywhere"}, 0, 0)
+
+		require.ErrorIs(t, err, ErrInvalidJobFilter)
+		assert.ErrorContains(t, err, `"anywhere"`)
+	})
+
+	t.Run("the remote type is read without regard to case or spacing", func(t *testing.T) {
+		t.Parallel()
+		repo := newFakeJobRepository()
+		require.NoError(t, repo.Save(context.Background(), &domain.Job{
+			CanonicalURL: "https://acme.example/remote", Title: "Engineer", RemoteType: domain.RemoteTypeRemote,
+		}))
+		require.NoError(t, repo.Save(context.Background(), &domain.Job{
+			CanonicalURL: "https://acme.example/onsite", Title: "Engineer", RemoteType: domain.RemoteTypeOnsite,
+		}))
+		svc := NewJobDiscoveryService(repo, nil, nil, nil, nil)
+
+		page, err := svc.ListJobs(context.Background(), domain.JobFilter{RemoteType: " Remote "}, 0, 0)
+
+		require.NoError(t, err)
+		require.Len(t, page.Jobs, 1)
+		assert.Equal(t, "https://acme.example/remote", page.Jobs[0].CanonicalURL)
 	})
 
 	t.Run("repository failures are surfaced", func(t *testing.T) {
@@ -427,12 +455,12 @@ func TestJobDiscoveryService_ListJobs(t *testing.T) {
 
 		listFails := newFakeJobRepository()
 		listFails.listErr = errors.New("disk gone")
-		_, err := NewJobDiscoveryService(listFails, nil, nil, nil, nil).ListJobs(context.Background(), "", 0, 0)
+		_, err := NewJobDiscoveryService(listFails, nil, nil, nil, nil).ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 		assert.ErrorContains(t, err, "disk gone")
 
 		countFails := newFakeJobRepository()
 		countFails.countErr = errors.New("count broke")
-		_, err = NewJobDiscoveryService(countFails, nil, nil, nil, nil).ListJobs(context.Background(), "", 0, 0)
+		_, err = NewJobDiscoveryService(countFails, nil, nil, nil, nil).ListJobs(context.Background(), domain.JobFilter{}, 0, 0)
 		assert.ErrorContains(t, err, "count broke")
 	})
 }
@@ -445,9 +473,9 @@ type limitSpyJobRepository struct {
 	gotLimit *int
 }
 
-func (r *limitSpyJobRepository) List(ctx context.Context, keywords string, limit, offset int) ([]*domain.Job, error) {
+func (r *limitSpyJobRepository) List(ctx context.Context, filter domain.JobFilter, limit, offset int) ([]*domain.Job, error) {
 	*r.gotLimit = limit
-	return r.fakeJobRepository.List(ctx, keywords, limit, offset)
+	return r.fakeJobRepository.List(ctx, filter, limit, offset)
 }
 
 func TestJobDiscoveryService_GetJob(t *testing.T) {

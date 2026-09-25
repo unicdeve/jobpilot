@@ -16,6 +16,7 @@ import type {
   CoverLetter,
   Job,
   JobMatch,
+  JobListFilter,
   JobPage,
   LLMHealth,
   LLMSettings,
@@ -56,7 +57,7 @@ export interface ApiClient {
   /// listJobs reads stored discovery history and contacts no job source,
   /// so unlike searchJobs it works offline. A limit of 0 means the daemon's
   /// default page size.
-  listJobs(keywords: string, limit: number, offset: number): Promise<JobPage>;
+  listJobs(filter: JobListFilter, limit: number, offset: number): Promise<JobPage>;
   getJob(id: string): Promise<Job>;
   searchJobs(criteria: SearchCriteria): Promise<Job[]>;
 
@@ -195,9 +196,12 @@ export function createApiClient(port: number): ApiClient {
         resume_markdown: resumeMarkdown,
       }),
 
-    listJobs: (keywords, limit, offset) => {
+    listJobs: (filter, limit, offset) => {
       const params: Record<string, string> = {};
-      if (keywords) params.q = keywords;
+      if (filter.keywords) params.q = filter.keywords;
+      if (filter.source) params.source = filter.source;
+      if (filter.remote) params.remote = filter.remote;
+      if (filter.postedSince) params.posted_since = filter.postedSince.toISOString();
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
