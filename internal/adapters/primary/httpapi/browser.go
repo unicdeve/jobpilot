@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -20,7 +21,12 @@ func handlePrepareInBrowser(browserSvc *services.BrowserWorkerService, appSvc *s
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 
-		if err := browserSvc.PrepareApplication(r.Context(), id); writeErrIfAny(w, err) {
+		err := browserSvc.PrepareApplication(r.Context(), id)
+		if errors.Is(err, services.ErrAssistDoesNotFillForms) {
+			writeError(w, http.StatusConflict, err)
+			return
+		}
+		if writeErrIfAny(w, err) {
 			return
 		}
 

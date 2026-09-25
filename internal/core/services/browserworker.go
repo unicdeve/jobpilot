@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -60,6 +61,14 @@ func NewBrowserWorkerService(
 	}
 }
 
+// ErrAssistDoesNotFillForms is returned for an attempt to prepare an Assist
+// application in the browser. Assist writes an application's content and
+// never interacts with an employer's form
+// (docs/00_product/04_application_modes.md); the mode is the user's choice
+// of how involved JobPilot is, and the browser worker is the involvement
+// they declined.
+var ErrAssistDoesNotFillForms = errors.New("this application is in Assist mode, which never fills in an employer's form; fill it in yourself, or start a Review application")
+
 // PrepareApplication navigates to the application's job posting, extracts
 // its form, resolves each field through the existing answer resolver chain
 // (AnswerService.Resolve, unchanged), and fills in whatever resolved —
@@ -74,6 +83,11 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 	application, err := s.appSvc.GetApplication(ctx, applicationID)
 	if err != nil {
 		return err
+	}
+	if application.Mode == domain.ApplicationModeAssist {
+		// Refused before a run is recorded or a browser opens: nothing was
+		// attempted, so there is nothing for the trail to say.
+		return ErrAssistDoesNotFillForms
 	}
 	job, err := s.jobRepo.GetByID(ctx, application.JobID)
 	if err != nil {

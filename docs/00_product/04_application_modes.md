@@ -25,6 +25,6 @@ Automatic submission was declined outright.
 - Mode must be visible to the user.
 - Policy checks apply in every mode.
 - Nothing submits. No JobPilot code path clicks an external application's submit control, in any mode, under any setting.
-- Assist does not interact with external application forms at all.
+- Assist does not interact with external application forms at all. Core refuses to prepare an Assist application in the browser, and the desktop does not offer it.
 - Review fills a form and leaves the browser window open; the user submits it themselves.
 - The system must persist an auditable application status and action history.

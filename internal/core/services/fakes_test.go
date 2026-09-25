@@ -740,6 +740,7 @@ func (f *fakeAgentEventRepository) ListByRun(_ context.Context, runID string) ([
 
 // fakeBrowserWorker is a scriptable ports.BrowserWorker test double.
 type fakeBrowserWorker struct {
+	navigated         []string
 	navigateErr       error
 	blockedReason     string
 	blocked           bool
@@ -762,7 +763,10 @@ type fakeBrowserWorker struct {
 	currentURL string
 }
 
-func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return f.navigateErr }
+func (f *fakeBrowserWorker) Navigate(_ context.Context, url string) error {
+	f.navigated = append(f.navigated, url)
+	return f.navigateErr
+}
 
 func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) {
 	return f.blockedReason, f.blocked

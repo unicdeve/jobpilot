@@ -109,6 +109,25 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		_ = runRepo // exercised via svc.ListRuns above
 	})
 
+	t.Run("an Assist application is refused before a browser opens", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
+
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{}, &domain.Job{CanonicalURL: "https://acme.example/jobs/1"})
+		appRepo.applications[appID].Mode = domain.ApplicationModeAssist
+		worker.fields = applicationFormFields()
+
+		err := svc.PrepareApplication(context.Background(), appID)
+		require.ErrorIs(t, err, ErrAssistDoesNotFillForms)
+
+		assert.Empty(t, worker.navigated, "no page was opened")
+		assert.Empty(t, worker.filled)
+		assert.Equal(t, domain.ApplicationStatePreparing, appRepo.applications[appID].State, "nothing was attempted, so nothing failed")
+		runs, err := runRepo.ListByApplication(context.Background(), appID)
+		require.NoError(t, err)
+		assert.Empty(t, runs)
+	})
+
 	t.Run("a detected blocker stops the run and fails the application without closing the browser", func(t *testing.T) {
 		t.Parallel()
 		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
