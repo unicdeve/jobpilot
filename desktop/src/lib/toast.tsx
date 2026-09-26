@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface Toast {
   id: number;
@@ -9,6 +10,8 @@ interface Toast {
 
 interface ToastContextValue {
   notify: (message: string, variant?: Toast["variant"]) => void;
+  /// activity is where work still under way is shown, above the toasts.
+  activity: HTMLElement | null;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -17,6 +20,7 @@ let nextId = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [activity, setActivity] = useState<HTMLElement | null>(null);
 
   const notify = useCallback((message: string, variant: Toast["variant"] = "error") => {
     const id = nextId++;
@@ -27,23 +31,34 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ToastContext.Provider value={{ notify }}>
+    <ToastContext.Provider value={{ notify, activity }}>
       {children}
       {/* A notification, not a banner: a raised surface in the theme's own
           colours, with the tone carried by its icon. */}
       <div className="fixed right-4 bottom-4 z-50 flex w-80 flex-col gap-2" role="status" aria-live="polite">
+        <div ref={setActivity} className="flex flex-col gap-2 empty:hidden" />
         {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="flex items-start gap-2.5 rounded-lg bg-popover px-3.5 py-3 text-[13px] text-popover-foreground shadow-lg ring-1 ring-border select-text"
-          >
+          <div key={t.id} className={SURFACE}>
             <ToastIcon variant={t.variant} />
-            <span className="min-w-0 break-words">{t.message}</span>
+            <span className="min-w-0 wrap-break-word">{t.message}</span>
           </div>
         ))}
       </div>
     </ToastContext.Provider>
   );
+}
+
+/// SURFACE is how a toast and an activity both look: one stack, one kind
+/// of thing in it.
+const SURFACE =
+  "flex items-start gap-2.5 rounded-lg bg-popover px-3.5 py-3 text-[13px] text-popover-foreground shadow-lg ring-1 ring-border select-text";
+
+/// ToastActivity shows work still under way in the toast stack, for as long
+/// as it is rendered. A toast says something happened and then goes; this
+/// stays until whatever it describes has finished.
+export function ToastActivity({ children }: { children: ReactNode }) {
+  const { activity } = useToast();
+  return activity ? createPortal(<div className={SURFACE}>{children}</div>, activity) : null;
 }
 
 function ToastIcon({ variant }: { variant: Toast["variant"] }) {

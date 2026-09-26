@@ -114,6 +114,17 @@ func TestJobDiscoveryService_Search(t *testing.T) {
 	})
 }
 
+func TestJobDiscoveryService_SearchSources(t *testing.T) {
+	t.Parallel()
+	noSearch := &fakeJobSource{id: "no-search", capabilities: ports.SourceCapabilities{CanSearch: false}}
+	svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{
+		searchableSource("first", nil, nil), noSearch, searchableSource("second", nil, nil),
+	}, nil, nil, nil)
+
+	assert.Equal(t, []domain.SourceInfo{{ID: "first", Name: "first"}, {ID: "second", Name: "second"}}, svc.SearchSources(),
+		"the sources a search asks, in its order, and only those that can search")
+}
+
 func TestJobDiscoveryService_ImportJob(t *testing.T) {
 	t.Parallel()
 

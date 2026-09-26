@@ -61,6 +61,7 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/jobs", handleListJobs(svc.Discovery))
 	mux.HandleFunc("GET /v1/jobs/{id}", handleGetJob(svc.Discovery))
+	mux.HandleFunc("GET /v1/sources", handleListSources(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/search", handleSearchJobs(svc.Discovery))
 	mux.HandleFunc("POST /v1/jobs/import", handleImportJob(svc.Discovery))
 	mux.HandleFunc("PUT /v1/jobs/{id}/interest", handleSetJobInterest(svc.Discovery))
@@ -559,6 +560,14 @@ func handleGetJob(svc *services.JobDiscoveryService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
+	}
+}
+
+// handleListSources names the sources a search asks, so a client can say
+// what a search is waiting on while it runs.
+func handleListSources(svc *services.JobDiscoveryService) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, svc.SearchSources())
 	}
 }
 

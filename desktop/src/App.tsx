@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout";
+import { DiscoveryActivity } from "./components/discovery-activity";
 import { RequireDaemon } from "./components/require-daemon";
 import { DaemonProvider } from "./lib/daemon";
 import "./lib/platform";
@@ -11,9 +12,17 @@ import { Welcome } from "./pages/welcome";
 // The daemon is a local process reached over loopback, so refetching is
 // cheap — but it is also a desktop app, not a browser tab left open for
 // days, so window focus is not a meaningful signal that data went stale.
+//
+// Nor is the machine's network connection a signal that the daemon can be
+// reached: it is on loopback. Left at its default, TanStack Query pauses
+// every request the moment the OS reports being offline, which would stop
+// local history loading at exactly the time it is meant to keep working.
+// A search that needs the internet says so itself, per source.
 const queryClient = new QueryClient({
   defaultOptions: {
+    mutations: { networkMode: "always" },
     queries: {
+      networkMode: "always",
       staleTime: 30_000,
       retry: 1,
       refetchOnWindowFocus: false,
@@ -32,6 +41,7 @@ function App() {
       <ThemeProvider>
       <ToastProvider>
         <DaemonProvider>
+          <DiscoveryActivity />
           <HashRouter>
             <Routes>
               {/* Outside <Layout>: first-run setup has nothing to navigate

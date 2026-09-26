@@ -32,6 +32,7 @@ import type {
   CredentialRef,
   SearchCriteria,
   SearchTemplateGroup,
+  SourceInfo,
   Scout,
   ScoutRunReport,
   AgentRun,
@@ -98,6 +99,8 @@ export interface ApiClient {
   listJobs(filter: JobListFilter, limit: number, offset: number): Promise<JobPage>;
   getJob(id: string): Promise<Job>;
   searchJobs(criteria: SearchCriteria): Promise<DiscoveryResult>;
+  /// listSources names the sources a search asks, in the order it asks them.
+  listSources(): Promise<SourceInfo[]>;
 
   listSavedSearches(): Promise<SavedSearch[]>;
   createSavedSearch(name: string, criteria: SearchCriteria): Promise<SavedSearch>;
@@ -290,6 +293,7 @@ export function createApiClient(port: number): ApiClient {
     },
     getJob: (id) => request<Job>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
     searchJobs: (criteria) => request<DiscoveryResult>(baseUrl, "POST", "/v1/jobs/search", criteria),
+    listSources: () => request<SourceInfo[]>(baseUrl, "GET", "/v1/sources"),
 
     listSavedSearches: () => request<SavedSearch[]>(baseUrl, "GET", "/v1/searches"),
     createSavedSearch: (name, criteria) =>

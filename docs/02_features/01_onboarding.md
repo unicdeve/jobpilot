@@ -41,6 +41,14 @@ The desktop wizard offers the search templates first and a blank form second
 where a user is least able to tell a search that will work from one that will
 quietly find nothing, because nothing has been discovered yet to judge it by.
 
+### AC-006
+Given the desktop wizard added searches, when setup finishes, then those searches are run.
+
+Nothing else would have looked for a job yet, so ending setup without running one left every screen empty until the user found Discover.
+The runs are queued and continue on whichever screen the user goes to; a search in progress is shown at the bottom right with how many sources it is asking, and says what it found when it is done.
+Finishing does not wait for them, and offline each one says it could not reach the job sources: setup is complete either way (AC-003).
+The CLI's `onboard` ends by printing the `search run` command instead.
+
 ## Implementation status
 
 `SetupEnvironment`, `ConfigureLLM`, `InitializeProfile`, `ProcessResume` and

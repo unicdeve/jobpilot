@@ -267,6 +267,13 @@ func (c *Client) GetJob(ctx context.Context, id string) (*domain.Job, error) {
 	return &job, nil
 }
 
+// ListSources names the sources a search asks, in the order it asks them.
+func (c *Client) ListSources(ctx context.Context) ([]domain.SourceInfo, error) {
+	var sources []domain.SourceInfo
+	_, err := c.do(ctx, http.MethodGet, "/v1/sources", nil, &sources)
+	return sources, err
+}
+
 // SearchJobs runs a job search against criteria.
 func (c *Client) SearchJobs(ctx context.Context, criteria domain.SearchCriteria) (*domain.DiscoveryResult, error) {
 	var result domain.DiscoveryResult

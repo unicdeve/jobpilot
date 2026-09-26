@@ -1889,6 +1889,19 @@ func discoveryServer(t *testing.T, sources ...ports.JobSource) *Client {
 
 // A source that fails is reported, and never in its own words: a transport
 // error names the URL it requested, which for a keyed source carries the key.
+func TestServer_ListSources(t *testing.T) {
+	t.Parallel()
+	client := discoveryServer(t,
+		&fakeJobSource{id: "first", name: "First"},
+		&fakeJobSource{id: "second", name: "Second"},
+	)
+
+	sources, err := client.ListSources(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []domain.SourceInfo{{ID: "first", Name: "First"}, {ID: "second", Name: "Second"}}, sources)
+}
+
 func TestServer_SearchJobs_ReportsSourcesThatDidNotAnswer(t *testing.T) {
 	t.Parallel()
 	const secret = "app_key=THIS-MUST-NEVER-BE-SERVED"

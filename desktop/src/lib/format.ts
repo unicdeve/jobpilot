@@ -117,13 +117,17 @@ export function scoreTone(score: number): string {
 
 /// discoverySummary is what a finished search says: how many jobs matched,
 /// how many of them are new, and which sources were not heard from, since a
-/// thin result from a source that did not answer is not a thin market.
-export function discoverySummary(result: DiscoveryResult): { message: string; complete: boolean } {
+/// thin result from a source that did not answer is not a thin market. It
+/// names the search, since several can finish one after another.
+export function discoverySummary(
+  result: DiscoveryResult,
+  searchName: string,
+): { message: string; complete: boolean } {
   const found = result.jobs.length;
   const sentences = [
     found === 0
-      ? "No jobs matched this search."
-      : `Found ${found} matching ${found === 1 ? "job" : "jobs"}, ${result.new === 0 ? "none" : result.new} new.`,
+      ? `No jobs matched “${searchName}”.`
+      : `Found ${found} ${found === 1 ? "job" : "jobs"} for “${searchName}”, ${result.new === 0 ? "none" : result.new} new.`,
   ];
 
   const unreachable = result.sources.filter((s) => s.status === "unreachable").map((s) => sourceLabel(s.source_id));

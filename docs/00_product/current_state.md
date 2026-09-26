@@ -274,6 +274,10 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   exists rather than from a stored flag, so it resumes at the first gap.
   Previously each prerequisite was reachable on its own screen and each
   screen said what was missing, but nothing put them in an order.
+- Setup ends by searching (`docs/02_features/01_onboarding.md` AC-006): the searches the desktop wizard adds are run as it finishes, so it no longer ends on a dashboard of zeros with a Discover button to find.
+  A search while it runs is shown at the bottom right ("Searching 5 job sources…", and which search), from `GET /v1/sources`, and says what it found when it is done.
+  Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
+  The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
 - The app identifier is `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`; both were the Tauri template's.
   The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
   The webview's storage is keyed by the identifier, so the theme preference is chosen again once.

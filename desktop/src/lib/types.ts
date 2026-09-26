@@ -190,6 +190,12 @@ export interface JobPage {
 /// answer that was not jobs.
 export type SourceStatus = "ok" | "unreachable" | "failed";
 
+/// SourceInfo mirrors domain.SourceInfo: a source a search asks.
+export interface SourceInfo {
+  id: string;
+  name: string;
+}
+
 /// SourceOutcome mirrors domain.SourceOutcome. It carries no error text:
 /// the daemon logs the detail and never returns it.
 export interface SourceOutcome {

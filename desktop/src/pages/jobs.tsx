@@ -2,6 +2,7 @@ import { Briefcase, ChevronDown, EyeOff, Link2, ListFilter, Search, Undo2 } from
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { FILTER_ALL, FilterSelect } from "../components/filter-select";
+import { useDiscover, useDiscoveryRuns } from "../components/discovery-activity";
 import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pane";
 import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
@@ -26,7 +27,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { discoverySummary, jobLocation, relativeTime, REMOTE_LABELS, remoteLabel, scoreTone, SOURCE_LABELS, sourceLabel } from "../lib/format";
+import { jobLocation, relativeTime, REMOTE_LABELS, remoteLabel, scoreTone, SOURCE_LABELS, sourceLabel } from "../lib/format";
 import {
   activeFilterCount,
   type JobFilters,
@@ -44,7 +45,6 @@ import {
   useInfiniteJobs,
   useJobsByID,
   useMatches,
-  useRunSavedSearch,
   useSetJobInterest,
   useSavedSearches,
 } from "../lib/queries";
@@ -194,11 +194,7 @@ function AllJobs({
         </ListNote>
       );
     }
-    return (
-      <ListNote>
-        {query ? `No stored jobs match “${query}”.` : "No jobs yet. Use Discover to search your job sources, or add one by URL."}
-      </ListNote>
-    );
+    return <NoJobsYet query={query} />;
   }
 
   return (
@@ -482,32 +478,49 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
   );
 }
 
+/// NoJobsYet is the empty list with nothing filtered. While a search is
+/// running — the first one after setup, say — it says so, rather than
+/// telling the user to start one.
+function NoJobsYet({ query }: { query: string }) {
+  const searching = useDiscoveryRuns().length > 0;
+  if (query) return <ListNote>No stored jobs match “{query}”.</ListNote>;
+  return (
+    <ListNote>
+      {searching
+        ? "Searching your job sources. Jobs appear here as each search finishes."
+        : "No jobs yet. Use Discover to search your job sources, or add one by URL."}
+    </ListNote>
+  );
+}
+
 /// DiscoverMenu runs one of the user's saved searches against the job
 /// sources. Discovery without criteria is refused by the daemon — the
 /// boards return their whole listing regardless of what is asked — so with
 /// no saved search the menu points at Settings instead.
+///
+/// A run already going or queued, from here or anywhere else, cannot be
+/// asked for twice; another search can, and waits its turn.
 function DiscoverMenu() {
-  const { notify } = useToast();
   const { data: searches } = useSavedSearches();
-  const runSearch = useRunSavedSearch({
-    onSuccess: (result) => {
-      const { message, complete } = discoverySummary(result);
-      notify(message, complete ? "success" : "warning");
-    },
-    onError: (err) => notify(String(err)),
-  });
+  const discover = useDiscover();
+  const runs = useDiscoveryRuns();
+  const pending = new Set(runs.map((run) => run.search.id));
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button size="sm" disabled={runSearch.isPending} />}>
-        {runSearch.isPending ? "Searching…" : "Discover"}
+      <DropdownMenuTrigger render={<Button size="sm" />}>
+        {runs.length > 0 ? "Searching…" : "Discover"}
         <ChevronDown data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Search your job sources with</DropdownMenuLabel>
           {searches?.map((search) => (
-            <DropdownMenuItem key={search.id} onClick={() => runSearch.mutate(search.id)}>
+            <DropdownMenuItem
+              key={search.id}
+              disabled={pending.has(search.id)}
+              onClick={() => discover.mutate({ id: search.id, name: search.name })}
+            >
               <span className="flex-1 truncate">{search.name}</span>
               {search.is_default && <span className="text-xs text-muted-foreground">Default</span>}
             </DropdownMenuItem>

@@ -14,6 +14,13 @@ const (
 	SourceStatusFailed SourceStatus = "failed"
 )
 
+// SourceInfo names a job source a discovery run asks, so a client can say
+// what a search is waiting on before it answers.
+type SourceInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // SourceOutcome is what one source contributed to a discovery run.
 //
 // It carries no error text. A transport error names the URL it requested,

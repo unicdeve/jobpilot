@@ -35,6 +35,8 @@ different failure modes, so they are different endpoints.
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
+- `GET /v1/sources` names the sources a search asks (`[{"id", "name"}]`), so
+  a client can say what a search is waiting on while it runs.
 
 `POST /v1/jobs/search` rejects empty criteria with 400 rather than importing
 every posting both boards return.

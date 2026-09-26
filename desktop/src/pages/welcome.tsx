@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useDiscover } from "../components/discovery-activity";
 import { FormField } from "../components/form-field";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm } from "../components/saved-search-form";
@@ -20,7 +21,7 @@ import {
   useUpdateProfile,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Candidate, LLMSettings } from "../lib/types";
+import type { Candidate, LLMSettings, SavedSearch } from "../lib/types";
 import { pickResumeFile } from "../lib/resume-file";
 
 /// skipKey records that the user dismissed first-run setup. It lives in
@@ -100,8 +101,13 @@ export function Welcome() {
     navigate("/");
   };
 
-  const finish = () => {
-    notify("Setup complete — JobPilot is ready.", "success");
+  // searching is whether finishing started the first search, which then
+  // reports itself as it runs and when it is done.
+  const finish = (searching: boolean) => {
+    notify(
+      searching ? "Setup complete. JobPilot is looking for your first jobs." : "Setup complete — JobPilot is ready.",
+      "success",
+    );
     navigate("/");
   };
 
@@ -475,24 +481,31 @@ function ResumeStep({
 /// SearchStep is the one step that cannot be skipped: discovery refuses to
 /// run on empty criteria, so an installation with no saved search cannot
 /// find a single job (docs/02_features/01_onboarding.md AC-005).
+///
+/// The searches it adds are run as it finishes, so setup ends with jobs
+/// arriving rather than with empty lists and a Discover button to find
+/// (AC-006). The runs are queued and outlive this screen; offline, each one
+/// says it could not reach the sources, and setup is complete regardless.
 function SearchStep({
   hasSearch,
   onDone,
   onBack,
 }: {
   hasSearch: boolean;
-  onDone: () => void;
+  onDone: (searching: boolean) => void;
   onBack: () => void;
 }) {
   const { notify } = useToast();
+  const discover = useDiscover();
   // Templates first: this is where a first-time user is least able to tell a
   // search that will work from one that will quietly find nothing.
   const [writingOwn, setWritingOwn] = useState(false);
+  const runAndFinish = (added: SavedSearch[]) => {
+    for (const search of added) discover.mutate({ id: search.id, name: search.name });
+    onDone(added.length > 0);
+  };
   const create = useCreateSavedSearch({
-    onSuccess: (search) => {
-      notify(`Saved search "${search.name}".`, "success");
-      onDone();
-    },
+    onSuccess: (search) => runAndFinish([search]),
     onError: (err) => notify(String(err)),
   });
 
@@ -505,7 +518,7 @@ function SearchStep({
             That is everything JobPilot needs. Add more of them any time under Settings.
           </p>
         </div>
-        <Button onClick={onDone}>Finish</Button>
+        <Button onClick={() => onDone(false)}>Finish</Button>
       </>
     );
   }
@@ -541,15 +554,7 @@ function SearchStep({
           <SearchTemplatePicker
             onCancel={onBack}
             onError={(message) => notify(message)}
-            onImported={(created) => {
-              notify(
-                created.length === 1
-                  ? `Added "${created[0].name}".`
-                  : `Added ${created.length} searches.`,
-                "success",
-              );
-              onDone();
-            }}
+            onImported={runAndFinish}
           />
           <button
             type="button"

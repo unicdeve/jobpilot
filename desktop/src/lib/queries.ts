@@ -52,6 +52,7 @@ import type {
   CredentialRef,
   SearchCriteria,
   SearchTemplateGroup,
+  SourceInfo,
 } from "./types";
 
 /// keys centralizes every cache key. Invalidating a prefix invalidates
@@ -68,6 +69,10 @@ export const keys = {
   },
   savedSearches: ["saved-searches"] as const,
   searchTemplates: ["search-templates"] as const,
+  sources: ["sources"] as const,
+  /// discovery is a mutation key, not a query key: every discovery run
+  /// carries it, so any screen can see what is searching.
+  discovery: ["discovery"] as const,
   credentials: ["credentials"] as const,
   scouts: ["scouts"] as const,
   scoutRuns: ["scout-runs"] as const,
@@ -496,13 +501,36 @@ export function useDeleteCredential(opts?: MutationOpts<void, CredentialRef>) {
   });
 }
 
+/// useJobSources names the sources a search asks. The daemon registers
+/// them as it starts, so they do not change while it runs.
+export function useJobSources() {
+  const api = useApi();
+  return useQuery<SourceInfo[]>({
+    queryKey: keys.sources,
+    queryFn: () => api.listSources(),
+    staleTime: Infinity,
+  });
+}
+
+/// DiscoveryRun is the saved search a discovery run uses. It carries the
+/// name as well as the ID, so whatever shows the run can say which search
+/// it is without looking it up.
+export type DiscoveryRun = Pick<SavedSearch, "id" | "name">;
+
 /// useRunSavedSearch discovers jobs with a saved search's criteria and
 /// stores whatever matched, so every cached job list is then stale.
-export function useRunSavedSearch(opts?: MutationOpts<DiscoveryResult, string>) {
+///
+/// Runs share one scope, so they go one at a time in the order asked, from
+/// whichever screen asked: two runs at once would put the same sources'
+/// traffic and the same postings' writes side by side for no gain. A run
+/// outlives the screen that started it.
+export function useRunSavedSearch(opts?: MutationOpts<DiscoveryResult, DiscoveryRun>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.runSavedSearch(id),
+    mutationKey: keys.discovery,
+    scope: { id: "discovery" },
+    mutationFn: (search: DiscoveryRun) => api.runSavedSearch(search.id),
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.jobs.all });

@@ -119,6 +119,27 @@ var ErrAllSourcesFailed = errors.New("no job source answered")
 // an empty result would hide it.
 var ErrNoSearchableSource = errors.New("no job source that can search is configured")
 
+// SearchSources names the sources a search asks, in the order it asks
+// them. Only a source that can search is one.
+func (s *JobDiscoveryService) SearchSources() []domain.SourceInfo {
+	sources := s.searchable()
+	infos := make([]domain.SourceInfo, len(sources))
+	for i, source := range sources {
+		infos[i] = domain.SourceInfo{ID: source.ID(), Name: source.Name()}
+	}
+	return infos
+}
+
+func (s *JobDiscoveryService) searchable() []ports.JobSource {
+	sources := make([]ports.JobSource, 0, len(s.sources))
+	for _, source := range s.sources {
+		if source.Capabilities().CanSearch {
+			sources = append(sources, source)
+		}
+	}
+	return sources
+}
+
 // Search executes a search across all registered sources and deduplicates results.
 //
 // Criteria must narrow something: see ErrEmptyCriteria. Results from any
@@ -135,12 +156,7 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 		return nil, ErrEmptyCriteria
 	}
 
-	sources := make([]ports.JobSource, 0, len(s.sources))
-	for _, source := range s.sources {
-		if source.Capabilities().CanSearch {
-			sources = append(sources, source)
-		}
-	}
+	sources := s.searchable()
 	if len(sources) == 0 {
 		return nil, ErrNoSearchableSource
 	}
