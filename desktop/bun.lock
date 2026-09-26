@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "desktop",
+      "name": "jobpilot-desktop",
       "dependencies": {
         "@base-ui/react": "^1.8.0",
         "@tailwindcss/vite": "^4.3.3",

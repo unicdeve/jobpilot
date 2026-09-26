@@ -274,6 +274,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   exists rather than from a stored flag, so it resumes at the first gap.
   Previously each prerequisite was reachable on its own screen and each
   screen said what was missing, but nothing put them in an order.
+- The app identifier is `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`; both were the Tauri template's.
+  The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
+  The webview's storage is keyed by the identifier, so the theme preference is chosen again once.
 - LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
   configured backend is set up at all and whether it answers right now, so a
   screen can check before starting work that needs it. The desktop's

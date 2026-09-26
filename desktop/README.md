@@ -1,7 +1,19 @@
-# Tauri + React + Typescript
+# JobPilot desktop
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+The desktop app: Tauri 2, React and TypeScript.
+It talks to the JobPilot daemon over loopback HTTP (ADR-0012) and starts the daemon if none is running.
 
-## Recommended IDE Setup
+## Running it
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+From the repository root:
+
+```sh
+make build        # the daemon and CLI, into bin/
+cd desktop && bun install
+JOBPILOT_DAEMON_PATH=../bin/jobpilot bun tauri dev
+```
+
+The app looks for the `jobpilot` daemon binary next to its own executable, then on `PATH`, then at `JOBPILOT_DAEMON_PATH`.
+`make run-desktop` runs `bun tauri dev` and relies on the first two.
+
+`docs/01_architecture/02_desktop.md` describes how the app is built.
