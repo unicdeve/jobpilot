@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,9 +76,22 @@ func ReadDiscoveryInfo() (*DiscoveryInfo, error) {
 	return &info, nil
 }
 
-// RemoveDiscoveryInfo deletes the discovery file. It is not an error if the
-// file is already gone.
-func RemoveDiscoveryInfo() error {
+// RemoveDiscoveryInfo deletes the discovery file if it still names the
+// daemon with the given PID. A daemon that is shutting down must not remove
+// the file of one that has started since. It is not an error if the file
+// is already gone.
+func RemoveDiscoveryInfo(pid int) error {
+	info, err := ReadDiscoveryInfo()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if info.PID != pid {
+		return nil
+	}
+
 	path, err := discoveryPath()
 	if err != nil {
 		return fmt.Errorf("failed to resolve discovery file path: %w", err)

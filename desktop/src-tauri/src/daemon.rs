@@ -9,6 +9,10 @@ use std::time::{Duration, Instant};
 
 const DISCOVERY_FILE_NAME: &str = "daemon.json";
 const DAEMON_START_TIMEOUT: Duration = Duration::from_secs(5);
+// How long find_daemon waits for a daemon that went away to come back. It
+// covers a restart, including one under `make dev` that waits for the old
+// daemon to shut down before starting the new one.
+const DAEMON_RETURN_TIMEOUT: Duration = Duration::from_secs(15);
 const DAEMON_POLL_INTERVAL: Duration = Duration::from_millis(150);
 const DAEMON_HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -147,4 +151,25 @@ pub fn ensure_daemon() -> Result<u16, String> {
         "jobpilot daemon did not become ready within {:?}",
         DAEMON_START_TIMEOUT
     ))
+}
+
+/// find_daemon waits for a running daemon and returns its port, and never
+/// starts one. It is for a connection that was lost: the daemon that went
+/// away may be restarting, and one started here in that gap would be a
+/// second daemon on the same database. If none comes back, the app says so
+/// and the user can start one with Retry (ensure_daemon).
+pub fn find_daemon() -> Result<u16, String> {
+    let deadline = Instant::now() + DAEMON_RETURN_TIMEOUT;
+    loop {
+        if let Some(port) = try_existing_daemon() {
+            return Ok(port);
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "the jobpilot daemon stopped and did not come back within {:?}",
+                DAEMON_RETURN_TIMEOUT
+            ));
+        }
+        std::thread::sleep(DAEMON_POLL_INTERVAL);
+    }
 }

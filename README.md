@@ -47,3 +47,7 @@ implementation evidence shows a different approach is necessary.
 
 See `docs/01_architecture/` for the architecture and `docs/09_decisions/` for
 accepted decisions.
+
+`make dev` runs the daemon with hot reload, and `make run-desktop` the desktop
+alongside it; see [docs/08_development/hot_reload.md](docs/08_development/hot_reload.md).
+`make check` runs every check the Definition of Done asks for.

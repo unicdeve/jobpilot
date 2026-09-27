@@ -278,6 +278,11 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   A search while it runs is shown at the bottom right ("Searching 5 job sources…", and which search), from `GET /v1/sources`, and says what it found when it is done.
   Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
   The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
+- Hot reload for the daemon (`make dev`, `docs/08_development/hot_reload.md`): air rebuilds and restarts it when its Go or migrations change, pinned in the Makefile and installed into `./bin`.
+  The desktop now follows a daemon that restarts: it used to resolve the port once, so any restart left it pointed at a closed one until the app was reopened.
+  It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
+  A daemon shutting down removes the discovery file only if it still names that daemon.
+  The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
 - The app identifier is `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`; both were the Tauri template's.
   The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
   The webview's storage is keyed by the identifier, so the theme preference is chosen again once.

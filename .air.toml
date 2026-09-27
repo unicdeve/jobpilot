@@ -1,0 +1,30 @@
+# Hot reload for the daemon during development: `make dev`.
+# docs/08_development/hot_reload.md says how it fits with the desktop and CLI.
+
+root = "."
+# Under bin/, which is already ignored, rather than air's default tmp/.
+tmp_dir = "bin/dev"
+
+[build]
+  cmd = "go build -o ./bin/dev/jobpilot ./cmd/jobpilot"
+  entrypoint = ["./bin/dev/jobpilot"]
+  # The daemon is cmd/jobpilot and what it imports. The SQL is the embedded
+  # migrations, which change the binary as much as Go does.
+  include_dir = ["cmd/jobpilot", "internal"]
+  include_ext = ["go", "sql"]
+  exclude_regex = ["_test\\.go$"]
+  # A failed build leaves the running daemon up, so the desktop keeps
+  # working until the code compiles again.
+  stop_on_error = false
+  # Interrupt rather than kill, so the daemon shuts down as it would in use:
+  # it removes its discovery file, closes the database and its browser.
+  send_interrupt = true
+  kill_delay = "3s"
+  delay = 300
+  log = "build-errors.log"
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false

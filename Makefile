@@ -16,6 +16,12 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 GOLANGCI_LINT=bin/golangci-lint
 GO_VERSION=$(shell go env GOVERSION)
 
+# air rebuilds and restarts the daemon on change (`make dev`). Pinned and
+# installed into ./bin for the reason golangci-lint is, and a development
+# tool only: nothing the application builds depends on it.
+AIR_VERSION ?= v1.67.4
+AIR=bin/air
+
 # Optional override for the migrate-* targets' database file. Left empty by
 # default so cmd/migrate falls back to system.DefaultDBPath() — the exact
 # same path cmd/jobpilot-cli itself opens — so the two can never point at
@@ -23,7 +29,7 @@ GO_VERSION=$(shell go env GOVERSION)
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build clean run run-desktop fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -39,6 +45,20 @@ run:
 
 run-desktop:
 	cd desktop && bun tauri dev
+
+# dev runs the daemon under air, rebuilt and restarted whenever its Go or
+# migrations change. Start it before the desktop or CLI, which find the
+# running daemon and reconnect to it after each restart; see
+# docs/08_development/hot_reload.md.
+dev: air
+	./$(AIR)
+
+# Installs the pinned air when it is missing or the wrong version.
+air:
+	@if ! ./$(AIR) -v 2>/dev/null | grep -q "^$(AIR_VERSION),"; then \
+		echo "installing air $(AIR_VERSION) into ./bin"; \
+		GOBIN="$(CURDIR)/bin" go install github.com/air-verse/air@$(AIR_VERSION); \
+	fi
 
 clean:
 	rm -rf bin/

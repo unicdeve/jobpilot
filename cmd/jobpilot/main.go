@@ -54,6 +54,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Before the database is opened: a second daemon would migrate it under
+	// the first, and share its browser profile.
+	if err := refuseSecondDaemon(ctx); err != nil {
+		return err
+	}
+
 	dbPath, err := system.DefaultDBPath()
 	if err != nil {
 		return fmt.Errorf("resolving database path: %w", err)
@@ -87,7 +93,7 @@ func run() error {
 		return fmt.Errorf("writing discovery file: %w", err)
 	}
 	defer func() {
-		if err := httpapi.RemoveDiscoveryInfo(); err != nil {
+		if err := httpapi.RemoveDiscoveryInfo(os.Getpid()); err != nil {
 			log.Printf("error removing discovery file: %v", err)
 		}
 	}()
@@ -117,6 +123,27 @@ func run() error {
 	case err := <-serveErr:
 		return err
 	}
+}
+
+// existingDaemonHealthTimeout bounds the check for a daemon already running.
+const existingDaemonHealthTimeout = 2 * time.Second
+
+// refuseSecondDaemon fails when the discovery file names a daemon that
+// answers. Two would share one database and one browser profile, and the
+// clients would find only whichever wrote the file last. A file left by a
+// daemon that did not shut down cleanly names one that does not answer, and
+// is written over.
+func refuseSecondDaemon(ctx context.Context) error {
+	info, err := httpapi.ReadDiscoveryInfo()
+	if err != nil || info.PID == os.Getpid() {
+		return nil
+	}
+	healthCtx, cancel := context.WithTimeout(ctx, existingDaemonHealthTimeout)
+	defer cancel()
+	if err := httpapi.NewClient(info.Port).Health(healthCtx); err != nil {
+		return nil
+	}
+	return fmt.Errorf("another jobpilot daemon is already running (pid %d, port %d); stop it first", info.PID, info.Port)
 }
 
 // wireServices constructs every core service the daemon exposes, exactly as

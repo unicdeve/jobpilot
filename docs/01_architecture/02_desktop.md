@@ -115,8 +115,12 @@ What that buys, beyond avoiding a hand-written `useEffect` per screen:
   changed server state — `usePrepareInBrowser` is the example: a blocked
   browser run moves the application to FAILED and records why.
 
-Cached data belongs to one daemon, so reconnecting clears the cache rather
-than showing a previous daemon's data.
+Cached data belongs to one daemon, so reconnecting with Retry clears the cache
+rather than showing a previous daemon's data.
+A daemon that stops answering is different: the desktop waits for one to
+answer again without starting one, and keeps the cache when it does, since a
+daemon found through the discovery file serves the same data directory
+(`docs/08_development/hot_reload.md`).
 
 ## Rendering untrusted content
 

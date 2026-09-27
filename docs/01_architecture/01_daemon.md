@@ -26,6 +26,14 @@ Supported lifecycle patterns:
 3. OS scheduler starts the daemon for scheduled discovery.
 4. Optional user-configured startup integration can launch the daemon/UI on login.
 
+One daemon runs at a time.
+A daemon refuses to start while the discovery file names another that answers, because two would share one database and one browser profile, and the clients would find only whichever wrote the file last.
+A file left by a daemon that did not shut down cleanly names one that does not answer, and is written over.
+A daemon shutting down removes the discovery file only if it still names that daemon.
+Two daemons starting at the same instant can both pass the check; nothing starts daemons that way today.
+
+The desktop follows a daemon that restarts: a request that cannot reach it makes the desktop wait for a daemon to answer, without starting one (`docs/08_development/hot_reload.md`).
+
 The daemon should exit cleanly when there is no work and no reason to remain
 alive. Auto-exit on idle is not yet implemented — today the daemon only
 stops on an explicit signal (`SIGINT`/`SIGTERM`).

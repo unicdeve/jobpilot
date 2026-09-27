@@ -181,13 +181,20 @@ export interface ApiClient {
   listAgentRuns(applicationId: string): Promise<AgentRunWithEvents[]>;
 }
 
+/// Daemon is where a client's requests go, and who to tell when they
+/// cannot get there.
+interface Daemon {
+  baseUrl: string;
+  onUnreachable?: () => void;
+}
+
 async function request<T>(
-  baseUrl: string,
+  daemon: Daemon,
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const res = await fetch(`${daemon.baseUrl}${path}`, {
     method,
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -195,6 +202,7 @@ async function request<T>(
     // fetch says only "Failed to fetch", whatever went wrong, so the detail
     // goes to the console rather than in front of the user.
     console.error(err);
+    daemon.onUnreachable?.();
     throw new ApiError("could not reach the JobPilot daemon; it may have stopped");
   });
 
@@ -239,43 +247,46 @@ function deletionPath(target: DeletionTarget, id?: string): string {
   }
 }
 
-export function createApiClient(port: number): ApiClient {
-  const baseUrl = `http://127.0.0.1:${port}`;
+/// createApiClient returns a client for the daemon on port. onUnreachable
+/// is called whenever a request cannot reach it at all, which is how a
+/// daemon that stopped or restarted on another port is noticed.
+export function createApiClient(port: number, onUnreachable?: () => void): ApiClient {
+  const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable };
   const q = (params: Record<string, string>) => "?" + new URLSearchParams(params).toString();
   const credentialPath = (source: string, label: string) =>
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
   return {
-    health: () => request<void>(baseUrl, "GET", "/v1/health"),
+    health: () => request<void>(daemon, "GET", "/v1/health"),
 
     getProfile: () =>
-      request<Candidate>(baseUrl, "GET", "/v1/profile").catch((err: unknown) => {
+      request<Candidate>(daemon, "GET", "/v1/profile").catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }),
-    updateProfile: (profile) => request<Candidate>(baseUrl, "PUT", "/v1/profile", profile),
+    updateProfile: (profile) => request<Candidate>(daemon, "PUT", "/v1/profile", profile),
     initializeProfile: (profile) =>
-      request<Candidate>(baseUrl, "POST", "/v1/onboarding/profile", profile),
+      request<Candidate>(daemon, "POST", "/v1/onboarding/profile", profile),
 
     importResume: (candidateId, filePath) =>
-      request<Resume>(baseUrl, "POST", "/v1/resumes", {
+      request<Resume>(daemon, "POST", "/v1/resumes", {
         candidate_id: candidateId,
         file_path: filePath,
       }),
     listResumes: (candidateId) =>
-      request<Resume[]>(baseUrl, "GET", "/v1/resumes" + q({ candidate_id: candidateId })),
-    previewDeletion: (target, id) => request<DeletionReach>(baseUrl, "GET", deletionPath(target, id) + "/deletion"),
+      request<Resume[]>(daemon, "GET", "/v1/resumes" + q({ candidate_id: candidateId })),
+    previewDeletion: (target, id) => request<DeletionReach>(daemon, "GET", deletionPath(target, id) + "/deletion"),
     deleteRecords: (target, id, token) =>
-      request<DeletionResult>(baseUrl, "DELETE", deletionPath(target, id) + q({ token })),
+      request<DeletionResult>(daemon, "DELETE", deletionPath(target, id) + q({ token })),
     getJobMatch: (jobId) =>
-      request<JobMatch>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/match`).catch((err: unknown) => {
+      request<JobMatch>(daemon, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/match`).catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }),
     setJobInterest: (id, notInterested) =>
-      request<Job>(baseUrl, "PUT", `/v1/jobs/${encodeURIComponent(id)}/interest`, { not_interested: notInterested }),
+      request<Job>(daemon, "PUT", `/v1/jobs/${encodeURIComponent(id)}/interest`, { not_interested: notInterested }),
     proposeProfileDraft: (resumeMarkdown) =>
-      request<ProfileDraft>(baseUrl, "POST", "/v1/resumes/propose-draft", {
+      request<ProfileDraft>(daemon, "POST", "/v1/resumes/propose-draft", {
         resume_markdown: resumeMarkdown,
       }),
 
@@ -289,44 +300,44 @@ export function createApiClient(port: number): ApiClient {
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
-      return request<JobPage>(baseUrl, "GET", "/v1/jobs" + (query ? `?${query}` : ""));
+      return request<JobPage>(daemon, "GET", "/v1/jobs" + (query ? `?${query}` : ""));
     },
-    getJob: (id) => request<Job>(baseUrl, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
-    searchJobs: (criteria) => request<DiscoveryResult>(baseUrl, "POST", "/v1/jobs/search", criteria),
-    listSources: () => request<SourceInfo[]>(baseUrl, "GET", "/v1/sources"),
+    getJob: (id) => request<Job>(daemon, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
+    searchJobs: (criteria) => request<DiscoveryResult>(daemon, "POST", "/v1/jobs/search", criteria),
+    listSources: () => request<SourceInfo[]>(daemon, "GET", "/v1/sources"),
 
-    listSavedSearches: () => request<SavedSearch[]>(baseUrl, "GET", "/v1/searches"),
+    listSavedSearches: () => request<SavedSearch[]>(daemon, "GET", "/v1/searches"),
     createSavedSearch: (name, criteria) =>
-      request<SavedSearch>(baseUrl, "POST", "/v1/searches", { name, criteria }),
+      request<SavedSearch>(daemon, "POST", "/v1/searches", { name, criteria }),
     updateSavedSearch: (id, name, criteria) =>
-      request<SavedSearch>(baseUrl, "PUT", `/v1/searches/${encodeURIComponent(id)}`, {
+      request<SavedSearch>(daemon, "PUT", `/v1/searches/${encodeURIComponent(id)}`, {
         name,
         criteria,
       }),
     deleteSavedSearch: (id) =>
-      request<void>(baseUrl, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
+      request<void>(daemon, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
     listSearchTemplates: () =>
-      request<SearchTemplateGroup[]>(baseUrl, "GET", "/v1/search-templates"),
-    listCredentials: () => request<CredentialRef[]>(baseUrl, "GET", "/v1/credentials"),
+      request<SearchTemplateGroup[]>(daemon, "GET", "/v1/search-templates"),
+    listCredentials: () => request<CredentialRef[]>(daemon, "GET", "/v1/credentials"),
     setCredential: (source, label, secret) =>
-      request<CredentialRef>(baseUrl, "PUT", credentialPath(source, label), { secret }),
+      request<CredentialRef>(daemon, "PUT", credentialPath(source, label), { secret }),
     deleteCredential: (source, label) =>
-      request<void>(baseUrl, "DELETE", credentialPath(source, label)),
+      request<void>(daemon, "DELETE", credentialPath(source, label)),
     importSearchTemplates: (templateIds) =>
-      request<SavedSearch[]>(baseUrl, "POST", "/v1/search-templates/import", {
+      request<SavedSearch[]>(daemon, "POST", "/v1/search-templates/import", {
         template_ids: templateIds,
       }),
-    listScouts: () => request<Scout[]>(baseUrl, "GET", "/v1/scouts"),
-    createScout: (scout) => request<Scout>(baseUrl, "POST", "/v1/scouts", scout),
+    listScouts: () => request<Scout[]>(daemon, "GET", "/v1/scouts"),
+    createScout: (scout) => request<Scout>(daemon, "POST", "/v1/scouts", scout),
     updateScout: (id, scout) =>
-      request<Scout>(baseUrl, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
-    deleteScout: (id) => request<void>(baseUrl, "DELETE", `/v1/scouts/${encodeURIComponent(id)}`),
+      request<Scout>(daemon, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
+    deleteScout: (id) => request<void>(daemon, "DELETE", `/v1/scouts/${encodeURIComponent(id)}`),
     runScout: (id) =>
-      request<ScoutRunReport>(baseUrl, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
+      request<ScoutRunReport>(daemon, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
     listScoutRuns: (limit) =>
-      request<AgentRun[]>(baseUrl, "GET", `/v1/scout-runs?limit=${limit}`),
+      request<AgentRun[]>(daemon, "GET", `/v1/scout-runs?limit=${limit}`),
     listScoutRunEvents: (runId) =>
-      request<AgentEvent[]>(baseUrl, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
+      request<AgentEvent[]>(daemon, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
 
     listActivity: (filter, limit, offset) => {
       const params: Record<string, string> = {};
@@ -335,105 +346,105 @@ export function createApiClient(port: number): ApiClient {
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
-      return request<AgentRunPage>(baseUrl, "GET", "/v1/agent-runs" + (query ? `?${query}` : ""));
+      return request<AgentRunPage>(daemon, "GET", "/v1/agent-runs" + (query ? `?${query}` : ""));
     },
     getActivityRun: (id) =>
-      request<AgentRunDetail>(baseUrl, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
+      request<AgentRunDetail>(daemon, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
 
     setDefaultSavedSearch: (id) =>
-      request<SavedSearch>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
+      request<SavedSearch>(daemon, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
     runSavedSearch: (id) =>
-      request<DiscoveryResult>(baseUrl, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
-    importJob: (url) => request<Job>(baseUrl, "POST", "/v1/jobs/import", { url }),
+      request<DiscoveryResult>(daemon, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
+    importJob: (url) => request<Job>(daemon, "POST", "/v1/jobs/import", { url }),
 
     analyzeMatch: (candidateId, jobId) =>
-      request<JobMatch>(baseUrl, "POST", "/v1/matches/analyze", {
+      request<JobMatch>(daemon, "POST", "/v1/matches/analyze", {
         candidate_id: candidateId,
         job_id: jobId,
       }),
     listMatches: (candidateId) =>
-      request<JobMatch[]>(baseUrl, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
+      request<JobMatch[]>(daemon, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
 
-    getLLMSettings: () => request<LLMSettings>(baseUrl, "GET", "/v1/settings/llm"),
-    checkLLMHealth: () => request<LLMHealth>(baseUrl, "GET", "/v1/settings/llm/health"),
+    getLLMSettings: () => request<LLMSettings>(daemon, "GET", "/v1/settings/llm"),
+    checkLLMHealth: () => request<LLMHealth>(daemon, "GET", "/v1/settings/llm/health"),
     saveLLMSettings: (settings) =>
-      request<SaveLLMSettingsResult>(baseUrl, "PUT", "/v1/settings/llm", settings),
+      request<SaveLLMSettingsResult>(daemon, "PUT", "/v1/settings/llm", settings),
 
     createApplication: (jobId, candidateId, resumeId, mode) =>
-      request<Application>(baseUrl, "POST", "/v1/applications", {
+      request<Application>(daemon, "POST", "/v1/applications", {
         job_id: jobId,
         candidate_id: candidateId,
         resume_id: resumeId,
         mode,
       }),
     listApplications: (candidateId) =>
-      request<Application[]>(baseUrl, "GET", "/v1/applications" + q({ candidate_id: candidateId })),
+      request<Application[]>(daemon, "GET", "/v1/applications" + q({ candidate_id: candidateId })),
     getApplication: (id) =>
-      request<Application>(baseUrl, "GET", `/v1/applications/${encodeURIComponent(id)}`),
+      request<Application>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}`),
     transitionApplication: (id, toState, reason) =>
-      request<Application>(baseUrl, "POST", `/v1/applications/${encodeURIComponent(id)}/transition`, {
+      request<Application>(daemon, "POST", `/v1/applications/${encodeURIComponent(id)}/transition`, {
         to_state: toState,
         reason,
       }),
     listApplicationHistory: (id) =>
       request<ApplicationStateTransition[]>(
-        baseUrl,
+        daemon,
         "GET",
         `/v1/applications/${encodeURIComponent(id)}/history`,
       ),
     listAllowedTransitions: (id) =>
       request<ApplicationState[]>(
-        baseUrl,
+        daemon,
         "GET",
         `/v1/applications/${encodeURIComponent(id)}/transitions`,
       ),
 
     generateCoverLetter: (applicationId) =>
       request<CoverLetter>(
-        baseUrl,
+        daemon,
         "POST",
         `/v1/applications/${encodeURIComponent(applicationId)}/cover-letter`,
       ),
     listCoverLetterVersions: (applicationId) =>
       request<CoverLetter[]>(
-        baseUrl,
+        daemon,
         "GET",
         `/v1/applications/${encodeURIComponent(applicationId)}/cover-letters`,
       ),
     editCoverLetter: (coverLetterId, content) =>
-      request<CoverLetter>(baseUrl, "PUT", `/v1/cover-letters/${encodeURIComponent(coverLetterId)}`, {
+      request<CoverLetter>(daemon, "PUT", `/v1/cover-letters/${encodeURIComponent(coverLetterId)}`, {
         content,
       }),
 
     addQuestion: (applicationId, label, type, required) =>
       request<ApplicationQuestion>(
-        baseUrl,
+        daemon,
         "POST",
         `/v1/applications/${encodeURIComponent(applicationId)}/questions`,
         { label, type, required },
       ),
     listQuestions: (applicationId) =>
       request<ApplicationQuestion[]>(
-        baseUrl,
+        daemon,
         "GET",
         `/v1/applications/${encodeURIComponent(applicationId)}/questions`,
       ),
     resolveQuestion: (questionId) =>
-      request<ApplicationQuestion>(baseUrl, "POST", `/v1/questions/${encodeURIComponent(questionId)}/resolve`),
+      request<ApplicationQuestion>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/resolve`),
     setQuestionAnswer: (questionId, answer) =>
-      request<ApplicationQuestion>(baseUrl, "PUT", `/v1/questions/${encodeURIComponent(questionId)}/answer`, {
+      request<ApplicationQuestion>(daemon, "PUT", `/v1/questions/${encodeURIComponent(questionId)}/answer`, {
         answer,
       }),
 
     prepareInBrowser: (applicationId) =>
       request<Application>(
-        baseUrl,
+        daemon,
         "POST",
         `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`,
       ),
     listAgentRuns: (applicationId) =>
       request<AgentRunWithEvents[]>(
-        baseUrl,
+        daemon,
         "GET",
         `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`,
       ),
