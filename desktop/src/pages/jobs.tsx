@@ -499,12 +499,17 @@ function NoJobsYet({ query }: { query: string }) {
 /// no saved search the menu points at Settings instead.
 ///
 /// A run already going or queued, from here or anywhere else, cannot be
-/// asked for twice; another search can, and waits its turn.
+/// asked for twice; another search can, and waits its turn. "Search all"
+/// queues every search not already waiting, in the order they are listed.
 function DiscoverMenu() {
   const { data: searches } = useSavedSearches();
   const discover = useDiscover();
   const runs = useDiscoveryRuns();
   const pending = new Set(runs.map((run) => run.search.id));
+  const notPending = (searches ?? []).filter((search) => !pending.has(search.id));
+  const searchAll = () => {
+    for (const search of notPending) discover.mutate({ id: search.id, name: search.name });
+  };
 
   return (
     <DropdownMenu>
@@ -515,6 +520,15 @@ function DiscoverMenu() {
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Search your job sources with</DropdownMenuLabel>
+          {(searches?.length ?? 0) > 1 && (
+            <>
+              <DropdownMenuItem disabled={notPending.length === 0} onClick={searchAll}>
+                <span className="flex-1">All saved searches</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{searches?.length}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           {searches?.map((search) => (
             <DropdownMenuItem
               key={search.id}

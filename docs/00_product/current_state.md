@@ -277,6 +277,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 - Setup ends by searching (`docs/02_features/01_onboarding.md` AC-006): the searches the desktop wizard adds are run as it finishes, so it no longer ends on a dashboard of zeros with a Discover button to find.
   A search while it runs is shown at the bottom right ("Searching 5 job sources…", and which search), from `GET /v1/sources`, and says what it found when it is done.
   Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
+  The Discover menu's "All saved searches" queues every saved search at once, rather than one click each.
   The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
 - Hot reload for the daemon (`make dev`, `docs/08_development/hot_reload.md`): air rebuilds and restarts it when its Go or migrations change, pinned in the Makefile and installed into `./bin`.
   The desktop now follows a daemon that restarts: it used to resolve the port once, so any restart left it pointed at a closed one until the app was reopened.

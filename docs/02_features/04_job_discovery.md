@@ -95,7 +95,7 @@ A search can be executed from the CLI.
 ### AC-003
 A search can be executed from the desktop application.
 
-The Jobs screen's Discover menu runs a saved search.
+The Jobs screen's Discover menu runs a saved search, or all of them: with more than one saved, "All saved searches" queues each one not already running or queued, in the order the menu lists them.
 The desktop runs one search at a time, queuing any others in the order they were asked, and a search keeps running when the user leaves the screen that started it.
 While one runs, the bottom right of the window says how many sources it is asking and which search it is; when it is done, what it found.
 
