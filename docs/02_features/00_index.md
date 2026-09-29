@@ -8,6 +8,7 @@
 - Search templates
 - Job matching
 - Cover letters
+- About you: personal cover letters and answers
 - Application answers
 - History
 - Prompt customization
