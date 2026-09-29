@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/services"
 )
 
 // Client is a thin HTTP client for the daemon's local API. It hides the
@@ -735,4 +736,54 @@ func (c *Client) SetJobInterest(ctx context.Context, id string, notInterested bo
 		return nil, err
 	}
 	return &job, nil
+}
+
+// GetAboutYou returns what the candidate has said about themselves.
+func (c *Client) GetAboutYou(ctx context.Context) (*services.AboutYou, error) {
+	var about services.AboutYou
+	if _, err := c.do(ctx, http.MethodGet, "/v1/profile/about", nil, &about); err != nil {
+		return nil, err
+	}
+	return &about, nil
+}
+
+// SaveAboutYou changes some of what the candidate has said about
+// themselves; an empty answer clears one.
+func (c *Client) SaveAboutYou(ctx context.Context, update services.AboutYouUpdate) (*services.AboutYou, error) {
+	var about services.AboutYou
+	if _, err := c.do(ctx, http.MethodPut, "/v1/profile/about", update, &about); err != nil {
+		return nil, err
+	}
+	return &about, nil
+}
+
+// DeleteKeptAnswer forgets a kept answer.
+func (c *Client) DeleteKeptAnswer(ctx context.Context, id string) error {
+	_, err := c.do(ctx, http.MethodDelete, "/v1/profile/about/kept/"+url.PathEscape(id), nil, nil)
+	return err
+}
+
+// KeepAnswer keeps a written answer the candidate wrote, for later ones.
+func (c *Client) KeepAnswer(ctx context.Context, questionID string) (*domain.PersonalAnswer, error) {
+	var kept domain.PersonalAnswer
+	if _, err := c.do(ctx, http.MethodPost, "/v1/questions/"+url.PathEscape(questionID)+"/keep", nil, &kept); err != nil {
+		return nil, err
+	}
+	return &kept, nil
+}
+
+// PreparePersonalQuestions returns the questions asked before a letter for
+// an application, proposing some from the posting the first time.
+func (c *Client) PreparePersonalQuestions(ctx context.Context, applicationID string) ([]*domain.PersonalAnswer, error) {
+	var questions []*domain.PersonalAnswer
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/personal-questions/prepare", nil, &questions)
+	return questions, err
+}
+
+// SavePersonalAnswers records the candidate's answers for an application.
+func (c *Client) SavePersonalAnswers(ctx context.Context, applicationID string, answers []services.ApplicationAnswer) ([]*domain.PersonalAnswer, error) {
+	var questions []*domain.PersonalAnswer
+	_, err := c.do(ctx, http.MethodPut, "/v1/applications/"+url.PathEscape(applicationID)+"/personal-questions",
+		applicationAnswersRequest{Answers: answers}, &questions)
+	return questions, err
 }

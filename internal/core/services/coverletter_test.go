@@ -20,7 +20,7 @@ func newTestCoverLetterService(t *testing.T) (*CoverLetterService, *fakeCoverLet
 	candRepo := newFakeCandidateRepository()
 	resumeRepo := newFakeResumeRepository()
 	llm := &fakeLLMProvider{providerName: "fake-llm"}
-	return NewCoverLetterService(clRepo, appRepo, jobRepo, candRepo, resumeRepo, llm), clRepo, appRepo, jobRepo, candRepo, resumeRepo, llm
+	return NewCoverLetterService(clRepo, appRepo, jobRepo, candRepo, resumeRepo, llm, nil), clRepo, appRepo, jobRepo, candRepo, resumeRepo, llm
 }
 
 func TestCoverLetterService_Generate(t *testing.T) {

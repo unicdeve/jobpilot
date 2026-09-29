@@ -221,8 +221,10 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 	applicationSvc := services.NewApplicationService(appRepo)
-	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
-	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
+	aboutYouSvc := services.NewAboutYouService(
+		sqlite.NewPersonalAnswerRepository(db.Conn()), candRepo, appRepo, jobRepo, questionRepo, llmProv)
+	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
 	applyChooser := services.NewApplyControlChooser(llmProv)
 	scoutSvc := services.NewScoutService(
 		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),
@@ -250,5 +252,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Credentials: credentialSvc,
 		Activity:    services.NewAgentActivityService(agentRunRepo, agentEventRepo),
 		Deletion:    deletionSvc,
+		AboutYou:    aboutYouSvc,
 	}, nil
 }

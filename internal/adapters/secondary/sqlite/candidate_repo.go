@@ -30,7 +30,7 @@ func NewCandidateRepository(db *sql.DB) *CandidateRepository {
 const candidateColumns = `id, first_name, last_name, email, phone,
 	location_city, location_region, location_country,
 	notice_period_days, earliest_start_date,
-	summary, remote_preference, application_preferences, created_at, updated_at`
+	summary, remote_preference, created_at, updated_at`
 
 // candidatePlaceholders is one bind marker per candidateColumns entry,
 // derived rather than written out: the two drifted apart the moment a
@@ -64,7 +64,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 			candidate.ID, candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
-			candidate.Summary, candidate.RemotePreference, candidate.ApplicationPreferences,
+			candidate.Summary, candidate.RemotePreference,
 			candidate.CreatedAt, candidate.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("failed to save candidate: %w", err)
@@ -101,7 +101,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 		first_name = ?, last_name = ?, email = ?, phone = ?,
 		location_city = ?, location_region = ?, location_country = ?,
 		notice_period_days = ?, earliest_start_date = ?,
-		summary = ?, remote_preference = ?, application_preferences = ?, updated_at = ?
+		summary = ?, remote_preference = ?, updated_at = ?
 	WHERE id = ?`
 
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
@@ -109,7 +109,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 			candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
 			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
-			candidate.Summary, candidate.RemotePreference, candidate.ApplicationPreferences,
+			candidate.Summary, candidate.RemotePreference,
 			candidate.UpdatedAt, candidate.ID,
 		); err != nil {
 			return fmt.Errorf("failed to update candidate: %w", err)
@@ -145,7 +145,7 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 		&c.ID, &c.FirstName, &c.LastName, &c.Email, &c.Phone,
 		&c.LocationCity, &c.LocationRegion, &c.LocationCountry,
 		&c.NoticePeriodDays, &c.EarliestStartDate,
-		&c.Summary, &c.RemotePreference, &c.ApplicationPreferences,
+		&c.Summary, &c.RemotePreference,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {

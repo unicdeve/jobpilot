@@ -1,6 +1,6 @@
 import { Upload } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { Page, Panel, Section } from "../components/page";
 import { Loading } from "../components/status-line";
@@ -16,6 +16,7 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import {
   useCheckLLMHealth,
@@ -28,6 +29,7 @@ import {
 import { useToast } from "../lib/toast";
 import { LINK_KINDS } from "../lib/types";
 import { pickResumeFile } from "../lib/resume-file";
+import { AboutYouPage } from "./profile-about";
 import type {
   Candidate,
   CandidateExperience,
@@ -53,7 +55,6 @@ const emptyProfile: Candidate = {
   earliest_start_date: null,
   summary: "",
   remote_preference: "",
-  application_preferences: "",
   skills: [],
   experiences: [],
   links: [],
@@ -81,7 +82,39 @@ const LINK_LABELS: Record<LinkKind, string> = {
   other: "Other",
 };
 
+/// Profile is the candidate's facts, under Details, and what they say about
+/// themselves, under About you (docs/02_features/16_about_you.md). The two
+/// save separately: one is the profile a form reads, the other the
+/// material a letter is written from.
 export function Profile() {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "about" ? "about" : "details";
+  const tabs = (
+    <Tabs
+      className="mb-6"
+      value={tab}
+      onValueChange={(value) =>
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            if (value === "about") next.set("tab", "about");
+            else next.delete("tab");
+            return next;
+          },
+          { replace: true },
+        )
+      }
+    >
+      <TabsList>
+        <TabsTrigger value="details">Details</TabsTrigger>
+        <TabsTrigger value="about">About you</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+  return tab === "about" ? <AboutYouPage tabs={tabs} /> : <ProfileDetails tabs={tabs} />;
+}
+
+function ProfileDetails({ tabs }: { tabs: ReactNode }) {
   const { notify } = useToast();
   // No profile yet is null, which is first run: the form creates one.
   const { data: saved, isPending } = useProfile();
@@ -284,6 +317,8 @@ export function Profile() {
         </DialogContent>
       </Dialog>
 
+      {tabs}
+
       <Panel className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium">{exists ? "Fill in from a resume" : "Start from your resume"}</p>
@@ -340,7 +375,7 @@ export function Profile() {
         </div>
       </Section>
 
-      <Section title="About you" description="Used when matching you to jobs and when writing cover letters.">
+      <Section title="Summary" description="Used when matching you to jobs and when writing cover letters.">
         <Textarea
           id="summary"
           aria-label="Summary"
@@ -405,19 +440,6 @@ export function Profile() {
         authorizations={profile.work_authorizations ?? []}
         onChange={(authorizations) => set("work_authorizations", authorizations)}
       />
-
-      <Section
-        title="Writing preferences"
-        description="How you want cover letters and written answers to sound — tone, length, anything to avoid."
-      >
-        <Textarea
-          id="application_preferences"
-          aria-label="Writing preferences"
-          rows={3}
-          value={profile.application_preferences}
-          onChange={(e) => set("application_preferences", e.target.value)}
-        />
-      </Section>
 
       <div className="mt-8 flex justify-end border-t border-border pt-5">{saveButton}</div>
     </Page>

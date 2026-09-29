@@ -2,8 +2,9 @@
 
 ## Status
 
-Draft.
-D1 to D7 were decided on 2026-09-29.
+Implemented.
+D1 to D7 were decided on 2026-09-29, and ADR-0022 records how answers are stored.
+Migration `00018` creates `personal_answers` and moves `candidates.application_preferences` into it.
 Roadmap: this comes before prompt customization (PR-013); see "Prompt customization" below for why.
 
 ## Purpose
@@ -119,7 +120,20 @@ The default prompt gains rules a reviewer would otherwise have to enforce by han
 - one reason this company, from the candidate's answer, instead of flattery about the company
 - short: under 250 words unless the candidate's tone and length say otherwise
 
+The prompt also says, in so many words, that the posting lists what the employer wants and not what the candidate has, and it repeats the rules briefly at its end, where a small model is likeliest to follow them.
+
 These are the defaults prompt customization will later let the candidate change.
+
+### What the model makes of it
+
+Measured on `llama3.2:1b`, the smallest model a candidate might run locally, against a real posting:
+
+- The questions it proposed from the posting were on point ("How do you approach evaluating the performance of an LLM agent?"), in about four seconds.
+- Letters used what the candidate said — the story, the values, the answers about this job — where before they had nothing personal to use.
+- The style rules held only partly. Letters still opened with stock phrases and ran past the length asked for, and one in two claimed years of experience the candidate never gave, taken from the posting's requirements; the rule against that, added after the first run, reduced it without ending it.
+
+The rules are instructions, and hold as well as the model follows them.
+A deterministic check that flags stock phrases, length and claims the material does not support, for the candidate reviewing the letter, is the follow-up that would not depend on the model.
 
 ## Prompt customization
 

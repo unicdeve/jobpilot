@@ -8,6 +8,8 @@ Generate a tailored cover letter from:
 - relevant resume content
 - user prompt preferences
 
+What the candidate says about themselves — the About you answers, this application's answers, the writing sample and how they want to sound — is `docs/02_features/16_about_you.md`, which also sets the default prompt's style rules.
+
 ## Rules
 
 - Never invent experience.

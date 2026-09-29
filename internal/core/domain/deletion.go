@@ -27,6 +27,9 @@ const (
 	RecordSavedSearch     RecordKind = "saved_search"
 	RecordCredentialName  RecordKind = "credential_name"
 	RecordSettings        RecordKind = "settings"
+	// RecordPersonalAnswer is something the candidate said about
+	// themselves, for every application or for one (ADR-0022).
+	RecordPersonalAnswer RecordKind = "personal_answer"
 )
 
 // DeletionEffect is what deleting a referenced record does to a record
@@ -77,6 +80,10 @@ var DeletionRules = []DeletionRule{
 	{RecordAgentRun, RecordScout, DeletionDetach},
 	{RecordAgentStep, RecordAgentRun, DeletionCascade},
 	{RecordScout, RecordSavedSearch, DeletionCascade},
+	// What the candidate said about themselves goes with its owner: the
+	// profile, or the one application it was said for (ADR-0022 §1).
+	{RecordPersonalAnswer, RecordCandidate, DeletionCascade},
+	{RecordPersonalAnswer, RecordApplication, DeletionCascade},
 }
 
 // RulesReferencing returns the rules for records that reference kind: what

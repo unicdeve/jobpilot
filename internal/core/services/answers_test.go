@@ -18,7 +18,7 @@ func newTestAnswerService(t *testing.T) (*AnswerService, *fakeApplicationQuestio
 	jobRepo := newFakeJobRepository()
 	candRepo := newFakeCandidateRepository()
 	llm := &fakeLLMProvider{providerName: "fake-llm"}
-	return NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), llm), questionRepo, appRepo, jobRepo, candRepo, llm
+	return NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), llm, nil), questionRepo, appRepo, jobRepo, candRepo, llm
 }
 
 // The label-by-label specification for profileFactAnswer now lives in

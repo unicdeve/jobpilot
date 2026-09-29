@@ -8,7 +8,15 @@ This document lists the currently implemented CLI commands for the JobPilot.
 ## Candidate Profile
 - `jobpilot-cli profile get`: Displays the current candidate profile information.
 - `jobpilot-cli profile delete`: Deletes your profile, resumes, match analyses and applications. Jobs, saved searches, scouts and settings stay. Shows what goes and asks first; `--yes` skips the question.
-- `jobpilot-cli profile update`: Interactively update the current candidate profile. Allows updating First Name, Last Name, Contact, Location, Summary, Skills, Salary Preferences, Work Authorization, and Application Preferences.
+- `jobpilot-cli profile update`: Interactively update the current candidate profile. Allows updating First Name, Last Name, Contact, Location, Summary, Skills and remote preference.
+- `jobpilot-cli profile about`: Asks each About you question in turn — what you are looking for, what you value, the work you are proudest of, what colleagues come to you for, your career story, anything never to mention — and how you want letters to sound. Enter keeps an answer; clearing one removes it; nothing is required. Cover letters and written answers are built from what you say here (`docs/02_features/16_about_you.md`).
+- `jobpilot-cli profile about show`: Shows your answers, writing preferences, writing sample and kept answers.
+- `jobpilot-cli profile about set [key] [answer]`: Sets or clears one answer by its key, or `writing_sample` / `writing_preferences`. `--file` reads it from a file, which suits a writing sample.
+- `jobpilot-cli profile about forget [id]`: Forgets an answer you kept for similar questions.
+
+## Cover Letters and Answers
+- `jobpilot-cli application cover-letter generate [application-id]`: Asks a few questions about this job first — what draws you to it, and up to two the model proposes from the posting — then writes the letter from your answers, your About you and your profile. Enter skips a question; `--no-questions` skips them all. Rewriting offers the same questions, prefilled.
+- `jobpilot-cli application question keep [question-id]`: Keeps a written answer you wrote yourself, so written answers to similar questions draw on it.
 
 ## Resume Management
 - `jobpilot-cli resume import [path]`: Imports a resume file from the specified path, converts it to Markdown, and associates it with the current candidate profile. Afterward, the LLM proposes a draft of First Name, Last Name, Contact, Location, Summary, and Skills from the resume; you can review and edit each field (defaulting to your current profile value if the draft left it blank) before it's applied to your profile. This same review step also runs during `onboard` when a resume is imported there. If suggestion generation fails, the resume import itself still succeeds.

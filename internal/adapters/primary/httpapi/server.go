@@ -41,6 +41,7 @@ type Services struct {
 	Credentials *services.CredentialService
 	Activity    *services.AgentActivityService
 	Deletion    *services.DeletionService
+	AboutYou    *services.AboutYouService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -128,6 +129,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/applications/{id}/agent-runs", handleListAgentRuns(svc.Browser))
 
 	registerDeletions(mux, svc.Deletion)
+	registerAboutYou(mux, svc.AboutYou)
 
 	return withCORS(mux)
 }

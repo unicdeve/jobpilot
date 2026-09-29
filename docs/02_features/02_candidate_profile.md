@@ -20,7 +20,7 @@ The shape below is what the recorded forms in `internal/adapters/secondary/brows
 - Remote preference: remote, hybrid or onsite, in the same vocabulary a job posting uses — or unsaid, which is a state of its own and is not a No
 - Skills, each with an optional number of years
 - Work history, as dated entries: company, title, start, end, whether it is current, and what they did
-- Application preferences (tone and length for generated content)
+- What the candidate says about themselves — what they want next, what they value, their stories, how they want to sound — is not a profile field: it is About you (`docs/02_features/16_about_you.md`, ADR-0022), kept apart because nothing a form looks up is read from it
 
 Every date here is a calendar day, written `YYYY-MM-DD`, not a timestamp.
 A job started in July 2022; it did not start at an instant, and storing one is how a date shows as the day before for anyone east or west of UTC.

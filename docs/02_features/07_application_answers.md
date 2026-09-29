@@ -16,6 +16,9 @@ Question
 → generated answer, for narrative questions only
 → ask the user
 
+A generated answer is given the profile, the application's resume, what the candidate said about themselves and about this job, and up to three answers they kept to similar questions (`docs/02_features/16_about_you.md`).
+A question asking why they want the job is built from their own answer to "What draws you to this company, or to this role?" where they gave one.
+
 ## What the resolver will not answer
 
 A lookup answers a label that *names* a fact.

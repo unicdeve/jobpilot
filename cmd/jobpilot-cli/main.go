@@ -236,6 +236,7 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 
 	cmd.AddCommand(deleteCmd(client, "delete", "Delete your profile, resumes, matches and applications",
 		domain.DeleteProfile, func([]string) string { return "your profile" }))
+	cmd.AddCommand(newProfileAboutCmd(client))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get",
@@ -307,7 +308,6 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 					}
 					fmt.Printf("⚠️  %q is not a remote preference — leaving it unchanged\n", v)
 				})
-			updateField("Application Preferences", profile.ApplicationPreferences, func(v string) { profile.ApplicationPreferences = v })
 
 			if err := client.UpdateProfile(ctx, profile); err != nil {
 				return fmt.Errorf("updating profile: %w", err)

@@ -32,12 +32,13 @@ var kindNames = map[domain.RecordKind][2]string{
 	domain.RecordSavedSearch:     {"saved search", "saved searches"},
 	domain.RecordCredentialName:  {"API key name", "API key names"},
 	domain.RecordSettings:        {"setting", "settings"},
+	domain.RecordPersonalAnswer:  {"thing you told JobPilot about yourself", "things you told JobPilot about yourself"},
 }
 
 // kindOrder lists kinds the way a person reads what they are deleting:
 // the thing itself, then what hangs off it.
 var kindOrder = []domain.RecordKind{
-	domain.RecordCandidate, domain.RecordCandidateDetail, domain.RecordResume, domain.RecordJob, domain.RecordMatch,
+	domain.RecordCandidate, domain.RecordCandidateDetail, domain.RecordPersonalAnswer, domain.RecordResume, domain.RecordJob, domain.RecordMatch,
 	domain.RecordApplication, domain.RecordCoverLetter, domain.RecordQuestion, domain.RecordStateTransition,
 	domain.RecordAgentRun, domain.RecordAgentStep, domain.RecordSavedSearch, domain.RecordScout,
 	domain.RecordCredentialName, domain.RecordSettings,

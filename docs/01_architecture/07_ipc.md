@@ -35,6 +35,12 @@ different failure modes, so they are different endpoints.
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
+- `GET` and `PUT /v1/profile/about` read and change what the candidate says
+  about themselves; `DELETE /v1/profile/about/kept/{id}` forgets a kept
+  answer, and `POST /v1/questions/{id}/keep` keeps one. An application's
+  questions before a letter are `GET /v1/applications/{id}/personal-questions`,
+  `POST .../prepare`, which may ask the model to propose some, and `PUT` to
+  answer them (`docs/02_features/16_about_you.md`).
 - `GET /v1/searches/stale` lists the saved searches due to run again — never
   run, or not in the last six hours — which the desktop runs when it opens.
   `GET` and `PUT /v1/settings/discovery` read and turn that off.

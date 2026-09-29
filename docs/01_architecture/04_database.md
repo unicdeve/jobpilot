@@ -61,6 +61,7 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 - Job
 - JobMatch
 - SavedSearch (named search criteria; see `docs/02_features/04_job_discovery.md` AC-001)
+- PersonalAnswer (what the candidate says about themselves, owned by the candidate or one application; ADR-0022)
 - Application
 - ApplicationQuestion
 - ApplicationAnswer

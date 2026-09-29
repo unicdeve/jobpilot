@@ -3,6 +3,9 @@
 // docs/09_decisions/0012-loopback-http-ipc.md.
 
 import type {
+  AboutYou,
+  AboutYouUpdate,
+  ApplicationAnswer,
   AgentRunDetail,
   AgentRunFilter,
   AgentRunPage,
@@ -25,6 +28,7 @@ import type {
   JobPage,
   LLMHealth,
   LLMSettings,
+  PersonalAnswer,
   ProfileDraft,
   QuestionType,
   Resume,
@@ -167,6 +171,21 @@ export interface ApiClient {
   listAllowedTransitions(id: string): Promise<ApplicationState[]>;
 
   generateCoverLetter(applicationId: string): Promise<CoverLetter>;
+
+  /// About you (docs/02_features/16_about_you.md). Only the candidate's
+  /// words are ever an answer.
+  /// getAboutYou resolves to null when there is no profile yet.
+  getAboutYou(): Promise<AboutYou | null>;
+  saveAboutYou(update: AboutYouUpdate): Promise<AboutYou>;
+  deleteKeptAnswer(id: string): Promise<void>;
+  keepAnswer(questionId: string): Promise<PersonalAnswer>;
+  /// listPersonalQuestions reads the questions asked before a letter, and
+  /// asks no model.
+  listPersonalQuestions(applicationId: string): Promise<PersonalAnswer[]>;
+  /// preparePersonalQuestions may ask the model to propose questions from
+  /// the posting, once per application.
+  preparePersonalQuestions(applicationId: string): Promise<PersonalAnswer[]>;
+  savePersonalAnswers(applicationId: string, answers: ApplicationAnswer[]): Promise<PersonalAnswer[]>;
   listCoverLetterVersions(applicationId: string): Promise<CoverLetter[]>;
   editCoverLetter(coverLetterId: string, content: string): Promise<CoverLetter>;
 
@@ -409,6 +428,30 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         `/v1/applications/${encodeURIComponent(id)}/transitions`,
       ),
 
+    getAboutYou: () =>
+      request<AboutYou>(daemon, "GET", "/v1/profile/about").catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }),
+    saveAboutYou: (update) => request<AboutYou>(daemon, "PUT", "/v1/profile/about", update),
+    deleteKeptAnswer: (id) => request<void>(daemon, "DELETE", `/v1/profile/about/kept/${encodeURIComponent(id)}`),
+    keepAnswer: (questionId) =>
+      request<PersonalAnswer>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/keep`),
+    listPersonalQuestions: (applicationId) =>
+      request<PersonalAnswer[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`),
+    preparePersonalQuestions: (applicationId) =>
+      request<PersonalAnswer[]>(
+        daemon,
+        "POST",
+        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions/prepare`,
+      ),
+    savePersonalAnswers: (applicationId, answers) =>
+      request<PersonalAnswer[]>(
+        daemon,
+        "PUT",
+        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`,
+        { answers },
+      ),
     generateCoverLetter: (applicationId) =>
       request<CoverLetter>(
         daemon,

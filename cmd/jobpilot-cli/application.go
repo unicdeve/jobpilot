@@ -270,12 +270,22 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(deleteCmd(client, "delete [cover-letter-id]", "Delete a cover letter version other than the current one",
 		domain.DeleteCoverLetter, func(args []string) string { return "cover letter " + args[0] }))
 
-	cmd.AddCommand(&cobra.Command{
+	var noQuestions bool
+	generateCmd := &cobra.Command{
 		Use:   "generate [application-id]",
 		Short: "Generate (or regenerate) a cover letter for an application",
-		Args:  cobra.ExactArgs(1),
+		Long: "Asks a few questions about this job first — what draws you to it, and up to two\n" +
+			"the posting suggests — and writes the letter from your answers and your profile.\n" +
+			"Enter skips a question; --no-questions skips them all.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			ctx := context.Background()
+			if !noQuestions {
+				if err := askApplicationQuestions(ctx, client, args[0]); err != nil {
+					return err
+				}
+				fmt.Println("\nWriting…")
+			}
 			coverLetter, err := client.GenerateCoverLetter(ctx, args[0])
 			if err != nil {
 				return fmt.Errorf("generating cover letter: %w", err)
@@ -283,7 +293,9 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 			fmt.Printf("✅ Cover letter generated (ID: %s):\n\n%s\n", coverLetter.ID, coverLetter.Content)
 			return nil
 		},
-	})
+	}
+	generateCmd.Flags().BoolVar(&noQuestions, "no-questions", false, "write the letter without asking anything first")
+	cmd.AddCommand(generateCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list [application-id]",
@@ -381,6 +393,20 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("setting answer: %w", err)
 			}
 			fmt.Printf("✅ Answer saved for question %s\n", question.ID)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "keep [question-id]",
+		Short: "Keep a written answer you wrote, to draw on for similar questions",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			kept, err := client.KeepAnswer(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("keeping the answer: %w", err)
+			}
+			fmt.Printf("✅ Kept for questions like %q. 'profile about show' lists what you kept.\n", kept.Question)
 			return nil
 		},
 	})

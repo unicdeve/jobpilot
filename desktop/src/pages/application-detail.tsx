@@ -1,5 +1,5 @@
-import { ArrowLeft, ChevronRight, Ellipsis, Globe, Plus, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
 import { DetailSection, Toolbar } from "../components/page";
@@ -14,6 +14,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -26,6 +34,7 @@ import { Textarea } from "../components/ui/textarea";
 import { runDuration } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";
 import {
+  useAboutYou,
   useAddQuestion,
   useAgentRuns,
   useAllowedTransitions,
@@ -35,9 +44,13 @@ import {
   useEditCoverLetter,
   useGenerateCoverLetter,
   useJob,
+  useKeepAnswer,
+  usePersonalQuestions,
   usePrepareInBrowser,
+  usePreparePersonalQuestions,
   useQuestions,
   useResolveQuestion,
+  useSavePersonalAnswers,
   useSetQuestionAnswer,
   useTransitionApplication,
 } from "../lib/queries";
@@ -45,10 +58,12 @@ import { useToast } from "../lib/toast";
 import type {
   AgentRunWithEvents,
   Application,
+  ApplicationAnswer,
   ApplicationQuestion,
   ApplicationState,
   ApplicationStateTransition,
   CoverLetter,
+  PersonalAnswer,
   QuestionType,
 } from "../lib/types";
 
@@ -324,6 +339,10 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
   const onError = (err: Error) => notify(String(err));
 
   const resolveQuestion = useResolveQuestion({ onError });
+  const keep = useKeepAnswer({
+    onSuccess: () => notify("Kept. Written answers to similar questions will draw on it.", "success"),
+    onError,
+  });
   const setQuestionAnswer = useSetQuestionAnswer({
     // Close the editor only once the answer is stored, so a failed save
     // leaves what the user typed in the box.
@@ -401,6 +420,14 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
           >
             {question.answer ? "Edit answer" : "Answer myself"}
           </Button>
+          {/* Only an answer the candidate wrote can be kept: it is their words
+              that later answers draw on (docs/02_features/16_about_you.md D6). */}
+          {question.type === "narrative" && question.user_edited && question.answer.trim() && (
+            <Button size="xs" variant="ghost" onClick={() => keep.mutate(question.id)} disabled={keep.isPending}>
+              <BookmarkPlus data-icon="inline-start" />
+              {keep.isPending ? "Keeping…" : "Keep for similar questions"}
+            </Button>
+          )}
         </div>
       )}
     </li>
@@ -471,6 +498,7 @@ function CoverLetterSection({
   const [draft, setDraft] = useState("");
   const [showEarlier, setShowEarlier] = useState(false);
   const [deletingVersion, setDeletingVersion] = useState<CoverLetter | null>(null);
+  const [asking, setAsking] = useState(false);
 
   const generateCoverLetter = useGenerateCoverLetter({ onError: (err) => notify(String(err)) });
   const editCoverLetter = useEditCoverLetter({
@@ -502,7 +530,7 @@ function CoverLetterSection({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => generateCoverLetter.mutate(applicationId)}
+              onClick={() => setAsking(true)}
               disabled={generateCoverLetter.isPending}
             >
               <Sparkles data-icon="inline-start" />
@@ -514,7 +542,7 @@ function CoverLetterSection({
     >
       {!current ? (
         <p className="text-sm text-muted-foreground">
-          No cover letter yet. JobPilot writes one from your profile and this job.
+          No cover letter yet. JobPilot writes one from your profile, what you tell it about yourself, and this job.
         </p>
       ) : editing ? (
         <div className="space-y-2">
@@ -573,6 +601,12 @@ function CoverLetterSection({
           )}
         </>
       )}
+      <LetterQuestionsDialog
+        applicationId={applicationId}
+        open={asking}
+        onOpenChange={setAsking}
+        onWrite={() => generateCoverLetter.mutate(applicationId)}
+      />
       <DeletionDialog
         target="cover_letter"
         id={deletingVersion?.id}
@@ -584,6 +618,110 @@ function CoverLetterSection({
         onDeleted={() => notify("Version deleted.", "success")}
       />
     </DetailSection>
+  );
+}
+
+/// LetterQuestionsDialog asks about this job before a letter is written:
+/// what draws the candidate to it, and up to two questions the model
+/// proposes from the posting (docs/02_features/16_about_you.md). Every one
+/// can be skipped, and the letter is written either way. The fixed question
+/// shows at once; the proposed ones follow while the posting is read.
+function LetterQuestionsDialog({
+  applicationId,
+  open,
+  onOpenChange,
+  onWrite,
+}: {
+  applicationId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onWrite: () => void;
+}) {
+  const { notify } = useToast();
+  const { data: about } = useAboutYou();
+  const { data: questions } = usePersonalQuestions(applicationId, open);
+  const prepare = usePreparePersonalQuestions();
+  const saveAnswers = useSavePersonalAnswers();
+  // Typed answers, by question: a proposed one by its id, the fixed one by
+  // its key, since it has no row until it is answered.
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const { mutate: prepareQuestions } = prepare;
+
+  useEffect(() => {
+    if (!open) return;
+    setTyped({});
+    prepareQuestions(applicationId);
+  }, [open, applicationId, prepareQuestions]);
+
+  const idOf = (question: PersonalAnswer) => question.id || question.key;
+  const aboutEmpty =
+    about != null &&
+    about.questions.every((question) => !question.answer) &&
+    !about.writing_sample &&
+    !about.writing_preferences;
+
+  const write = async (withAnswers: boolean) => {
+    const changed: ApplicationAnswer[] = withAnswers
+      ? (questions ?? [])
+          .filter((question) => typed[idOf(question)] !== undefined && typed[idOf(question)] !== question.answer)
+          .map((question) => ({ id: question.id || undefined, key: question.key, answer: typed[idOf(question)] }))
+      : [];
+    try {
+      if (changed.length > 0) await saveAnswers.mutateAsync({ applicationId, answers: changed });
+      onOpenChange(false);
+      onWrite();
+    } catch (err) {
+      notify(String(err));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogTitle>Before JobPilot writes</DialogTitle>
+        <DialogDescription>
+          A few words about this job make the letter yours. Skip any question; the letter is written either way.
+        </DialogDescription>
+
+        {aboutEmpty && (
+          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-[13px] text-subtle-foreground">
+            Letters stay generic until you tell JobPilot about yourself — about five minutes.{" "}
+            <Link to="/profile?tab=about" className="font-medium text-foreground underline" onClick={() => onOpenChange(false)}>
+              Tell JobPilot about you
+            </Link>
+          </p>
+        )}
+
+        <div className="mt-4 space-y-4">
+          {(questions ?? []).map((question) => (
+            <label key={idOf(question)} className="block space-y-1.5">
+              <span className="block text-[13px] font-medium">{question.question}</span>
+              <Textarea
+                rows={2}
+                value={typed[idOf(question)] ?? question.answer}
+                onChange={(e) => setTyped({ ...typed, [idOf(question)]: e.target.value })}
+              />
+            </label>
+          ))}
+          {prepare.isPending && (
+            <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Reading the posting for a question or two…
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
+          <Button variant="outline" onClick={() => void write(false)} disabled={saveAnswers.isPending}>
+            Skip and write
+          </Button>
+          <Button onClick={() => void write(true)} disabled={saveAnswers.isPending}>
+            {saveAnswers.isPending ? "Saving…" : "Write letter"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

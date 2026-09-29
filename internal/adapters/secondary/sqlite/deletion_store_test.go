@@ -42,6 +42,8 @@ var deletionGraph = append(append([]string{}, connectedRows...),
 	`INSERT INTO cover_letters (id, application_id, content) VALUES ('old-letter', 'app', 'Dear Acme, earlier')`,
 	`INSERT INTO jobs (id, canonical_url, title) VALUES ('sent-job', 'https://example.com/4', 'Backend')`,
 	`INSERT INTO applications (id, job_id, candidate_id, state, submitted_at) VALUES ('sent-app', 'sent-job', 'cand', 'SUBMITTED', '2026-09-20 09:00:00+00:00')`,
+	`INSERT INTO personal_answers (id, candidate_id, key, answer, created_at, updated_at) VALUES ('about', 'cand', 'values', 'Honesty', '2026-09-29', '2026-09-29')`,
+	`INSERT INTO personal_answers (id, application_id, key, answer, created_at, updated_at) VALUES ('draws', 'app', 'draws_you', 'Tooling', '2026-09-29', '2026-09-29')`,
 )
 
 // TestDeletionStore_DeletesExactlyWhatThePreviewSaid is ADR-0021's central

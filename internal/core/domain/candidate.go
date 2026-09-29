@@ -149,8 +149,9 @@ type CandidateSkill struct {
 // Email and Phone were one Contact string until a real form's phone field
 // was filled with an email address; Links was one string until LinkedIn,
 // Portfolio and Website each received all of them. What remains as prose
-// — Summary, ApplicationPreferences — is read by a person or by an LLM
-// writing prose, and structuring it would buy nothing.
+// — Summary — is read by a person or by an LLM writing prose, and
+// structuring it would buy nothing. How the candidate wants to be written
+// about is a PersonalAnswer (ADR-0022).
 type Candidate struct {
 	ID        string `json:"id"`
 	FirstName string `json:"first_name"`
@@ -172,8 +173,7 @@ type Candidate struct {
 	// RemotePreference uses the same vocabulary as Job.RemoteType, so a
 	// preference can be compared with a posting rather than searched for a
 	// word inside a paragraph.
-	RemotePreference       RemotePreference `json:"remote_preference"`
-	ApplicationPreferences string           `json:"application_preferences"`
+	RemotePreference RemotePreference `json:"remote_preference"`
 
 	// These live in their own tables and are loaded with the candidate.
 	Links              []CandidateLink       `json:"links"`

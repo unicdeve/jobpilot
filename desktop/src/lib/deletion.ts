@@ -18,6 +18,7 @@ const KIND_NAMES: Record<string, [string, string]> = {
   scout: ["scout", "scouts"],
   saved_search: ["saved search", "saved searches"],
   credential_name: ["API key name", "API key names"],
+  personal_answer: ["thing you told JobPilot about yourself", "things you told JobPilot about yourself"],
   settings: ["setting", "settings"],
 };
 
@@ -26,6 +27,7 @@ const KIND_NAMES: Record<string, [string, string]> = {
 const KIND_ORDER = [
   "candidate",
   "candidate_detail",
+  "personal_answer",
   "resume",
   "job",
   "match",

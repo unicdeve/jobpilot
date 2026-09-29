@@ -87,6 +87,20 @@ type MatchRepository interface {
 	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.JobMatch, error)
 }
 
+// PersonalAnswerRepository persists what the candidate says about
+// themselves (ADR-0022). Which rows may exist — one per standing key, at
+// most two proposed questions — is the service's to keep; the schema
+// backs the first.
+type PersonalAnswerRepository interface {
+	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.PersonalAnswer, error)
+	ListByApplication(ctx context.Context, applicationID string) ([]*domain.PersonalAnswer, error)
+	GetByID(ctx context.Context, id string) (*domain.PersonalAnswer, error)
+	// Save inserts an answer without an ID, assigning one, and otherwise
+	// updates its question and answer.
+	Save(ctx context.Context, answer *domain.PersonalAnswer) error
+	Delete(ctx context.Context, id string) error
+}
+
 // SettingsRepository persists arbitrary local key/value settings.
 type SettingsRepository interface {
 	Get(ctx context.Context, key string) (value string, found bool, err error)

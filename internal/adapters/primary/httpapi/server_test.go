@@ -729,7 +729,8 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	credentialStore := &fakeCredentialStore{secrets: map[string]string{}}
 	appSvc := services.NewApplicationService(appRepo)
 	docConverter := &fakeDocumentConverter{}
-	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv)
+	aboutYouSvc := services.NewAboutYouService(newFakePersonalAnswerRepository(), candRepo, appRepo, jobRepo, questionRepo, llmProv)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
 	// One trail, written by the browser worker and read by Agent Activity.
 	runRepo := newFakeAgentRunRepository()
 	eventRepo := newFakeAgentEventRepository()
@@ -744,13 +745,14 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
 		Settings:    services.NewSettingsService(settingsRepo),
 		Application: appSvc,
-		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv),
+		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc),
 		Answers:     answerSvc,
 		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answerSvc, func() (ports.BrowserWorker, error) {
 			return &fakeBrowserWorker{}, nil
 		}, nil),
 		Credentials: services.NewCredentialService(credentialStore, &fakeCredentialNames{}),
 		Activity:    services.NewAgentActivityService(runRepo, eventRepo),
+		AboutYou:    aboutYouSvc,
 	}
 
 	ts := httptest.NewServer(NewHandler(svc))
@@ -2199,4 +2201,87 @@ func TestServer_GetJobMatch(t *testing.T) {
 	body, err := rawResponse(t, client, http.MethodGet, "/v1/jobs/"+job.ID+"/match", nil)
 	require.NoError(t, err)
 	assert.Contains(t, body, `"score":80`)
+}
+
+// fakePersonalAnswerRepository is an in-memory ports.PersonalAnswerRepository.
+type fakePersonalAnswerRepository struct {
+	rows  map[string]*domain.PersonalAnswer
+	order []string
+}
+
+func newFakePersonalAnswerRepository() *fakePersonalAnswerRepository {
+	return &fakePersonalAnswerRepository{rows: map[string]*domain.PersonalAnswer{}}
+}
+
+func (f *fakePersonalAnswerRepository) list(match func(*domain.PersonalAnswer) bool) []*domain.PersonalAnswer {
+	out := make([]*domain.PersonalAnswer, 0)
+	for _, id := range f.order {
+		if row := f.rows[id]; match(row) {
+			copied := *row
+			out = append(out, &copied)
+		}
+	}
+	return out
+}
+
+func (f *fakePersonalAnswerRepository) ListByCandidate(_ context.Context, id string) ([]*domain.PersonalAnswer, error) {
+	return f.list(func(row *domain.PersonalAnswer) bool { return row.CandidateID == id }), nil
+}
+
+func (f *fakePersonalAnswerRepository) ListByApplication(_ context.Context, id string) ([]*domain.PersonalAnswer, error) {
+	return f.list(func(row *domain.PersonalAnswer) bool { return row.ApplicationID == id }), nil
+}
+
+func (f *fakePersonalAnswerRepository) GetByID(_ context.Context, id string) (*domain.PersonalAnswer, error) {
+	row, ok := f.rows[id]
+	if !ok {
+		return nil, fmt.Errorf("personal answer not found: %s", id)
+	}
+	copied := *row
+	return &copied, nil
+}
+
+func (f *fakePersonalAnswerRepository) Save(_ context.Context, answer *domain.PersonalAnswer) error {
+	if answer.ID == "" {
+		answer.ID = fmt.Sprintf("answer-%d", len(f.order)+1)
+		f.order = append(f.order, answer.ID)
+	}
+	copied := *answer
+	f.rows[answer.ID] = &copied
+	return nil
+}
+
+func (f *fakePersonalAnswerRepository) Delete(_ context.Context, id string) error {
+	delete(f.rows, id)
+	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
+	return nil
+}
+
+func TestServer_AboutYou(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client, candRepo, _ := testServer(t)
+
+	status, err := rawStatus(t, client, http.MethodGet, "/v1/profile/about", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, status, "no profile is a 404, as it is for the profile itself")
+
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", FirstName: "Ada"}))
+	about, err := client.GetAboutYou(ctx)
+	require.NoError(t, err)
+	require.Len(t, about.Questions, len(domain.StandingQuestions), "the daemon says what is asked, in its wording")
+	assert.Equal(t, domain.StandingQuestions[0].Question, about.Questions[0].Question)
+
+	sample := "Short sentences."
+	about, err = client.SaveAboutYou(ctx, services.AboutYouUpdate{
+		Answers:       map[domain.PersonalAnswerKey]string{domain.AnswerKnownFor: "Untangling flaky tests"},
+		WritingSample: &sample,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, sample, about.WritingSample)
+
+	status, err = rawStatus(t, client, http.MethodPut, "/v1/profile/about",
+		map[string]any{"answers": map[string]string{"favourite_colour": "blue"}})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, status, "a question that does not exist is the client's mistake")
 }

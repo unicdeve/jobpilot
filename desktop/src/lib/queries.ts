@@ -22,11 +22,14 @@ import { useApi } from "./daemon";
 import { since, type TimeRange } from "./job-filters";
 import type { ScoutInput } from "./api";
 import type {
+  AboutYou,
+  AboutYouUpdate,
   AgentRun,
   AgentRunDetail,
   AgentRunFilter,
   AgentRunWithEvents,
   Application,
+  ApplicationAnswer,
   ApplicationMode,
   ApplicationQuestion,
   ApplicationState,
@@ -43,6 +46,7 @@ import type {
   JobPage,
   LLMHealth,
   LLMSettings,
+  PersonalAnswer,
   ProfileDraft,
   QuestionType,
   Resume,
@@ -62,6 +66,7 @@ import type {
 export const keys = {
   profile: ["profile"] as const,
   llmSettings: ["llm-settings"] as const,
+  aboutYou: ["about-you"] as const,
   discoverySettings: ["discovery-settings"] as const,
   jobs: {
     all: ["jobs"] as const,
@@ -96,6 +101,7 @@ export const keys = {
     transitions: (id: string) => ["applications", "transitions", id] as const,
     coverLetters: (id: string) => ["applications", "cover-letters", id] as const,
     questions: (id: string) => ["applications", "questions", id] as const,
+    personalQuestions: (id: string) => ["applications", "personal-questions", id] as const,
     agentRuns: (id: string) => ["applications", "agent-runs", id] as const,
   },
 } as const;
@@ -832,6 +838,97 @@ export function useTransitionApplication(opts?: MutationOpts<Application, Transi
   });
 }
 
+/// useAboutYou loads what the candidate has said about themselves. With no
+/// profile yet there is nothing to load, which is null rather than an
+/// error, as it is for the profile.
+export function useAboutYou() {
+  const api = useApi();
+  return useQuery<AboutYou | null>({
+    queryKey: keys.aboutYou,
+    queryFn: () => api.getAboutYou(),
+  });
+}
+
+export function useSaveAboutYou(opts?: MutationOpts<AboutYou, AboutYouUpdate>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (update: AboutYouUpdate) => api.saveAboutYou(update),
+    ...opts,
+    onSuccess: (saved, ...rest) => {
+      queryClient.setQueryData(keys.aboutYou, saved);
+      opts?.onSuccess?.(saved, ...rest);
+    },
+  });
+}
+
+export function useDeleteKeptAnswer(opts?: MutationOpts<void, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteKeptAnswer(id),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.aboutYou });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useKeepAnswer(opts?: MutationOpts<PersonalAnswer, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (questionId: string) => api.keepAnswer(questionId),
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.aboutYou });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+/// usePersonalQuestions reads the questions asked before a letter for one
+/// application, without asking a model; usePreparePersonalQuestions adds
+/// the ones the model proposes.
+export function usePersonalQuestions(applicationId: string, enabled: boolean) {
+  const api = useApi();
+  return useQuery<PersonalAnswer[]>({
+    queryKey: keys.applications.personalQuestions(applicationId),
+    queryFn: () => api.listPersonalQuestions(applicationId),
+    enabled,
+  });
+}
+
+export function usePreparePersonalQuestions(opts?: MutationOpts<PersonalAnswer[], string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (applicationId: string) => api.preparePersonalQuestions(applicationId),
+    ...opts,
+    onSuccess: (questions, applicationId, ...rest) => {
+      queryClient.setQueryData(keys.applications.personalQuestions(applicationId), questions);
+      opts?.onSuccess?.(questions, applicationId, ...rest);
+    },
+  });
+}
+
+export function useSavePersonalAnswers(
+  opts?: MutationOpts<PersonalAnswer[], { applicationId: string; answers: ApplicationAnswer[] }>,
+) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, answers }: { applicationId: string; answers: ApplicationAnswer[] }) =>
+      api.savePersonalAnswers(applicationId, answers),
+    ...opts,
+    onSuccess: (questions, variables, ...rest) => {
+      queryClient.setQueryData(keys.applications.personalQuestions(variables.applicationId), questions);
+      opts?.onSuccess?.(questions, variables, ...rest);
+    },
+  });
+}
+
 export function useGenerateCoverLetter(opts?: MutationOpts<CoverLetter, string>) {
   const api = useApi();
   const queryClient = useQueryClient();
@@ -840,10 +937,13 @@ export function useGenerateCoverLetter(opts?: MutationOpts<CoverLetter, string>)
     ...opts,
     onSuccess: (letter, applicationId, ...rest) => {
       // Generating adds a version rather than replacing one, so the whole
-      // version list is refetched.
+      // version list is refetched — and the application, which records the
+      // new version as current. Without it a rewrite kept showing the
+      // letter it replaced until the application happened to refetch.
       void queryClient.invalidateQueries({
         queryKey: keys.applications.coverLetters(applicationId),
       });
+      void queryClient.invalidateQueries({ queryKey: keys.applications.detail(applicationId) });
       opts?.onSuccess?.(letter, applicationId, ...rest);
     },
   });

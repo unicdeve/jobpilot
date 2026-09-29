@@ -88,7 +88,6 @@ export interface Candidate {
   earliest_start_date?: string | null;
   summary: string;
   remote_preference: RemotePreference;
-  application_preferences: string;
   links: CandidateLink[] | null;
   work_authorizations: WorkAuthorization[] | null;
   skills: CandidateSkill[] | null;
@@ -379,6 +378,56 @@ export type AnswerCategory =
 export type QuestionStatus = "pending" | "answered";
 
 export type QuestionSource = "manual" | "form_extracted";
+
+/// PersonalAnswerKey mirrors domain.PersonalAnswerKey: what a thing the
+/// candidate said about themselves is (ADR-0022).
+export type PersonalAnswerKey = string;
+
+/// PersonalAnswer mirrors domain.PersonalAnswer. Only the candidate writes
+/// answer; a proposed question is the model's, read from the posting.
+export interface PersonalAnswer {
+  id: string;
+  candidate_id?: string;
+  application_id?: string;
+  key: PersonalAnswerKey;
+  question: string;
+  answer: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/// AboutYouQuestion is a standing question, its wording the daemon's, and
+/// the candidate's answer to it.
+export interface AboutYouQuestion {
+  key: PersonalAnswerKey;
+  question: string;
+  hint: string;
+  answer: string;
+}
+
+/// AboutYou mirrors services.AboutYou (docs/02_features/16_about_you.md).
+export interface AboutYou {
+  questions: AboutYouQuestion[];
+  writing_sample: string;
+  writing_preferences: string;
+  kept: PersonalAnswer[];
+}
+
+/// AboutYouUpdate changes some of what the candidate said; a field left
+/// out is unchanged, and an empty answer clears one.
+export interface AboutYouUpdate {
+  answers?: Record<PersonalAnswerKey, string>;
+  writing_sample?: string;
+  writing_preferences?: string;
+}
+
+/// ApplicationAnswer answers one question asked before a letter: the fixed
+/// one by key, a proposed one by id.
+export interface ApplicationAnswer {
+  id?: string;
+  key: PersonalAnswerKey;
+  answer: string;
+}
 
 export interface ApplicationQuestion {
   id: string;

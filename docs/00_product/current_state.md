@@ -279,6 +279,13 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
   The Discover menu's "All saved searches" queues every saved search at once, rather than one click each.
   The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
+- About you (`docs/02_features/16_about_you.md`, ADR-0022): the candidate says who they are — six optional questions, how they want to sound, a writing sample — once, and a few words about each job before its letter: what draws them to it, and up to two questions the model proposes from the posting.
+  Letters and written answers are built from it; written answers also get the resume, which they lacked.
+  A written answer the candidate wrote can be kept for similar questions.
+  Only the candidate writes an answer; the model only proposes questions, which are checked and delimited as untrusted.
+  Stored in `personal_answers` (migration `00018`), which also took `application_preferences` from the candidate.
+  Desktop: Profile → About you, and a questions step before "Write one" and "Rewrite". CLI: `profile about`, `cover-letter generate` asks first, `question keep`.
+  A rewritten letter now replaces the old one on screen straight away; it used to show until the application refetched.
 - The desktop refreshes stale searches when it opens (`docs/02_features/04_job_discovery.md` AC-009): each saved search records when it last ran (migration `00017`, from any path that ran it and got an answer), and on opening the desktop runs those not run in the last six hours, through the Discover queue, then says what they found in one line.
   It is once per launch and the desktop's, never the daemon's on starting, since a CLI command starts the daemon too.
   Settings → Job searches turns it off, and shows when each search last ran.
@@ -597,8 +604,10 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 ## Next
 
 1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
-2. Answer "not found" with 404 across the API. A job or application that does not exist is still a 500 with the repository's message, which the desktop shows as it is — seen when going back to a deleted application's page. Deletion and the profile already answer 404.
-3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
+2. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
+   Beside it, the LLM clients' 30-second timeout (`llm/ollama.go`, `llm/openai_compat.go`): a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.
+3. Answer "not found" with 404 across the API. A job or application that does not exist is still a 500 with the repository's message, which the desktop shows as it is — seen when going back to a deleted application's page. Deletion and the profile already answer 404.
+4. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+5. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+6. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
