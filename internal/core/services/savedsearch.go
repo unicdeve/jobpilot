@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -17,11 +18,12 @@ import (
 // requirement in docs/02_features/01_onboarding.md.
 type SavedSearchService struct {
 	repo ports.SavedSearchRepository
+	now  func() time.Time
 }
 
 // NewSavedSearchService constructs a SavedSearchService over repo.
 func NewSavedSearchService(repo ports.SavedSearchRepository) *SavedSearchService {
-	return &SavedSearchService{repo: repo}
+	return &SavedSearchService{repo: repo, now: time.Now}
 }
 
 // Create saves a new named search. The first search created becomes the
@@ -98,6 +100,30 @@ func (s *SavedSearchService) List(ctx context.Context) ([]*domain.SavedSearch, e
 // Get returns one saved search by ID.
 func (s *SavedSearchService) Get(ctx context.Context, id string) (*domain.SavedSearch, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+// RecordRun records that a search ran against the job sources now. A caller
+// records a run only when discovery answered: a run no source answered —
+// offline, say — found nothing, and leaves the search as stale as it was.
+func (s *SavedSearchService) RecordRun(ctx context.Context, id string) error {
+	return s.repo.MarkRun(ctx, id, s.now())
+}
+
+// Stale returns the searches due to run again (SavedSearch.Stale), in the
+// order List gives them: the default first.
+func (s *SavedSearchService) Stale(ctx context.Context) ([]*domain.SavedSearch, error) {
+	searches, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	stale := make([]*domain.SavedSearch, 0, len(searches))
+	for _, search := range searches {
+		if search.Stale(now) {
+			stale = append(stale, search)
+		}
+	}
+	return stale, nil
 }
 
 // Default returns the search discovery runs when the user does not name one,

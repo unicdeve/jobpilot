@@ -235,8 +235,18 @@ export interface SavedSearch {
   name: string;
   criteria: SearchCriteria;
   is_default: boolean;
+  /// last_run_at is when the search last ran against the job sources and
+  /// one answered; null if it never has.
+  last_run_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/// DiscoverySettings mirrors domain.DiscoverySettings.
+export interface DiscoverySettings {
+  /// refresh_on_launch runs the searches not run in the last six hours
+  /// when the app opens.
+  refresh_on_launch: boolean;
 }
 
 /// CredentialRef names one stored secret. It never carries the value: the

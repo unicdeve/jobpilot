@@ -12,6 +12,7 @@ import { SearchTemplatePicker } from "../components/search-template-picker";
 import { SettingsHeading } from "../components/settings-heading";
 import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,12 +23,15 @@ import {
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
+  useDiscoverySettings,
   useLLMSettings,
+  useSaveDiscoverySettings,
   useSaveLLMSettings,
   useSavedSearches,
   useSetDefaultSavedSearch,
   useUpdateSavedSearch,
 } from "../lib/queries";
+import { dateTime, relativeTime } from "../lib/format";
 import { useTheme, type ThemePreference } from "../lib/theme";
 import { useToast } from "../lib/toast";
 import type { LLMSettings, SavedSearch, SearchCriteria } from "../lib/types";
@@ -212,6 +216,34 @@ function ModelSettings() {
   );
 }
 
+/// RefreshOnLaunchSetting turns the launch refresh on and off
+/// (docs/02_features/04_job_discovery.md AC-009). It is the daemon's
+/// setting, so it holds for however the desktop is installed.
+function RefreshOnLaunchSetting() {
+  const { notify } = useToast();
+  const { data: settings } = useDiscoverySettings();
+  const save = useSaveDiscoverySettings({ onError: (err) => notify(String(err)) });
+
+  return (
+    <Panel className="mt-4 px-4 py-3">
+      <label className="flex items-start gap-3">
+        <Checkbox
+          className="mt-0.5"
+          checked={settings?.refresh_on_launch ?? false}
+          disabled={!settings || save.isPending}
+          onCheckedChange={(checked) => save.mutate({ refresh_on_launch: checked === true })}
+        />
+        <span>
+          <span className="block text-[13px] font-medium">Look for new jobs when JobPilot opens</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Runs each search that hasn’t run in the last 6 hours, in the background.
+          </span>
+        </span>
+      </label>
+    </Panel>
+  );
+}
+
 /// JobSearchSettings manages the saved searches discovery runs against.
 /// Without at least one, discovery refuses to run — the public job boards do
 /// no filtering of their own, so a search with nothing set would import every
@@ -328,6 +360,9 @@ function JobSearchSettings() {
                   </p>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{describeCriteria(search.criteria)}</p>
                 </div>
+                <span className="shrink-0 text-xs text-muted-foreground" title={dateTime(search.last_run_at ?? undefined)}>
+                  {search.last_run_at ? `Searched ${relativeTime(search.last_run_at)}` : "Never searched"}
+                </span>
                 <Button size="sm" variant="ghost" onClick={() => setEditingId(search.id)}>
                   Edit
                 </Button>
@@ -350,6 +385,8 @@ function JobSearchSettings() {
           )}
         </Panel>
       )}
+
+      <RefreshOnLaunchSetting />
 
       <ConfirmDialog
         open={deleting !== null}

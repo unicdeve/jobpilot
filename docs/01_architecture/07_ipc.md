@@ -35,6 +35,9 @@ different failure modes, so they are different endpoints.
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
+- `GET /v1/searches/stale` lists the saved searches due to run again — never
+  run, or not in the last six hours — which the desktop runs when it opens.
+  `GET` and `PUT /v1/settings/discovery` read and turn that off.
 - `GET /v1/sources` names the sources a search asks (`[{"id", "name"}]`), so
   a client can say what a search is waiting on while it runs.
 

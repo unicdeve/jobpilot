@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -68,6 +69,7 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/searches", handleListSavedSearches(svc.Searches))
 	mux.HandleFunc("POST /v1/searches", handleCreateSavedSearch(svc.Searches))
+	mux.HandleFunc("GET /v1/searches/stale", handleStaleSavedSearches(svc.Searches))
 	mux.HandleFunc("GET /v1/searches/{id}", handleGetSavedSearch(svc.Searches))
 	mux.HandleFunc("PUT /v1/searches/{id}", handleUpdateSavedSearch(svc.Searches))
 	mux.HandleFunc("DELETE /v1/searches/{id}", handleDeleteSavedSearch(svc.Searches))
@@ -103,6 +105,8 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/settings/llm", handleGetLLMSettings(svc.Settings))
 	mux.HandleFunc("PUT /v1/settings/llm", handleSaveLLMSettings(svc.Settings))
 	mux.HandleFunc("GET /v1/settings/llm/health", handleLLMHealth(svc.Settings))
+	mux.HandleFunc("GET /v1/settings/discovery", handleGetDiscoverySettings(svc.Settings))
+	mux.HandleFunc("PUT /v1/settings/discovery", handleSaveDiscoverySettings(svc.Settings))
 
 	mux.HandleFunc("POST /v1/applications", handleCreateApplication(svc.Application))
 	mux.HandleFunc("GET /v1/applications", handleListApplications(svc.Application))
@@ -307,6 +311,18 @@ func handleListSavedSearches(svc *services.SavedSearchService) http.HandlerFunc 
 	}
 }
 
+// handleStaleSavedSearches lists the searches due to run again, which the
+// desktop runs when it opens.
+func handleStaleSavedSearches(svc *services.SavedSearchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		searches, err := svc.Stale(r.Context())
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, searches)
+	}
+}
+
 func handleCreateSavedSearch(svc *services.SavedSearchService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req savedSearchRequest
@@ -422,6 +438,11 @@ func handleRunSavedSearch(searches *services.SavedSearchService, discovery *serv
 		if err != nil {
 			writeError(w, searchStatus(err), err)
 			return
+		}
+		// Discovery answered, so the search has run. Failing to record that
+		// costs one repeated search later, not this result.
+		if err := searches.RecordRun(r.Context(), search.ID); err != nil {
+			log.Printf("recording the run of saved search %s: %v", search.ID, err)
 		}
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -659,6 +680,30 @@ func handleGetJobMatch(svc *services.MatchingService) http.HandlerFunc {
 }
 
 // --- settings ---
+
+func handleGetDiscoverySettings(svc *services.SettingsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := svc.GetDiscoverySettings(r.Context())
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
+
+func handleSaveDiscoverySettings(svc *services.SettingsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var settings domain.DiscoverySettings
+		if err := readJSON(r, &settings); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := svc.SaveDiscoverySettings(r.Context(), &settings); writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
 
 func handleGetLLMSettings(svc *services.SettingsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -256,6 +256,13 @@ func (f *fakeSavedSearchRepository) ClearDefault(_ context.Context) error {
 	return nil
 }
 
+func (f *fakeSavedSearchRepository) MarkRun(_ context.Context, id string, at time.Time) error {
+	if search, ok := f.searches[id]; ok {
+		search.LastRunAt = &at
+	}
+	return nil
+}
+
 type fakeMatchRepository struct {
 	matches map[string]*domain.JobMatch
 }
@@ -1383,10 +1390,22 @@ func TestClient_SavedSearchLifecycle(t *testing.T) {
 		{CanonicalURL: "https://example.com/job/1", Title: "Design Lead", CompanyName: "Acme"},
 		{CanonicalURL: "https://example.com/job/2", Title: "Backend Engineer", CompanyName: "Acme"},
 	}
+	stale, err := client.StaleSavedSearches(ctx)
+	require.NoError(t, err)
+	assert.Len(t, stale, 2, "neither search has run")
+
 	result, err := client.RunSavedSearch(ctx, second.ID)
 	require.NoError(t, err)
 	require.Len(t, result.Jobs, 1, "only jobs matching the saved criteria are imported")
 	assert.Equal(t, "Design Lead", result.Jobs[0].Title)
+
+	ran, err := client.GetSavedSearch(ctx, second.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, ran.LastRunAt, "a run records when it ran")
+	stale, err = client.StaleSavedSearches(ctx)
+	require.NoError(t, err)
+	require.Len(t, stale, 1)
+	assert.Equal(t, created.ID, stale[0].ID, "the search just run is no longer due")
 
 	require.NoError(t, client.DeleteSavedSearch(ctx, second.ID))
 	searches, err = client.ListSavedSearches(ctx)
@@ -1970,7 +1989,35 @@ func TestServer_SearchJobs_ReportsSourcesThatDidNotAnswer(t *testing.T) {
 		status, err := rawStatus(t, client, http.MethodPost, "/v1/searches/"+search.ID+"/run", nil)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusServiceUnavailable, status)
+
+		got, err := client.GetSavedSearch(context.Background(), search.ID)
+		require.NoError(t, err)
+		assert.Nil(t, got.LastRunAt, "a run no source answered found nothing, so the search stays due")
 	})
+}
+
+func TestServer_DiscoverySettings(t *testing.T) {
+	t.Parallel()
+	ts := httptest.NewServer(NewHandler(Services{Settings: services.NewSettingsService(newFakeSettingsRepository())}))
+	t.Cleanup(ts.Close)
+	_, portStr, err := net.SplitHostPort(ts.Listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+	client := NewClient(port)
+	ctx := context.Background()
+
+	got, err := client.GetDiscoverySettings(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.RefreshOnLaunch, "on by default")
+
+	saved, err := client.SaveDiscoverySettings(ctx, domain.DiscoverySettings{RefreshOnLaunch: false})
+	require.NoError(t, err)
+	assert.False(t, saved.RefreshOnLaunch)
+
+	got, err = client.GetDiscoverySettings(ctx)
+	require.NoError(t, err)
+	assert.False(t, got.RefreshOnLaunch)
 }
 
 // fakeDeletionStore holds jobs only: enough to exercise the deletion

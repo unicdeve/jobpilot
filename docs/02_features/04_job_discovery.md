@@ -146,3 +146,22 @@ Sources are asked at once rather than in turn.
 Their timeouts run up to 30 seconds each, so asked in turn the five public sources could keep a user waiting 100 seconds to learn they were offline.
 
 A search also reports how many of its jobs are new, since a repeated search returns the jobs it found before as well.
+
+### AC-009
+Given saved searches that have not run in the last six hours, when the desktop opens, then it runs them in the background.
+
+Jobs a few days old are the reason to open Discover at all, so the desktop does it on opening, but only for the searches that are stale.
+A saved search records when it last ran (`last_run_at`) whenever discovery answered for it, from any path: Discover, setup, `jobpilot-cli search run --saved` and a fetching scout.
+A run no source answered records nothing, so an offline launch leaves every search as due as it was, and the next launch tries again.
+Which searches are stale is the daemon's to say (`GET /v1/searches/stale`, `SavedSearch.Stale`); the six hours are `domain.SearchRefreshInterval`.
+
+It is the desktop that refreshes, once per launch, and never the daemon on starting: the daemon also starts for a CLI command, which should not search every board.
+A reconnect to a restarted daemon is not a launch.
+The runs go through the same queue as Discover's and show in the same place while they run, and when they are all done the desktop says what they found once — "Found 23 new jobs across 4 searches" — rather than once for each.
+Offline, it says the sources could not be reached and that the jobs already found are all still there.
+
+Settings → Job searches turns it off ("Look for new jobs when JobPilot opens", on by default), and lists when each search last ran.
+The setting is the daemon's (`GET` and `PUT /v1/settings/discovery`), so it holds however the desktop is installed.
+
+The Dashboard once ran a live search every time it rendered, which put a network round trip and a database write in the path of opening the app, and two of them raced on SQLite.
+This is not that: nothing waits on it, it runs through the queue one search at a time, and it runs at most once in six hours for each search.

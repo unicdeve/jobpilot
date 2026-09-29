@@ -123,6 +123,7 @@ type scoutFixture struct {
 	events   *fakeAgentEventRepository
 	scout    *domain.Scout
 	searchID string
+	searches *fakeSavedSearchRepository
 }
 
 func newScoutFixture(t *testing.T, jobs []*domain.Job, scores map[string]int,
@@ -157,7 +158,7 @@ func newScoutFixture(t *testing.T, jobs []*domain.Job, scores map[string]int,
 	return &scoutFixture{
 		svc:    NewScoutService(scouts, searches, candidates, apps, runs, events, finder, matcher),
 		scouts: scouts, apps: apps, finder: finder, matcher: matcher,
-		runs: runs, events: events, scout: scout, searchID: search.ID,
+		runs: runs, events: events, scout: scout, searchID: search.ID, searches: searches,
 	}
 }
 
@@ -247,6 +248,23 @@ func TestScoutRun_ContactsNoEmployer(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, f.finder.searchCalls)
 		assert.Equal(t, "Go", f.finder.searchedWith.Keywords)
+
+		search, err := f.searches.GetByID(context.Background(), f.searchID)
+		require.NoError(t, err)
+		assert.NotNil(t, search.LastRunAt, "the search has run, as it would have from Discover")
+	})
+
+	t.Run("a local scout does not count as running its search", func(t *testing.T) {
+		t.Parallel()
+		f := newScoutFixture(t, []*domain.Job{job("job-1", "Go Engineer", "Acme")},
+			map[string]int{"job-1": 95}, domain.SearchCriteria{Keywords: "Go"}, nil)
+
+		_, err := f.svc.Run(context.Background(), f.scout.ID)
+
+		require.NoError(t, err)
+		search, err := f.searches.GetByID(context.Background(), f.searchID)
+		require.NoError(t, err)
+		assert.Nil(t, search.LastRunAt, "it asked no source, so nothing new was looked for")
 	})
 
 	t.Run("a fetching scout records each source that did not answer", func(t *testing.T) {
@@ -288,6 +306,9 @@ func TestScoutRun_ContactsNoEmployer(t *testing.T) {
 
 		require.ErrorIs(t, err, ErrSourcesUnreachable)
 		assert.Empty(t, f.matcher.calls, "nothing is scored when nothing was found")
+		search, err := f.searches.GetByID(context.Background(), f.searchID)
+		require.NoError(t, err)
+		assert.Nil(t, search.LastRunAt, "a search no source answered is as stale as it was")
 	})
 
 	// The stronger guarantee is structural rather than behavioural:

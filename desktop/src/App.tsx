@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout";
-import { DiscoveryActivity } from "./components/discovery-activity";
+import { DiscoveryActivity, LaunchRefresh } from "./components/discovery-activity";
 import { RequireDaemon } from "./components/require-daemon";
 import { DaemonProvider } from "./lib/daemon";
 import "./lib/platform";
@@ -42,6 +42,7 @@ function App() {
       <ToastProvider>
         <DaemonProvider>
           <DiscoveryActivity />
+          <LaunchRefresh />
           <HashRouter>
             <Routes>
               {/* Outside <Layout>: first-run setup has nothing to navigate

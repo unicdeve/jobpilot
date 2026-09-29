@@ -1,7 +1,9 @@
 import { useMutationState } from "@tanstack/react-query";
 import { LoaderCircle } from "lucide-react";
-import { useDaemon } from "../lib/daemon";
-import { discoverySummary } from "../lib/format";
+import { useEffect } from "react";
+import { ApiError } from "../lib/api";
+import { useApi, useDaemon } from "../lib/daemon";
+import { discoverySummary, refreshSummary, type RefreshFailure } from "../lib/format";
 import { keys, useJobSources, useRunSavedSearch, type DiscoveryRun } from "../lib/queries";
 import { ToastActivity, useToast } from "../lib/toast";
 
@@ -71,4 +73,64 @@ function Searching({ runs }: { runs: PendingDiscovery[] }) {
       </div>
     </ToastActivity>
   );
+}
+
+/// refreshed is whether this launch has refreshed already. It is kept
+/// outside React on purpose: it is once per launch, not per mount, so a
+/// reconnect to a restarted daemon or StrictMode running an effect twice
+/// does not search again.
+let refreshed = false;
+
+/// LaunchRefresh runs the saved searches gone stale when the app opens —
+/// never run, or not in the last six hours — so the jobs are current
+/// without the user asking (docs/02_features/04_job_discovery.md AC-009).
+/// The daemon decides which are stale; the runs go through the same queue
+/// as Discover's, and say what they found once, together.
+export function LaunchRefresh() {
+  const { client } = useDaemon();
+  return client ? <Refresh /> : null;
+}
+
+function Refresh() {
+  const api = useApi();
+  const { notify } = useToast();
+  const { mutateAsync } = useRunSavedSearch();
+
+  useEffect(() => {
+    if (refreshed) return;
+    refreshed = true;
+
+    void (async () => {
+      let stale;
+      try {
+        const settings = await api.getDiscoverySettings();
+        if (!settings.refresh_on_launch) return;
+        stale = await api.staleSavedSearches();
+      } catch {
+        // Not knowing what is stale is not worth a message: nothing ran,
+        // and Discover still works.
+        return;
+      }
+      if (stale.length === 0) return;
+
+      const settled = await Promise.allSettled(
+        stale.map((search) => mutateAsync({ id: search.id, name: search.name })),
+      );
+      const results = settled.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []));
+      const failures: RefreshFailure[] = settled.flatMap((outcome) =>
+        outcome.status === "rejected"
+          ? [
+              {
+                offline: outcome.reason instanceof ApiError && outcome.reason.status === 503,
+                message: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+              },
+            ]
+          : [],
+      );
+      const { message, complete } = refreshSummary(results, failures);
+      notify(message, complete ? "success" : "warning");
+    })();
+  }, [api, mutateAsync, notify]);
+
+  return null;
 }

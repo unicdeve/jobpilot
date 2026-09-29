@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -294,4 +295,44 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 
 		assert.ErrorContains(t, err, "no templates chosen")
 	})
+}
+
+func TestSavedSearchService_RecordRunAndStale(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	svc := NewSavedSearchService(newFakeSavedSearchRepository())
+	svc.now = func() time.Time { return now }
+
+	backend, err := svc.Create(ctx, "Backend", domain.SearchCriteria{Title: "backend"})
+	require.NoError(t, err)
+	frontend, err := svc.Create(ctx, "Frontend", domain.SearchCriteria{Title: "frontend"})
+	require.NoError(t, err)
+
+	stale, err := svc.Stale(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Backend", "Frontend"}, searchNames(stale), "searches that never ran are due, default first")
+
+	require.NoError(t, svc.RecordRun(ctx, frontend.ID))
+	got, err := svc.Get(ctx, frontend.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.LastRunAt)
+	assert.Equal(t, now, *got.LastRunAt)
+
+	stale, err = svc.Stale(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Backend"}, searchNames(stale), "a search just run is not due again")
+
+	now = now.Add(domain.SearchRefreshInterval)
+	stale, err = svc.Stale(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{backend.Name, frontend.Name}, searchNames(stale), "six hours later it is")
+}
+
+func searchNames(searches []*domain.SavedSearch) []string {
+	names := make([]string, len(searches))
+	for i, search := range searches {
+		names[i] = search.Name
+	}
+	return names
 }

@@ -279,6 +279,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
   The Discover menu's "All saved searches" queues every saved search at once, rather than one click each.
   The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
+- The desktop refreshes stale searches when it opens (`docs/02_features/04_job_discovery.md` AC-009): each saved search records when it last ran (migration `00017`, from any path that ran it and got an answer), and on opening the desktop runs those not run in the last six hours, through the Discover queue, then says what they found in one line.
+  It is once per launch and the desktop's, never the daemon's on starting, since a CLI command starts the daemon too.
+  Settings → Job searches turns it off, and shows when each search last ran.
 - Hot reload for the daemon (`make dev`, `docs/08_development/hot_reload.md`): air rebuilds and restarts it when its Go or migrations change, pinned in the Makefile and installed into `./bin`.
   The desktop now follows a daemon that restarts: it used to resolve the port once, so any restart left it pointed at a closed one until the app was reopened.
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.

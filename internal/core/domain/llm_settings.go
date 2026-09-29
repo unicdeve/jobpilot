@@ -7,3 +7,10 @@ type LLMSettings struct {
 	BaseURL  string `json:"base_url"`
 	Model    string `json:"model"`
 }
+
+// DiscoverySettings is how discovery behaves without being asked.
+type DiscoverySettings struct {
+	// RefreshOnLaunch is whether the desktop runs the saved searches gone
+	// stale (SavedSearch.Stale) when it opens. On unless turned off.
+	RefreshOnLaunch bool `json:"refresh_on_launch"`
+}

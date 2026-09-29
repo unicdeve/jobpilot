@@ -283,6 +283,13 @@ func (s *ScoutService) collectJobs(
 		if err != nil {
 			return nil, fmt.Errorf("failed to search the job sources: %w", err)
 		}
+		// The search has now run, as it would have from Discover, so the
+		// desktop does not run it again on opening (AC-009 in
+		// docs/02_features/04_job_discovery.md). Failing to record that
+		// costs one repeated search, not the run.
+		if err := s.savedSearches.MarkRun(ctx, search.ID, s.now()); err != nil {
+			s.record(ctx, runID, "search_run_not_recorded", "error", search.Name, err.Error())
+		}
 		// A source that did not answer is its own step, so a run that
 		// considered fewer jobs than usual says why.
 		unanswered := found.Unanswered()

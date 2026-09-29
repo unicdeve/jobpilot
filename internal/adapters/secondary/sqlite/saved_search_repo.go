@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -24,6 +25,10 @@ func NewSavedSearchRepository(db *sql.DB) *SavedSearchRepository {
 const savedSearchColumns = `id, name, keywords, title, location, remote_preference,
 	employment_type, salary_min, salary_max, excluded_companies, is_default,
 	created_at, updated_at`
+
+// savedSearchSelect is what is read back: the written columns plus the
+// last run, which only MarkRun writes.
+const savedSearchSelect = savedSearchColumns + `, last_run_at`
 
 // Save inserts a new saved search or updates an existing one, assigning an
 // ID when the search does not already have one.
@@ -62,24 +67,28 @@ func (r *SavedSearchRepository) Save(ctx context.Context, search *domain.SavedSe
 func (r *SavedSearchRepository) scan(row interface{ Scan(...any) error }) (*domain.SavedSearch, error) {
 	var s domain.SavedSearch
 	var excluded string
+	var lastRun sql.NullTime
 
 	err := row.Scan(
 		&s.ID, &s.Name, &s.Criteria.Keywords, &s.Criteria.Title, &s.Criteria.Location,
 		&s.Criteria.RemotePreference, &s.Criteria.EmploymentType, &s.Criteria.SalaryMin,
-		&s.Criteria.SalaryMax, &excluded, &s.IsDefault, &s.CreatedAt, &s.UpdatedAt,
+		&s.Criteria.SalaryMax, &excluded, &s.IsDefault, &s.CreatedAt, &s.UpdatedAt, &lastRun,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	s.Criteria.ExcludedCompanies = splitStrings(excluded)
+	if lastRun.Valid {
+		s.LastRunAt = &lastRun.Time
+	}
 	return &s, nil
 }
 
 // GetByID returns one saved search. A missing row is an error: a caller
 // asking for a specific search by ID expects it to exist.
 func (r *SavedSearchRepository) GetByID(ctx context.Context, id string) (*domain.SavedSearch, error) {
-	query := `SELECT ` + savedSearchColumns + ` FROM saved_searches WHERE id = ?`
+	query := `SELECT ` + savedSearchSelect + ` FROM saved_searches WHERE id = ?`
 
 	search, err := r.scan(r.db.QueryRowContext(ctx, query, id))
 	if err != nil {
@@ -95,7 +104,7 @@ func (r *SavedSearchRepository) GetByID(ctx context.Context, id string) (*domain
 // is none — callers use it to check a name is free, where absence is the
 // expected result rather than a failure.
 func (r *SavedSearchRepository) GetByName(ctx context.Context, name string) (*domain.SavedSearch, error) {
-	query := `SELECT ` + savedSearchColumns + ` FROM saved_searches WHERE name = ? COLLATE NOCASE`
+	query := `SELECT ` + savedSearchSelect + ` FROM saved_searches WHERE name = ? COLLATE NOCASE`
 
 	search, err := r.scan(r.db.QueryRowContext(ctx, query, name))
 	if err != nil {
@@ -110,7 +119,7 @@ func (r *SavedSearchRepository) GetByName(ctx context.Context, name string) (*do
 // List returns every saved search, the default first and the rest by name,
 // so the one discovery would run without being told otherwise is at the top.
 func (r *SavedSearchRepository) List(ctx context.Context) ([]*domain.SavedSearch, error) {
-	query := `SELECT ` + savedSearchColumns + ` FROM saved_searches
+	query := `SELECT ` + savedSearchSelect + ` FROM saved_searches
 		ORDER BY is_default DESC, name COLLATE NOCASE ASC`
 
 	rows, err := r.db.QueryContext(ctx, query)
@@ -149,6 +158,15 @@ func (r *SavedSearchRepository) ClearDefault(ctx context.Context) error {
 		`UPDATE saved_searches SET is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE is_default = 1`)
 	if err != nil {
 		return fmt.Errorf("failed to clear the default saved search: %w", err)
+	}
+	return nil
+}
+
+// MarkRun records when a search last ran. A search deleted meanwhile is not
+// an error: there is nothing left to be stale.
+func (r *SavedSearchRepository) MarkRun(ctx context.Context, id string, at time.Time) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE saved_searches SET last_run_at = ? WHERE id = ?`, at, id); err != nil {
+		return fmt.Errorf("failed to record the run of saved search %s: %w", id, err)
 	}
 	return nil
 }

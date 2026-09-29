@@ -138,6 +138,59 @@ export function discoverySummary(
   return { message: sentences.join(" "), complete: unreachable.length + failed.length === 0 };
 }
 
+/// RefreshFailure is a search a launch refresh could not run. offline is a
+/// run no source could be reached for.
+export interface RefreshFailure {
+  offline: boolean;
+  message: string;
+}
+
+/// refreshSummary is the one thing a launch refresh says, however many
+/// searches it ran: a toast for each, every time the app opens, would be
+/// noise about work the user did not ask for.
+export function refreshSummary(
+  results: DiscoveryResult[],
+  failures: RefreshFailure[],
+): { message: string; complete: boolean } {
+  if (results.length === 0) {
+    const offline = failures.every((failure) => failure.offline);
+    return {
+      message: offline
+        ? "Couldn’t reach the job sources, so there are no new jobs this time. The jobs already found are all here."
+        : `Couldn’t look for new jobs: ${failures[0]?.message ?? "no search ran"}`,
+      complete: false,
+    };
+  }
+
+  const found = results.reduce((sum, result) => sum + result.new, 0);
+  const searches = results.length;
+  const sentences = [
+    found === 0
+      ? "No new jobs since the last search."
+      : searches === 1
+        ? `Found ${found} new ${found === 1 ? "job" : "jobs"}.`
+        : `Found ${found} new ${found === 1 ? "job" : "jobs"} across ${searches} searches.`,
+  ];
+
+  // A source that did not answer any one search is named once.
+  const outcomes = results.flatMap((result) => result.sources);
+  const named = (status: string) => [
+    ...new Set(outcomes.filter((s) => s.status === status).map((s) => sourceLabel(s.source_id))),
+  ];
+  const unreachable = named("unreachable");
+  const failed = named("failed").filter((name) => !unreachable.includes(name));
+  if (unreachable.length > 0) sentences.push(`Couldn’t reach ${joinNames(unreachable)}.`);
+  if (failed.length > 0) sentences.push(`${joinNames(failed)} answered with an error.`);
+  if (failures.length > 0) {
+    sentences.push(`${failures.length} ${failures.length === 1 ? "search" : "searches"} couldn’t run.`);
+  }
+
+  return {
+    message: sentences.join(" "),
+    complete: unreachable.length + failed.length + failures.length === 0,
+  };
+}
+
 /// joinNames lists names as a sentence does: "A", "A and B", "A, B and C".
 function joinNames(names: string[]): string {
   if (names.length <= 1) return names.join("");

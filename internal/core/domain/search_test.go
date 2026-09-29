@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -104,4 +105,19 @@ func TestSearchTerms(t *testing.T) {
 	assert.Equal(t, []string{"backend", "engineer"}, SearchTerms("  Backend   Engineer "))
 	assert.Empty(t, SearchTerms(""))
 	assert.Empty(t, SearchTerms("   "))
+}
+
+func TestSavedSearch_Stale(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	ranAgo := func(d time.Duration) *time.Time {
+		at := now.Add(-d)
+		return &at
+	}
+
+	assert.True(t, (&SavedSearch{}).Stale(now), "a search that never ran is due")
+	assert.False(t, (&SavedSearch{LastRunAt: ranAgo(time.Minute)}).Stale(now))
+	assert.False(t, (&SavedSearch{LastRunAt: ranAgo(SearchRefreshInterval - time.Second)}).Stale(now))
+	assert.True(t, (&SavedSearch{LastRunAt: ranAgo(SearchRefreshInterval)}).Stale(now), "six hours is due, not a second past it")
+	assert.True(t, (&SavedSearch{LastRunAt: ranAgo(3 * 24 * time.Hour)}).Stale(now))
 }

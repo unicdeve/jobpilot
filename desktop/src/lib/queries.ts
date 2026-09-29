@@ -37,6 +37,7 @@ import type {
   DeletionResult,
   DeletionTarget,
   DiscoveryResult,
+  DiscoverySettings,
   Job,
   JobMatch,
   JobPage,
@@ -61,6 +62,7 @@ import type {
 export const keys = {
   profile: ["profile"] as const,
   llmSettings: ["llm-settings"] as const,
+  discoverySettings: ["discovery-settings"] as const,
   jobs: {
     all: ["jobs"] as const,
     count: ["jobs", "count"] as const,
@@ -342,6 +344,28 @@ export function useAgentRuns(id: string | undefined) {
   });
 }
 
+/// useDiscoverySettings loads how discovery behaves without being asked.
+export function useDiscoverySettings() {
+  const api = useApi();
+  return useQuery<DiscoverySettings>({
+    queryKey: keys.discoverySettings,
+    queryFn: () => api.getDiscoverySettings(),
+  });
+}
+
+export function useSaveDiscoverySettings(opts?: MutationOpts<DiscoverySettings, DiscoverySettings>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: DiscoverySettings) => api.saveDiscoverySettings(settings),
+    ...opts,
+    onSuccess: (saved, ...rest) => {
+      queryClient.setQueryData(keys.discoverySettings, saved);
+      opts?.onSuccess?.(saved, ...rest);
+    },
+  });
+}
+
 export function useLLMSettings() {
   const api = useApi();
   return useQuery<LLMSettings>({
@@ -534,6 +558,8 @@ export function useRunSavedSearch(opts?: MutationOpts<DiscoveryResult, Discovery
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.jobs.all });
+      // The search now says when it last ran.
+      void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
       opts?.onSuccess?.(...args);
     },
   });

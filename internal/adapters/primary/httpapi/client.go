@@ -157,6 +157,13 @@ func (c *Client) ListSavedSearches(ctx context.Context) ([]*domain.SavedSearch, 
 	return searches, err
 }
 
+// StaleSavedSearches lists the saved searches due to run again.
+func (c *Client) StaleSavedSearches(ctx context.Context) ([]*domain.SavedSearch, error) {
+	var searches []*domain.SavedSearch
+	_, err := c.do(ctx, http.MethodGet, "/v1/searches/stale", nil, &searches)
+	return searches, err
+}
+
 // GetSavedSearch returns one named search by ID.
 func (c *Client) GetSavedSearch(ctx context.Context, id string) (*domain.SavedSearch, error) {
 	var search domain.SavedSearch
@@ -311,6 +318,24 @@ func (c *Client) ListMatches(ctx context.Context, candidateID string) ([]*domain
 	path := "/v1/matches?" + url.Values{"candidate_id": {candidateID}}.Encode()
 	_, err := c.do(ctx, http.MethodGet, path, nil, &matches)
 	return matches, err
+}
+
+// GetDiscoverySettings returns how discovery behaves without being asked.
+func (c *Client) GetDiscoverySettings(ctx context.Context) (*domain.DiscoverySettings, error) {
+	var settings domain.DiscoverySettings
+	if _, err := c.do(ctx, http.MethodGet, "/v1/settings/discovery", nil, &settings); err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
+// SaveDiscoverySettings saves how discovery behaves without being asked.
+func (c *Client) SaveDiscoverySettings(ctx context.Context, settings domain.DiscoverySettings) (*domain.DiscoverySettings, error) {
+	var saved domain.DiscoverySettings
+	if _, err := c.do(ctx, http.MethodPut, "/v1/settings/discovery", settings, &saved); err != nil {
+		return nil, err
+	}
+	return &saved, nil
 }
 
 // GetLLMSettings returns the daemon's configured LLM backend.

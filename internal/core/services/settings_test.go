@@ -127,3 +127,18 @@ func TestSettingsService_SaveLLMSettings(t *testing.T) {
 		assert.ErrorContains(t, err, "failed to save LLM settings")
 	})
 }
+
+func TestSettingsService_DiscoverySettings(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := NewSettingsService(newFakeSettingsRepository())
+
+	got, err := svc.GetDiscoverySettings(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.RefreshOnLaunch, "refreshing on launch is on until turned off")
+
+	require.NoError(t, svc.SaveDiscoverySettings(ctx, &domain.DiscoverySettings{RefreshOnLaunch: false}))
+	got, err = svc.GetDiscoverySettings(ctx)
+	require.NoError(t, err)
+	assert.False(t, got.RefreshOnLaunch, "turned off stays off")
+}

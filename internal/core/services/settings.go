@@ -14,6 +14,9 @@ import (
 // backend is stored as a JSON blob.
 const llmSettingsKey = "llm_settings"
 
+// discoverySettingsKey is the user_settings key for DiscoverySettings.
+const discoverySettingsKey = "discovery_settings"
+
 // SettingsService manages user-configurable local settings.
 type SettingsService struct {
 	repo ports.SettingsRepository
@@ -71,5 +74,35 @@ func (s *SettingsService) SaveLLMSettings(ctx context.Context, settings *domain.
 		return fmt.Errorf("failed to save LLM settings: %w", err)
 	}
 
+	return nil
+}
+
+// GetDiscoverySettings returns how discovery behaves without being asked.
+// Nothing saved yet is the defaults: refreshing on launch is on.
+func (s *SettingsService) GetDiscoverySettings(ctx context.Context) (*domain.DiscoverySettings, error) {
+	value, found, err := s.repo.Get(ctx, discoverySettingsKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get discovery settings: %w", err)
+	}
+	if !found {
+		return &domain.DiscoverySettings{RefreshOnLaunch: true}, nil
+	}
+
+	var settings domain.DiscoverySettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return nil, fmt.Errorf("failed to parse stored discovery settings: %w", err)
+	}
+	return &settings, nil
+}
+
+// SaveDiscoverySettings persists how discovery behaves without being asked.
+func (s *SettingsService) SaveDiscoverySettings(ctx context.Context, settings *domain.DiscoverySettings) error {
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to encode discovery settings: %w", err)
+	}
+	if err := s.repo.Set(ctx, discoverySettingsKey, string(value)); err != nil {
+		return fmt.Errorf("failed to save discovery settings: %w", err)
+	}
 	return nil
 }

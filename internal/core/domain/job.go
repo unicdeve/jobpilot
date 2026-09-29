@@ -162,8 +162,24 @@ type SavedSearch struct {
 	Name      string         `json:"name"`
 	Criteria  SearchCriteria `json:"criteria"`
 	IsDefault bool           `json:"is_default"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	// LastRunAt is when the search last ran against the job sources and at
+	// least one answered, from any path: Discover, setup, the CLI or a
+	// scout. Nil is a search that never has.
+	LastRunAt *time.Time `json:"last_run_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// SearchRefreshInterval is how old a search's last run must be before the
+// desktop runs it again on opening (docs/02_features/04_job_discovery.md
+// AC-009). Opening the app several times a day asks the sources once in
+// that time, not every time.
+const SearchRefreshInterval = 6 * time.Hour
+
+// Stale reports whether the search is due to run again at now: it never
+// has, or its last run is at least SearchRefreshInterval old.
+func (s *SavedSearch) Stale(now time.Time) bool {
+	return s.LastRunAt == nil || now.Sub(*s.LastRunAt) >= SearchRefreshInterval
 }
 
 // Remote types a job can have. A source that does not say leaves it empty.

@@ -61,6 +61,10 @@ type SavedSearchRepository interface {
 	// ClearDefault unsets the default flag on every row, so a caller can set
 	// a new default without tripping the single-default index.
 	ClearDefault(ctx context.Context) error
+	// MarkRun records when the search last ran against the job sources.
+	// It changes nothing else, not even updated_at: running a search is not
+	// editing it.
+	MarkRun(ctx context.Context, id string, at time.Time) error
 }
 
 // CredentialNameRepository records which credentials exist, and never

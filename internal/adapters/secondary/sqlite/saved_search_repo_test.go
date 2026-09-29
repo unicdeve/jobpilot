@@ -5,6 +5,7 @@ package sqlite
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -175,4 +176,36 @@ func TestSavedSearchRepository_List_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, searches)
 	assert.NotNil(t, searches, "an empty list serializes as [] rather than null")
+}
+
+func TestSavedSearchRepository_MarkRun(t *testing.T) {
+	t.Parallel()
+
+	repo := NewSavedSearchRepository(newTestDB(t).Conn())
+	ctx := context.Background()
+	search := goSearch("Go roles")
+	require.NoError(t, repo.Save(ctx, search))
+
+	got, err := repo.GetByID(ctx, search.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got.LastRunAt, "a new search has never run")
+	updatedAt := got.UpdatedAt
+
+	ranAt := time.Date(2026, 9, 29, 8, 30, 0, 0, time.UTC)
+	require.NoError(t, repo.MarkRun(ctx, search.ID, ranAt))
+
+	got, err = repo.GetByID(ctx, search.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.LastRunAt)
+	assert.True(t, ranAt.Equal(*got.LastRunAt))
+	assert.Equal(t, updatedAt, got.UpdatedAt, "running a search is not editing it")
+
+	got.Name = "Renamed"
+	require.NoError(t, repo.Save(ctx, got))
+	got, err = repo.GetByID(ctx, search.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.LastRunAt, "editing a search keeps when it last ran")
+	assert.True(t, ranAt.Equal(*got.LastRunAt))
+
+	assert.NoError(t, repo.MarkRun(ctx, "gone", ranAt), "a search deleted meanwhile is not an error")
 }

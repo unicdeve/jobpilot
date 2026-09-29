@@ -18,6 +18,7 @@ import type {
   DeletionResult,
   DeletionTarget,
   DiscoveryResult,
+  DiscoverySettings,
   Job,
   JobMatch,
   JobListFilter,
@@ -103,6 +104,9 @@ export interface ApiClient {
   listSources(): Promise<SourceInfo[]>;
 
   listSavedSearches(): Promise<SavedSearch[]>;
+  /// staleSavedSearches lists the searches due to run again: never run, or
+  /// not in the last six hours. The daemon decides which.
+  staleSavedSearches(): Promise<SavedSearch[]>;
   createSavedSearch(name: string, criteria: SearchCriteria): Promise<SavedSearch>;
   updateSavedSearch(id: string, name: string, criteria: SearchCriteria): Promise<SavedSearch>;
   deleteSavedSearch(id: string): Promise<void>;
@@ -139,6 +143,8 @@ export interface ApiClient {
   listMatches(candidateId: string): Promise<JobMatch[]>;
 
   getLLMSettings(): Promise<LLMSettings>;
+  getDiscoverySettings(): Promise<DiscoverySettings>;
+  saveDiscoverySettings(settings: DiscoverySettings): Promise<DiscoverySettings>;
   checkLLMHealth(): Promise<LLMHealth>;
   saveLLMSettings(settings: LLMSettings): Promise<SaveLLMSettingsResult>;
 
@@ -307,6 +313,7 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     listSources: () => request<SourceInfo[]>(daemon, "GET", "/v1/sources"),
 
     listSavedSearches: () => request<SavedSearch[]>(daemon, "GET", "/v1/searches"),
+    staleSavedSearches: () => request<SavedSearch[]>(daemon, "GET", "/v1/searches/stale"),
     createSavedSearch: (name, criteria) =>
       request<SavedSearch>(daemon, "POST", "/v1/searches", { name, criteria }),
     updateSavedSearch: (id, name, criteria) =>
@@ -366,6 +373,9 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       request<JobMatch[]>(daemon, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
 
     getLLMSettings: () => request<LLMSettings>(daemon, "GET", "/v1/settings/llm"),
+    getDiscoverySettings: () => request<DiscoverySettings>(daemon, "GET", "/v1/settings/discovery"),
+    saveDiscoverySettings: (settings) =>
+      request<DiscoverySettings>(daemon, "PUT", "/v1/settings/discovery", settings),
     checkLLMHealth: () => request<LLMHealth>(daemon, "GET", "/v1/settings/llm/health"),
     saveLLMSettings: (settings) =>
       request<SaveLLMSettingsResult>(daemon, "PUT", "/v1/settings/llm", settings),

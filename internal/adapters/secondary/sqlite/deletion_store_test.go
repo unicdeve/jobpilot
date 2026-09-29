@@ -143,6 +143,8 @@ func TestDeletionStore_Specifics(t *testing.T) {
 		execAll(t, db, true, `INSERT INTO user_settings (key, value) VALUES ('llm', '{}')`)
 		svc := services.NewDeletionService(NewDeletionStore(db), noCredentials{}, nil, nil)
 
+		schemaVersion := count(t, db, `SELECT max(version_id) FROM goose_db_version`)
+
 		reach, err := svc.Preview(ctx, domain.DeleteEverything, "")
 		require.NoError(t, err)
 		assert.Equal(t, 4, reach.Deleted[domain.RecordJob])
@@ -150,7 +152,7 @@ func TestDeletionStore_Specifics(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Empty(t, kindCounts(t, db))
-		assert.Equal(t, 16, count(t, db, `SELECT max(version_id) FROM goose_db_version`), "the schema stays")
+		assert.Equal(t, schemaVersion, count(t, db, `SELECT max(version_id) FROM goose_db_version`), "the schema stays")
 	})
 }
 

@@ -305,6 +305,13 @@ func (f *fakeSavedSearchRepository) ClearDefault(_ context.Context) error {
 	return nil
 }
 
+func (f *fakeSavedSearchRepository) MarkRun(_ context.Context, id string, at time.Time) error {
+	if search, ok := f.searches[id]; ok {
+		search.LastRunAt = &at
+	}
+	return nil
+}
+
 // fakeMatchRepository is an in-memory ports.MatchRepository for tests.
 type fakeMatchRepository struct {
 	matches map[string]*domain.JobMatch
