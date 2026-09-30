@@ -51,3 +51,11 @@ accepted decisions.
 `make dev` runs the daemon with hot reload, and `make run-desktop` the desktop
 alongside it; see [docs/08_development/hot_reload.md](docs/08_development/hot_reload.md).
 `make check` runs every check the Definition of Done asks for.
+
+## Third-party data
+
+The countries and cities JobPilot reads job locations against are generated from
+[GeoNames](https://www.geonames.org/), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They are compiled
+into the daemon (`internal/core/domain/geo`), and placing a job never contacts
+GeoNames.
