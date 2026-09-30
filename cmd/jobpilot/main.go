@@ -203,13 +203,17 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	// configured. Google Search is deliberately absent (ADR-0020): it returns a
 	// JavaScript gate rather than results to anything but a browser, and
 	// getting past that is the one thing ADR-0013 and ADR-0014 say the
-	// product never does. See docs/02_features/04_job_discovery.md.
+	// product never does. Working Nomads is absent too: it publishes a feed
+	// and no terms for using it (ADR-0023 §7). See
+	// docs/02_features/04_job_discovery.md.
 	sources := []ports.JobSource{
 		discovery.NewArbeitnowSource(discovery.DefaultArbeitnowBaseURL),
 		discovery.NewRemotiveSource(discovery.DefaultRemotiveBaseURL),
 		discovery.NewRemoteOKSource(discovery.DefaultRemoteOKBaseURL),
 		discovery.NewHimalayasSource(discovery.DefaultHimalayasBaseURL),
 		discovery.NewHackerNewsSource(discovery.DefaultHackerNewsBaseURL),
+		discovery.NewWeWorkRemotelySource(discovery.DefaultWeWorkRemotelyBaseURL),
+		discovery.NewJobicySource(discovery.DefaultJobicyBaseURL),
 	}
 
 	// headless: false — real use always shows a visible window so the user

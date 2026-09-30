@@ -22,13 +22,16 @@ func TestSources_ReportUnreachableOnlyWhenNothingAnswered(t *testing.T) {
 	t.Parallel()
 
 	connectors := map[string]func(baseURL string) ports.JobSource{
-		"arbeitnow":  func(u string) ports.JobSource { return NewArbeitnowSource(u) },
-		"remotive":   func(u string) ports.JobSource { return NewRemotiveSource(u) },
-		"remoteok":   func(u string) ports.JobSource { return NewRemoteOKSource(u) },
-		"himalayas":  func(u string) ports.JobSource { return NewHimalayasSource(u) },
-		"hackernews": func(u string) ports.JobSource { return NewHackerNewsSource(u) },
+		"arbeitnow":      func(u string) ports.JobSource { return NewArbeitnowSource(u) },
+		"remotive":       func(u string) ports.JobSource { return NewRemotiveSource(u) },
+		"remoteok":       func(u string) ports.JobSource { return NewRemoteOKSource(u) },
+		"himalayas":      func(u string) ports.JobSource { return NewHimalayasSource(u) },
+		"hackernews":     func(u string) ports.JobSource { return NewHackerNewsSource(u) },
+		"weworkremotely": func(u string) ports.JobSource { return NewWeWorkRemotelySource(u) },
+		"jobicy":         func(u string) ports.JobSource { return NewJobicySource(u) },
 	}
-	criteria := domain.SearchCriteria{Keywords: "engineer"}
+	// A country, so Jobicy reads its locations first, as a real search does.
+	criteria := domain.SearchCriteria{Keywords: "engineer", WorkFrom: "NG"}
 
 	for name, newSource := range connectors {
 		t.Run(name+" with nothing listening is unreachable", func(t *testing.T) {
