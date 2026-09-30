@@ -1,9 +1,11 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -558,4 +560,155 @@ func TestScoutRun_PassesOverJobsRuledOut(t *testing.T) {
 		}
 	}
 	assert.Contains(t, passedOver, "you marked this job not interested")
+}
+
+// Hooks exercise cancellation-aware persistence without the shared fakes'
+// pointer aliasing making an unpersisted final status appear saved.
+type scoutRunStore struct {
+	*fakeAgentRunRepository
+	update func(context.Context, *domain.AgentRun) error
+}
+
+func (r *scoutRunStore) Save(ctx context.Context, run *domain.AgentRun) error {
+	stored := *run
+	if err := r.fakeAgentRunRepository.Save(ctx, &stored); err != nil {
+		return err
+	}
+	run.ID = stored.ID
+	return nil
+}
+
+func (r *scoutRunStore) Update(ctx context.Context, run *domain.AgentRun) error {
+	return r.update(ctx, run)
+}
+
+type scoutMatcherFunc func(context.Context, string, string) (*domain.JobMatch, error)
+
+func (f scoutMatcherFunc) AnalyzeJobForCandidate(ctx context.Context, candidateID, jobID string) (*domain.JobMatch, error) {
+	return f(ctx, candidateID, jobID)
+}
+
+type scoutEventStore struct {
+	*fakeAgentEventRepository
+	save func(context.Context, *domain.AgentEvent) error
+}
+
+func (r *scoutEventStore) Save(ctx context.Context, event *domain.AgentEvent) error {
+	return r.save(ctx, event)
+}
+
+type cancellationAwareScoutStore struct {
+	*fakeScoutRepository
+}
+
+func (r *cancellationAwareScoutStore) GetByID(ctx context.Context, id string) (*domain.Scout, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	scout, err := r.fakeScoutRepository.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	stored := *scout
+	return &stored, nil
+}
+
+func (r *cancellationAwareScoutStore) Update(ctx context.Context, scout *domain.Scout) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.fakeScoutRepository.Update(ctx, scout)
+}
+
+func TestScoutRun_CancellationFinalizesPartialWork(t *testing.T) {
+	t.Parallel()
+	for _, returnScore := range []bool{false, true} {
+		t.Run(fmt.Sprintf("matcher returns score %t", returnScore), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			f := newScoutFixture(t, []*domain.Job{
+				job("first", "Go Engineer", "Acme"), job("last", "Go Engineer", "Acme"),
+			}, map[string]int{"first": 90}, domain.SearchCriteria{Keywords: "Go"}, nil)
+			f.svc.matcher = scoutMatcherFunc(func(ctx context.Context, candidateID, jobID string) (*domain.JobMatch, error) {
+				if jobID == "last" {
+					cancel()
+					if returnScore {
+						return &domain.JobMatch{Score: 90}, nil
+					}
+					return nil, ctx.Err()
+				}
+				return f.matcher.AnalyzeJobForCandidate(ctx, candidateID, jobID)
+			})
+			f.svc.scouts = &cancellationAwareScoutStore{f.scouts}
+			var finalCtx context.Context
+			f.svc.runs = &scoutRunStore{fakeAgentRunRepository: f.runs, update: func(ctx context.Context, run *domain.AgentRun) error {
+				finalCtx = ctx
+				require.NoError(t, ctx.Err())
+				deadline, ok := ctx.Deadline()
+				require.True(t, ok, "cleanup must be bounded")
+				assert.WithinDuration(t, time.Now(), deadline, 5*time.Second)
+				return f.runs.Update(ctx, run)
+			}}
+			f.svc.events = &scoutEventStore{fakeAgentEventRepository: f.events, save: func(ctx context.Context, event *domain.AgentEvent) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				return f.events.Save(ctx, event)
+			}}
+
+			report, err := f.svc.Run(ctx, f.scout.ID)
+
+			require.ErrorIs(t, err, context.Canceled)
+			require.NotNil(t, finalCtx)
+			assert.ErrorIs(t, finalCtx.Err(), context.Canceled, "cleanup releases its timeout")
+			assert.Equal(t, 1, report.Created)
+			assert.Contains(t, report.Error, "context canceled")
+			apps, err := f.apps.ListByCandidate(context.Background(), "cand-1")
+			require.NoError(t, err)
+			require.Len(t, apps, 1)
+			assert.Equal(t, "first", apps[0].JobID)
+			run, err := f.runs.GetByID(context.Background(), report.RunID)
+			require.NoError(t, err)
+			assert.Equal(t, domain.AgentRunStatusFailed, run.Status)
+			assert.NotNil(t, run.CompletedAt)
+			assert.Contains(t, run.Error, "context canceled")
+			events, err := f.events.ListByRun(context.Background(), report.RunID)
+			require.NoError(t, err)
+			require.NotEmpty(t, events)
+			assert.Equal(t, "scout_finished", events[len(events)-1].Action)
+			assert.Equal(t, string(domain.AgentRunStatusFailed), events[len(events)-1].Status)
+			assert.NotNil(t, f.scouts.scouts[f.scout.ID].LastRunAt)
+		})
+	}
+}
+
+func TestScoutRun_FinalizationFailuresAreLogged(t *testing.T) {
+	// Replacing the default logger requires this test to remain serial.
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	f := newScoutFixture(t, []*domain.Job{job("first", "Go Engineer", "Acme")},
+		map[string]int{"first": 90}, domain.SearchCriteria{Keywords: "Go"}, nil)
+	f.svc.runs = &scoutRunStore{fakeAgentRunRepository: f.runs, update: func(context.Context, *domain.AgentRun) error {
+		return errors.New("run write failed")
+	}}
+	f.svc.events = &scoutEventStore{fakeAgentEventRepository: f.events, save: func(context.Context, *domain.AgentEvent) error {
+		return errors.New("event write failed")
+	}}
+	f.scouts.updateErr = errors.New("scout write failed")
+
+	report, err := f.svc.Run(context.Background(), f.scout.ID)
+
+	require.NoError(t, err, "history failures must not discard completed work")
+	assert.Equal(t, 1, report.Created)
+	assert.Empty(t, report.Error)
+	assert.Contains(t, logs.String(), "failed to finalize scout run")
+	assert.Contains(t, logs.String(), "run write failed")
+	assert.Contains(t, logs.String(), "failed to record scout event")
+	assert.Contains(t, logs.String(), "event write failed")
+	assert.Contains(t, logs.String(), "failed to record scout last run")
+	assert.Contains(t, logs.String(), "scout write failed")
+	assert.NotContains(t, logs.String(), "Go Engineer", "logs must not include job content")
 }

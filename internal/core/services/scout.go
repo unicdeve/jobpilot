@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -171,6 +172,9 @@ func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRu
 			scout.MinMatchScore, scout.MaxApplicationsPerRun, scout.Source))
 
 	runErr := s.considerJobs(ctx, scout, search, candidate, run.ID, report)
+	if runErr == nil {
+		runErr = ctx.Err()
+	}
 
 	s.finish(ctx, run, report, runErr)
 	if runErr != nil {
@@ -230,6 +234,11 @@ func (s *ScoutService) considerJobs(
 		}
 
 		match, err := s.matcher.AnalyzeJobForCandidate(ctx, candidate.ID, job.ID)
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			verdict.Reason = cancelErr.Error()
+			report.Verdicts = append(report.Verdicts, verdict)
+			return cancelErr
+		}
 		if err != nil {
 			// One job that cannot be scored does not end the run: the
 			// rest are still worth considering, and the failure is
@@ -346,6 +355,10 @@ func (s *ScoutService) createApplication(ctx context.Context, jobID, candidateID
 
 // finish closes off the run record and the scout's last-run time.
 func (s *ScoutService) finish(ctx context.Context, run *domain.AgentRun, report *domain.ScoutRunReport, runErr error) {
+	// Persist the outcome even when the request was cancelled, but bound cleanup.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	completed := s.now()
 	run.CompletedAt = &completed
 	run.Status = domain.AgentRunStatusCompleted
@@ -354,17 +367,23 @@ func (s *ScoutService) finish(ctx context.Context, run *domain.AgentRun, report 
 		run.Error = runErr.Error()
 	}
 
+	// A failure to write the trail must not discard the report: the
+	// applications are already created and the user can see them.
+	if err := s.runs.Update(ctx, run); err != nil {
+		slog.WarnContext(ctx, "failed to finalize scout run", "run_id", run.ID, "error", err)
+	}
 	s.record(ctx, run.ID, "scout_finished", string(run.Status),
 		fmt.Sprintf("%d jobs considered", report.Considered),
 		fmt.Sprintf("%d applications created", report.Created))
 
-	// A failure to write the trail must not discard the report: the
-	// applications are already created and the user can see them.
-	_ = s.runs.Update(ctx, run)
-
-	if scout, err := s.scouts.GetByID(ctx, report.ScoutID); err == nil {
-		scout.LastRunAt = &completed
-		_ = s.scouts.Update(ctx, scout)
+	scout, err := s.scouts.GetByID(ctx, report.ScoutID)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to load scout for finalization", "scout_id", report.ScoutID, "error", err)
+		return
+	}
+	scout.LastRunAt = &completed
+	if err := s.scouts.Update(ctx, scout); err != nil {
+		slog.WarnContext(ctx, "failed to record scout last run", "scout_id", scout.ID, "error", err)
 	}
 }
 
@@ -400,5 +419,7 @@ func (s *ScoutService) recordDecision(ctx context.Context, runID, action, policy
 func (s *ScoutService) save(ctx context.Context, event *domain.AgentEvent) {
 	event.Tool = "scout"
 	event.CreatedAt = s.now()
-	_ = s.events.Save(ctx, event)
+	if err := s.events.Save(ctx, event); err != nil {
+		slog.WarnContext(ctx, "failed to record scout event", "run_id", event.RunID, "action", event.Action, "error", err)
+	}
 }

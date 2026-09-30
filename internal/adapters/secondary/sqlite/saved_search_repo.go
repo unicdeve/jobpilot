@@ -32,6 +32,8 @@ const savedSearchSelect = savedSearchColumns + `, last_run_at`
 
 // Save inserts a new saved search or updates an existing one, assigning an
 // ID when the search does not already have one.
+// An edit preserves the stored default status so a stale read cannot undo
+// a concurrent SetDefault.
 func (r *SavedSearchRepository) Save(ctx context.Context, search *domain.SavedSearch) error {
 	if search.ID == "" {
 		search.ID = uuid.New().String()
@@ -49,7 +51,6 @@ func (r *SavedSearchRepository) Save(ctx context.Context, search *domain.SavedSe
 		salary_min = excluded.salary_min,
 		salary_max = excluded.salary_max,
 		excluded_companies = excluded.excluded_companies,
-		is_default = excluded.is_default,
 		updated_at = CURRENT_TIMESTAMP`
 
 	c := search.Criteria
@@ -143,23 +144,66 @@ func (r *SavedSearchRepository) List(ctx context.Context) ([]*domain.SavedSearch
 	return searches, nil
 }
 
-// Delete removes a saved search by ID.
+// Delete removes a saved search and promotes a replacement default in one
+// transaction. The first statement takes the write lock before choosing
+// a replacement, so concurrent default changes cannot interleave.
 func (r *SavedSearchRepository) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.ExecContext(ctx, `DELETE FROM saved_searches WHERE id = ?`, id); err != nil {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin saved search deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var wasDefault bool
+	err = tx.QueryRowContext(ctx, `DELETE FROM saved_searches WHERE id = ? RETURNING is_default`, id).Scan(&wasDefault)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("saved search not found: %s", id)
+	}
+	if err != nil {
 		return fmt.Errorf("failed to delete saved search %s: %w", id, err)
+	}
+	if wasDefault {
+		_, err := tx.ExecContext(ctx, `UPDATE saved_searches
+			SET is_default = 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = (SELECT id FROM saved_searches ORDER BY name COLLATE NOCASE, id LIMIT 1)`)
+		if err != nil {
+			return fmt.Errorf("failed to promote replacement saved search: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit saved search deletion: %w", err)
 	}
 	return nil
 }
 
-// ClearDefault unsets the default flag everywhere. Promoting a new default
-// means clearing first: the schema permits only one row with is_default = 1.
-func (r *SavedSearchRepository) ClearDefault(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx,
+// SetDefault promotes a search atomically, preserving the old default if
+// the target is missing or any write fails.
+func (r *SavedSearchRepository) SetDefault(ctx context.Context, id string) (*domain.SavedSearch, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin default saved search change: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Write before reading to serialize competing changes under SQLite's
+	// write lock, without upgrading a potentially stale read snapshot.
+	_, err = tx.ExecContext(ctx,
 		`UPDATE saved_searches SET is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE is_default = 1`)
 	if err != nil {
-		return fmt.Errorf("failed to clear the default saved search: %w", err)
+		return nil, fmt.Errorf("failed to clear the default saved search: %w", err)
 	}
-	return nil
+	search, err := r.scan(tx.QueryRowContext(ctx, `UPDATE saved_searches
+		SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING `+savedSearchSelect, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("saved search not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to promote saved search %s: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit default saved search change: %w", err)
+	}
+	return search, nil
 }
 
 // MarkRun records when a search last ran. A search deleted meanwhile is not

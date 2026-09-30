@@ -112,6 +112,10 @@ A Scout honours its per-run ceiling.
 A run that fails partway leaves the applications it already created intact
 and records the failure.
 
+Cancellation stops further work, including when it arrives during the final job's scoring.
+Final status persistence has a separate five-second deadline so a cancelled request can still be recorded as failed.
+Failures to persist the run, last-run time, or activity events are logged without discarding completed applications or the partial report.
+
 ## Deferred
 
 **How a Scout is triggered.**

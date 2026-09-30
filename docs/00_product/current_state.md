@@ -28,6 +28,10 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 ### Features implemented (CLI unless noted; see gaps below)
 
+- Saved-search default changes and deletion with replacement promotion are transactional, preserving the previous state on failure.
+  Criteria edits preserve a concurrently changed default.
+- Scout cancellation preserves completed applications and finalizes the run with a separate five-second deadline, including cancellation during the final scoring call.
+  Best-effort persistence failures are logged rather than silently discarded.
 - Onboarding flow: data directory + schema init, LLM connectivity check,
   initial candidate profile, optional resume import.
 - Candidate profile management: get, update, delete. Name is stored as

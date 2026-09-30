@@ -144,19 +144,7 @@ func (s *SavedSearchService) Default(ctx context.Context) (*domain.SavedSearch, 
 // SetDefault promotes one saved search to be the default, demoting whichever
 // held it before.
 func (s *SavedSearchService) SetDefault(ctx context.Context, id string) (*domain.SavedSearch, error) {
-	search, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.repo.ClearDefault(ctx); err != nil {
-		return nil, err
-	}
-
-	search.IsDefault = true
-	if err := s.repo.Save(ctx, search); err != nil {
-		return nil, err
-	}
-	return search, nil
+	return s.repo.SetDefault(ctx, id)
 }
 
 // Delete removes a saved search. Deleting the default promotes the next
@@ -164,27 +152,7 @@ func (s *SavedSearchService) SetDefault(ctx context.Context, id string) (*domain
 // default, which would make an unqualified discovery run fail for a reason
 // they would have to go looking for.
 func (s *SavedSearchService) Delete(ctx context.Context, id string) error {
-	search, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
-	}
-	if !search.IsDefault {
-		return nil
-	}
-
-	remaining, err := s.repo.List(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to pick a new default saved search: %w", err)
-	}
-	if len(remaining) == 0 {
-		return nil
-	}
-
-	remaining[0].IsDefault = true
-	return s.repo.Save(ctx, remaining[0])
+	return s.repo.Delete(ctx, id)
 }
 
 // Templates returns the catalog of ready-made searches a user can adopt.

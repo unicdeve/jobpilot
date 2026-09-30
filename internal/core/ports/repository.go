@@ -53,14 +53,16 @@ type JobRepository interface {
 
 // SavedSearchRepository persists the user's named search criteria.
 type SavedSearchRepository interface {
+	// Save preserves an existing search's default status.
 	Save(ctx context.Context, search *domain.SavedSearch) error
 	GetByID(ctx context.Context, id string) (*domain.SavedSearch, error)
 	GetByName(ctx context.Context, name string) (*domain.SavedSearch, error)
 	List(ctx context.Context) ([]*domain.SavedSearch, error)
+	// Delete atomically removes a search and, if it was the default,
+	// promotes the next remaining search in List order.
 	Delete(ctx context.Context, id string) error
-	// ClearDefault unsets the default flag on every row, so a caller can set
-	// a new default without tripping the single-default index.
-	ClearDefault(ctx context.Context) error
+	// SetDefault atomically replaces the default and returns the selected search.
+	SetDefault(ctx context.Context, id string) (*domain.SavedSearch, error)
 	// MarkRun records when the search last ran against the job sources.
 	// It changes nothing else, not even updated_at: running a search is not
 	// editing it.

@@ -250,6 +250,9 @@ func (f *fakeSavedSearchRepository) Save(_ context.Context, search *domain.Saved
 		f.order = append(f.order, search.ID)
 	}
 	stored := *search
+	if previous, ok := f.searches[search.ID]; ok {
+		stored.IsDefault = previous.IsDefault
+	}
 	f.searches[search.ID] = &stored
 	return nil
 }
@@ -292,17 +295,37 @@ func (f *fakeSavedSearchRepository) List(_ context.Context) ([]*domain.SavedSear
 	return out, nil
 }
 
-func (f *fakeSavedSearchRepository) Delete(_ context.Context, id string) error {
+func (f *fakeSavedSearchRepository) Delete(ctx context.Context, id string) error {
+	search, err := f.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	remaining, err := f.List(ctx)
+	if err != nil {
+		return err
+	}
 	delete(f.searches, id)
 	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
+	if search.IsDefault {
+		for _, next := range remaining {
+			if next.ID != id {
+				next.IsDefault = true
+				break
+			}
+		}
+	}
 	return nil
 }
 
-func (f *fakeSavedSearchRepository) ClearDefault(_ context.Context) error {
-	for _, search := range f.searches {
-		search.IsDefault = false
+func (f *fakeSavedSearchRepository) SetDefault(ctx context.Context, id string) (*domain.SavedSearch, error) {
+	selected, err := f.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	for _, search := range f.searches {
+		search.IsDefault = search.ID == id
+	}
+	return selected, nil
 }
 
 func (f *fakeSavedSearchRepository) MarkRun(_ context.Context, id string, at time.Time) error {

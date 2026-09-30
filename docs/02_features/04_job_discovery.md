@@ -73,6 +73,10 @@ Implemented as named saved searches (`saved_searches`, `SavedSearchService`,
 user keeps several and picks between them; one is the default that
 `search run` uses when none is named.
 
+Changing the default, or deleting it and promoting the next search, is atomic.
+If either operation fails, the previous search and default remain intact.
+Editing a search's criteria does not overwrite a concurrently changed default.
+
 Discovery refuses to run on empty criteria. Neither public source filters
 server-side, so an unrestricted search would import every posting on every
 board — roughly 266 jobs at the time of writing — rather than the jobs the

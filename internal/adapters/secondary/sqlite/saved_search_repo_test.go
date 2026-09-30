@@ -128,8 +128,10 @@ func TestSavedSearchRepository_SingleDefaultEnforced(t *testing.T) {
 	err := repo.Save(ctx, second)
 	assert.Error(t, err, "a second default must be refused by the schema, not silently allowed")
 
-	require.NoError(t, repo.ClearDefault(ctx))
+	second.IsDefault = false
 	require.NoError(t, repo.Save(ctx, second))
+	_, err = repo.SetDefault(ctx, second.ID)
+	require.NoError(t, err)
 
 	searches, err := repo.List(ctx)
 	require.NoError(t, err)
@@ -208,4 +210,156 @@ func TestSavedSearchRepository_MarkRun(t *testing.T) {
 	assert.True(t, ranAt.Equal(*got.LastRunAt))
 
 	assert.NoError(t, repo.MarkRun(ctx, "gone", ranAt), "a search deleted meanwhile is not an error")
+}
+
+func TestSavedSearchRepository_DefaultChangeRollsBack(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"promote", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			db := newTestDB(t)
+			repo := NewSavedSearchRepository(db.Conn())
+			first := goSearch("Go roles")
+			first.IsDefault = true
+			second := goSearch("Rust roles")
+			require.NoError(t, repo.Save(ctx, first))
+			require.NoError(t, repo.Save(ctx, second))
+
+			// Inject failure at promotion, after the old default has been
+			// cleared or deleted. This trigger exists only in the test DB.
+			_, err := db.Conn().ExecContext(ctx, `CREATE TRIGGER fail_promotion
+				BEFORE UPDATE OF is_default ON saved_searches WHEN NEW.is_default = 1
+				BEGIN SELECT RAISE(ABORT, 'promotion failed'); END`)
+			require.NoError(t, err)
+			if operation == "promote" {
+				_, err = repo.SetDefault(ctx, second.ID)
+			} else {
+				err = repo.Delete(ctx, first.ID)
+			}
+			require.ErrorContains(t, err, "promotion failed")
+
+			searches, err := repo.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, searches, 2, "a failed deletion must restore the search too")
+			assert.Equal(t, first.ID, searches[0].ID)
+			assert.True(t, searches[0].IsDefault, "failure must preserve the original default")
+			assert.False(t, searches[1].IsDefault)
+		})
+	}
+}
+
+func TestSavedSearchRepository_SetDefaultMissingTarget(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := NewSavedSearchRepository(newTestDB(t).Conn())
+	first := goSearch("Go roles")
+	first.IsDefault = true
+	require.NoError(t, repo.Save(ctx, first))
+
+	_, err := repo.SetDefault(ctx, "missing")
+	require.ErrorContains(t, err, "not found")
+	got, err := repo.GetByID(ctx, first.ID)
+	require.NoError(t, err)
+	assert.True(t, got.IsDefault)
+}
+
+func TestSavedSearchRepository_DeletePreservesDefault(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		deleteName string
+		wantName   string
+	}{
+		{name: "promotes alphabetically", deleteName: "Middle", wantName: "alpha"},
+		{name: "keeps existing default", deleteName: "alpha", wantName: "Middle"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			repo := NewSavedSearchRepository(newTestDB(t).Conn())
+			var deleteID string
+			for _, name := range []string{"Zebra", "Middle", "alpha"} {
+				search := goSearch(name)
+				search.IsDefault = name == "Middle"
+				require.NoError(t, repo.Save(ctx, search))
+				if name == tc.deleteName {
+					deleteID = search.ID
+				}
+			}
+			require.NoError(t, repo.Delete(ctx, deleteID))
+			searches, err := repo.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, searches, 2)
+			assert.Equal(t, tc.wantName, searches[0].Name)
+			assert.True(t, searches[0].IsDefault)
+			assert.False(t, searches[1].IsDefault)
+			require.NoError(t, repo.Delete(ctx, searches[1].ID))
+			require.NoError(t, repo.Delete(ctx, searches[0].ID))
+			searches, err = repo.List(ctx)
+			require.NoError(t, err)
+			assert.Empty(t, searches, "deleting the final default needs no replacement")
+		})
+	}
+}
+
+func TestSavedSearchRepository_EditDoesNotUndoDefaultChange(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := NewSavedSearchRepository(newTestDB(t).Conn())
+	first, second := goSearch("Go roles"), goSearch("Rust roles")
+	first.IsDefault = true
+	require.NoError(t, repo.Save(ctx, first))
+	require.NoError(t, repo.Save(ctx, second))
+	_, err := repo.SetDefault(ctx, second.ID)
+	require.NoError(t, err)
+
+	// Both objects predate the promotion. Editing either must preserve the
+	// current default rather than restore its stale is_default value.
+	for _, search := range []*domain.SavedSearch{first, second} {
+		search.Criteria.Keywords = "updated"
+		require.NoError(t, repo.Save(ctx, search))
+	}
+	searches, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, searches, 2)
+	assert.Equal(t, second.ID, searches[0].ID)
+	assert.True(t, searches[0].IsDefault)
+	assert.False(t, searches[1].IsDefault)
+	for _, search := range searches {
+		assert.Equal(t, "updated", search.Criteria.Keywords)
+	}
+}
+
+func TestSavedSearchRepository_ConcurrentDefaultChanges(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := NewSavedSearchRepository(newTestDB(t).Conn())
+	first, second := goSearch("Go roles"), goSearch("Rust roles")
+	first.IsDefault = true
+	require.NoError(t, repo.Save(ctx, first))
+	require.NoError(t, repo.Save(ctx, second))
+
+	start := make(chan struct{})
+	errs := make(chan error, 8)
+	for i := range 8 {
+		id := first.ID
+		if i%2 == 0 {
+			id = second.ID
+		}
+		go func() {
+			<-start
+			_, err := repo.SetDefault(ctx, id)
+			errs <- err
+		}()
+	}
+	close(start)
+	for range 8 {
+		assert.NoError(t, <-errs)
+	}
+	searches, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, searches, 2)
+	assert.True(t, searches[0].IsDefault)
+	assert.False(t, searches[1].IsDefault)
 }
