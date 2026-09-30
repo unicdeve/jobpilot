@@ -188,6 +188,14 @@ func readCities(zipped []byte, countries map[string]country) (map[string]*city, 
 			if len(key) < 3 {
 				continue
 			}
+			// Three letters are the city's own name, like Ulm, or an
+			// airport's code, which GeoNames lists among its alternate
+			// names and which reads a word as a city: "Tor", for Toronto,
+			// was Slovyansk, and "ACT" Waco. Only the city's own is kept;
+			// the abbreviations postings do use are the geo package's.
+			if len(key) == 3 && key != fold.Name(fields[1]) && key != fold.Name(fields[2]) {
+				continue
+			}
 			entry, ok := cities[key]
 			if !ok {
 				entry = &city{population: make(map[string]int)}

@@ -10,7 +10,7 @@ import (
 // stored with an older version is read again when the daemon starts
 // (ADR-0023 §3), so raising it whenever the vocabulary, the tables or the
 // phrases change reaches every stored job, not only new ones.
-const SignalsVersion = 1
+const SignalsVersion = 2
 
 // ReadSignals derives what a job says about itself beyond its fields: where
 // it can be done from, and whether it offers relocation and visa

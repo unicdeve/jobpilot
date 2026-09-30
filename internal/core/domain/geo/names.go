@@ -58,12 +58,13 @@ var countryAliases = map[string][]string{
 }
 
 // subdivisions are states and provinces postings name in place of their
-// country: "Austin, Texas", "Toronto, Ontario". A subdivision never takes a
-// name a country has, so "Georgia" stays the country.
+// country: "Austin, Texas", "Toronto, Ontario". A subdivision that has a
+// country's name — "Georgia" — is the country when looked up alone, and
+// SubdivisionOf says which country's state it also is.
 var subdivisions = map[string][]string{
 	"US": {
 		"Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
-		"Delaware", "District of Columbia", "Washington DC", "Florida", "Hawaii", "Idaho",
+		"Delaware", "District of Columbia", "Washington DC", "Florida", "Georgia", "Hawaii", "Idaho",
 		"Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
 		"Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
 		"Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York State", "North Carolina",
@@ -81,4 +82,11 @@ var subdivisions = map[string][]string{
 		"Hessen", "Hesse", "Niedersachsen", "Lower Saxony", "Sachsen", "Saxony",
 	},
 	"AU": {"New South Wales", "Queensland", "Western Australia", "South Australia", "Tasmania"},
+}
+
+// cityAbbreviations are the short names postings write for a city, which
+// the city table leaves out of the names GeoNames lists for it.
+var cityAbbreviations = map[string]string{
+	"NYC": "New York City",
+	"SF":  "San Francisco",
 }

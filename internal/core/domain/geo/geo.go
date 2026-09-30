@@ -133,6 +133,23 @@ func Compounds() []string {
 	return tables().compounds
 }
 
+// SubdivisionOf returns the country in which a country's name is also a
+// state's: "Georgia" is a state of the US. A reader decides which the name
+// means from what is written beside it.
+func SubdivisionOf(name string) (string, bool) {
+	code, ok := tables().alsoSubdivision[Fold(name)]
+	return code, ok
+}
+
+// CountryPlace returns the country with this code as a place.
+func CountryPlace(code string) (Place, bool) {
+	t := tables()
+	if _, ok := t.byCode[code]; !ok {
+		return Place{}, false
+	}
+	return countryPlace(t, code), true
+}
+
 // CountryName returns the product's name for a country code, or the code
 // itself when it is not one.
 func CountryName(code string) string {
@@ -155,6 +172,9 @@ type geoTables struct {
 	regions      map[string]Place
 	compounds    []string
 	cities       func() map[string]cityEntry
+	// alsoSubdivision is the country each country name that is also a
+	// state's is a state of: "georgia" is "US".
+	alsoSubdivision map[string]string
 }
 
 // cityEntry is every city one folded name names.
@@ -170,6 +190,8 @@ var tables = sync.OnceValue(func() *geoTables {
 		byCode:       make(map[string]Country, len(generatedCountries)),
 		countryNames: make(map[string]string, len(generatedCountries)*2),
 		regions:      make(map[string]Place),
+
+		alsoSubdivision: make(map[string]string),
 	}
 	for _, country := range generatedCountries {
 		t.byCode[country.Code] = country
@@ -182,9 +204,11 @@ var tables = sync.OnceValue(func() *geoTables {
 	}
 	for code, names := range subdivisions {
 		for _, name := range names {
-			if _, taken := t.countryNames[Fold(name)]; !taken {
-				t.countryNames[Fold(name)] = code
+			if _, taken := t.countryNames[Fold(name)]; taken {
+				t.alsoSubdivision[Fold(name)] = code
+				continue
 			}
+			t.countryNames[Fold(name)] = code
 		}
 	}
 	for _, region := range regionDefinitions {
@@ -254,6 +278,11 @@ func readCities(t *geoTables) map[string]cityEntry {
 	}
 	if err := scanner.Err(); err != nil {
 		panic("geo: the embedded city table is unreadable: " + err.Error())
+	}
+	for abbreviation, name := range cityAbbreviations {
+		if city, ok := cities[Fold(name)]; ok {
+			cities[Fold(abbreviation)] = city
+		}
 	}
 	return cities
 }

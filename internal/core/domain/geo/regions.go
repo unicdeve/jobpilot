@@ -65,7 +65,7 @@ var regionDefinitions = []regionDefinition{
 	{name: "South America", continents: []string{"SA"}},
 	{name: "LATAM", aliases: []string{"LatAm", "Latin America"}, continents: []string{"SA"},
 		include: append(append([]string{}, centralAmerica...), "CU", "DO", "HT", "MX", "PR")},
-	{name: "Americas", aliases: []string{"The Americas"}, continents: []string{"NA", "SA"}},
+	{name: "Americas", aliases: []string{"The Americas", "AMER"}, continents: []string{"NA", "SA"}},
 	{name: "DACH", include: []string{"AT", "CH", "DE"}},
 	{name: "Nordics", aliases: []string{"Nordic", "Nordic countries"}, include: []string{"DK", "FI", "IS", "NO", "SE"}},
 	{name: "Scandinavia", include: []string{"DK", "NO", "SE"}},

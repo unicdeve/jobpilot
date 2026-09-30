@@ -149,19 +149,21 @@ func keepCompoundsWhole(location string) string {
 // nothing about New York.
 func readAlternative(alternative string) []geo.Place {
 	var read []geo.Place
-	named := make(map[string]bool)
 	states := make(map[string]bool)
 	for _, item := range itemSeparators.Split(alternative, -1) {
 		if country, ok := subdivisionCodes[strings.TrimSpace(item)]; ok {
 			states[country] = true
 			continue
 		}
-		for _, place := range readSegment(item) {
-			read = append(read, place)
-			if place.Kind != geo.KindCity {
-				for _, country := range place.Countries {
-					named[country] = true
-				}
+		read = append(read, readSegment(item)...)
+	}
+	read = placeStates(read, states)
+
+	named := make(map[string]bool)
+	for _, place := range read {
+		if place.Kind != geo.KindCity {
+			for _, country := range place.Countries {
+				named[country] = true
 			}
 		}
 	}
@@ -178,6 +180,50 @@ func readAlternative(alternative string) []geo.Place {
 		places = append(places, place)
 	}
 	return places
+}
+
+// placeStates reads a country's name that is also a state's as the state
+// when the rest of the alternative is in the state's country: "Atlanta,
+// Georgia" and "Remote, US, Georgia" are in the United States, while
+// "Tbilisi, Georgia" is in Georgia.
+func placeStates(read []geo.Place, states map[string]bool) []geo.Place {
+	for i, place := range read {
+		if place.Kind != geo.KindCountry {
+			continue
+		}
+		country, ok := geo.SubdivisionOf(place.Name)
+		if !ok {
+			continue
+		}
+		if states[country] || elsewhereIn(read, i, country, place.Countries[0]) {
+			if state, ok := geo.CountryPlace(country); ok {
+				read[i] = state
+			}
+		}
+	}
+	return read
+}
+
+// elsewhereIn reports whether a place other than read[skip] is in country:
+// a country or region that holds it, or a city that is there and not in
+// other.
+func elsewhereIn(read []geo.Place, skip int, country, other string) bool {
+	for i, place := range read {
+		if i == skip {
+			continue
+		}
+		if place.Kind != geo.KindCity {
+			if slices.Contains(place.Countries, country) {
+				return true
+			}
+			continue
+		}
+		all := append(append([]string{}, place.Countries...), place.Elsewhere...)
+		if slices.Contains(all, country) && !slices.Contains(all, other) {
+			return true
+		}
+	}
+	return false
 }
 
 // placeCity picks the city a name means from what the rest of its

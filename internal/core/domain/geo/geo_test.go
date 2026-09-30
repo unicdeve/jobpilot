@@ -130,3 +130,32 @@ func TestEveryRegionCountryExists(t *testing.T) {
 		assert.True(t, ok, "alias for unknown country %s", code)
 	}
 }
+
+func TestLookup_ShortCityNames(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []string{"Tor", "ACT", "SEA", "LON"} {
+		_, ok := Lookup(code, true)
+		assert.False(t, ok, "%q is an airport's code, not a city's name", code)
+	}
+	for written, name := range map[string]string{"NYC": "New York City", "SF": "San Francisco", "Ulm": "Ulm"} {
+		place, ok := Lookup(written, true)
+		require.True(t, ok, written)
+		assert.Equal(t, name, place.Name)
+	}
+}
+
+func TestSubdivisionOf(t *testing.T) {
+	t.Parallel()
+
+	country, ok := SubdivisionOf("Georgia")
+	require.True(t, ok)
+	assert.Equal(t, "US", country)
+
+	place, ok := Lookup("Georgia", false)
+	require.True(t, ok)
+	assert.Equal(t, []string{"GE"}, place.Countries, "alone, Georgia is the country")
+
+	_, ok = SubdivisionOf("Texas")
+	assert.False(t, ok, "Texas is only a state")
+}
