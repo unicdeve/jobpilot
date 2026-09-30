@@ -41,3 +41,40 @@ func (c *jobCache[T]) put(items []T) {
 	c.items = items
 	c.fetchedAt = time.Now()
 }
+
+// queryCache is jobCache for a source whose answer depends on what it was
+// asked: one entry per query, each with the same TTL.
+//
+// Entries are never evicted, only replaced. A process asks as many distinct
+// queries as the user has saved searches, which is a handful.
+type queryCache[T any] struct {
+	ttl time.Duration
+
+	mu      sync.Mutex
+	entries map[string]*jobCache[T]
+}
+
+func newQueryCache[T any](ttl time.Duration) *queryCache[T] {
+	return &queryCache[T]{ttl: ttl, entries: make(map[string]*jobCache[T])}
+}
+
+// get returns the items cached for query and whether they are still fresh.
+func (c *queryCache[T]) get(query string) ([]T, bool) {
+	return c.entry(query).get()
+}
+
+// put stores a fresh fetch for query.
+func (c *queryCache[T]) put(query string, items []T) {
+	c.entry(query).put(items)
+}
+
+func (c *queryCache[T]) entry(query string) *jobCache[T] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[query]
+	if !ok {
+		entry = newJobCache[T](c.ttl)
+		c.entries[query] = entry
+	}
+	return entry
+}

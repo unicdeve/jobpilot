@@ -87,6 +87,8 @@ func TestHimalayasSource_Search(t *testing.T) {
 	assert.NotContains(t, first.DescriptionMarkdown, "<strong>")
 
 	second := jobs[1]
+	assert.Equal(t, []string{"Worldwide"}, second.Locations,
+		"Himalayas writes worldwide as no restriction, which would otherwise read as not stated")
 	assert.Equal(t, "Lead support.", second.DescriptionMarkdown,
 		"a job with no description falls back to its excerpt rather than being blank")
 	assert.Empty(t, second.EmploymentType,
@@ -111,6 +113,64 @@ func TestHimalayasSource_PagesThroughTheBoard(t *testing.T) {
 	assert.Len(t, jobs, himalayasMaxPages)
 	assert.Equal(t, []string{"0", "20", "40", "60"}, offsets,
 		"the board holds a hundred thousand jobs, so a fetch takes a bounded recent slice")
+}
+
+func TestHimalayasSource_SearchesForTheCriteria(t *testing.T) {
+	t.Parallel()
+
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path+"?"+r.URL.RawQuery)
+		page := r.URL.Query().Get("page")
+		if page == "3" {
+			_, _ = w.Write([]byte(`{"totalCount":41,"jobs":[]}`))
+			return
+		}
+		// Page 2 repeats page 1's posting, as a board that changed between
+		// the two requests does.
+		_, _ = fmt.Fprintf(w, `{"totalCount":41,"jobs":[
+			{"guid":"a","title":"Backend Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/a"},
+			{"guid":"p%s","title":"Backend Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/p%s"}]}`, page, page)
+	}))
+	t.Cleanup(server.Close)
+
+	source := NewHimalayasSource(server.URL)
+	criteria := domain.SearchCriteria{Title: "backend", Keywords: "  engineer ", WorkFrom: "ng"}
+	jobs, err := source.Search(context.Background(), criteria)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{
+		"/search?country=NG&page=1&q=backend+engineer",
+		"/search?country=NG&page=2&q=backend+engineer",
+		"/search?country=NG&page=3&q=backend+engineer",
+	}, requests, "the search endpoint pages from one and stops at an empty page")
+	assert.Len(t, jobs, 3, "a posting on two pages is one job")
+
+	_, err = source.Search(context.Background(), criteria)
+	require.NoError(t, err)
+	assert.Len(t, requests, 3, "the same query within the hour is answered from the cache")
+
+	_, err = source.Search(context.Background(), domain.SearchCriteria{Title: "frontend"})
+	require.NoError(t, err)
+	assert.Equal(t, "/search?page=1&q=frontend", requests[3],
+		"another query is its own request, and no country is sent when none is set")
+}
+
+func TestHimalayasSource_SearchReadsAtMostFivePages(t *testing.T) {
+	t.Parallel()
+
+	var pages []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		pages = append(pages, page)
+		_, _ = fmt.Fprintf(w, `{"totalCount":500,"jobs":[{"guid":"g%s","title":"Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/%s"}]}`, page, page)
+	}))
+	t.Cleanup(server.Close)
+
+	jobs, err := NewHimalayasSource(server.URL).Search(context.Background(), domain.SearchCriteria{Keywords: "go"})
+	require.NoError(t, err)
+	assert.Len(t, jobs, himalayasMaxSearchPages)
+	assert.Equal(t, []string{"1", "2", "3", "4", "5"}, pages)
 }
 
 func TestHimalayasSource_KeepsWhatItAlreadyFetched(t *testing.T) {

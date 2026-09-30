@@ -18,13 +18,16 @@ import (
 // See https://himalayas.app/jobs/api.
 const DefaultHimalayasBaseURL = "https://himalayas.app/jobs/api"
 
-const himalayasCacheTTL = 30 * time.Minute
+// himalayasCacheTTL is an hour per query. Himalayas updates its listings
+// daily, asks API users not to poll for nothing, and answers 429 to one
+// that does.
+const himalayasCacheTTL = time.Hour
 
 // himalayasPageSize is the API's own cap. Asking for more returns 20
 // anyway, so the number is written here rather than discovered at runtime.
 const himalayasPageSize = 20
 
-// himalayasMaxPages bounds one fetch.
+// himalayasMaxPages bounds one browse of the newest listings.
 //
 // The board holds around a hundred thousand jobs. Pulling all of them into
 // a local database on every search is not breadth, it is a different
@@ -32,6 +35,11 @@ const himalayasPageSize = 20
 // fetched is held in memory first. Four pages is a useful recent slice at
 // a cost the user does not notice.
 const himalayasMaxPages = 4
+
+// himalayasMaxSearchPages bounds one search: the hundred most relevant
+// results. Measured on 2026-09-30, "backend engineer" open to Nigeria had
+// 219, and relevance thins out well before the last of them (ADR-0023 §6).
+const himalayasMaxSearchPages = 5
 
 // HimalayasSource is a ports.JobSource backed by Himalayas' public API.
 //
@@ -41,7 +49,7 @@ const himalayasMaxPages = 4
 type HimalayasSource struct {
 	baseURL    string
 	httpClient *http.Client
-	cache      *jobCache[domain.Job]
+	cache      *queryCache[domain.Job]
 }
 
 // NewHimalayasSource constructs a HimalayasSource targeting baseURL.
@@ -49,7 +57,7 @@ func NewHimalayasSource(baseURL string) *HimalayasSource {
 	return &HimalayasSource{
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 20 * time.Second},
-		cache:      newJobCache[domain.Job](himalayasCacheTTL),
+		cache:      newQueryCache[domain.Job](himalayasCacheTTL),
 	}
 }
 
@@ -88,16 +96,30 @@ type himalayasJob struct {
 	ExpiryDate           int64    `json:"expiryDate"`
 }
 
-// Search returns a recent slice of the board; JobDiscoveryService applies
-// the criteria.
-func (s *HimalayasSource) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
-	if cached, fresh := s.cache.get(); fresh {
+// Search asks Himalayas' search for the criteria's title and keywords, and
+// for jobs open to the country the candidate works from; with neither
+// title nor keywords, it browses the newest listings instead.
+//
+// Himalayas' search is its own relevance ranking rather than
+// domain.SearchCriteria.Matches, so JobDiscoveryService still applies the
+// criteria: the search decides which of the board's jobs are read, not
+// which are kept (ADR-0023 §6).
+func (s *HimalayasSource) Search(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Job, error) {
+	query := himalayasQuery(criteria)
+	endpoint, pages := s.baseURL, himalayasMaxPages
+	if query.Get("q") != "" {
+		endpoint, pages = s.baseURL+"/search", himalayasMaxSearchPages
+	}
+
+	key := endpoint + "?" + query.Encode()
+	if cached, fresh := s.cache.get(key); fresh {
 		return cached, nil
 	}
 
 	var jobs []domain.Job
-	for page := 0; page < himalayasMaxPages; page++ {
-		batch, err := s.fetchPage(ctx, page*himalayasPageSize)
+	seen := make(map[string]bool)
+	for page := 0; page < pages; page++ {
+		batch, err := s.fetchPage(ctx, endpoint, query, page)
 		if err != nil {
 			// A later page failing does not discard the earlier ones: a
 			// partial slice of a hundred thousand jobs is still a useful
@@ -110,19 +132,48 @@ func (s *HimalayasSource) Search(ctx context.Context, _ domain.SearchCriteria) (
 		if len(batch) == 0 {
 			break
 		}
-		jobs = append(jobs, batch...)
+		for _, job := range batch {
+			// Pages are read while the board changes underneath them, so
+			// one posting can appear on two.
+			if !seen[job.CanonicalURL] {
+				seen[job.CanonicalURL] = true
+				jobs = append(jobs, job)
+			}
+		}
 	}
 
-	s.cache.put(jobs)
+	s.cache.put(key, jobs)
 	return jobs, nil
 }
 
-func (s *HimalayasSource) fetchPage(ctx context.Context, offset int) ([]domain.Job, error) {
-	query := url.Values{
-		"limit":  {strconv.Itoa(himalayasPageSize)},
-		"offset": {strconv.Itoa(offset)},
+// himalayasQuery is what a search asks Himalayas for. The country is sent
+// as its ISO code, which the search accepts, and it returns worldwide roles
+// along with those that name the country.
+func himalayasQuery(criteria domain.SearchCriteria) url.Values {
+	query := url.Values{}
+	if q := strings.Join(strings.Fields(criteria.Title+" "+criteria.Keywords), " "); q != "" {
+		query.Set("q", q)
+		if country := strings.TrimSpace(criteria.WorkFrom); country != "" {
+			query.Set("country", strings.ToUpper(country))
+		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"?"+query.Encode(), nil)
+	return query
+}
+
+// fetchPage reads one page. The browse endpoint pages by offset, the search
+// endpoint by a page number counted from one.
+func (s *HimalayasSource) fetchPage(ctx context.Context, endpoint string, base url.Values, page int) ([]domain.Job, error) {
+	query := url.Values{}
+	for key, values := range base {
+		query[key] = values
+	}
+	if base.Get("q") != "" {
+		query.Set("page", strconv.Itoa(page+1))
+	} else {
+		query.Set("limit", strconv.Itoa(himalayasPageSize))
+		query.Set("offset", strconv.Itoa(page*himalayasPageSize))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+query.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -176,7 +227,7 @@ func (s *HimalayasSource) toDomainJob(item himalayasJob) domain.Job {
 		Title:               strings.TrimSpace(item.Title),
 		CompanyName:         strings.TrimSpace(item.CompanyName),
 		DescriptionMarkdown: description,
-		Locations:           item.LocationRestrictions,
+		Locations:           himalayasLocations(item.LocationRestrictions),
 		RemoteType:          "remote",
 		EmploymentType:      normalizeEmploymentType(item.EmploymentType),
 		Skills:              item.Categories,
@@ -197,6 +248,17 @@ func (s *HimalayasSource) toDomainJob(item himalayasJob) domain.Job {
 		job.SalaryPeriod = strings.ToLower(item.SalaryPeriod)
 	}
 	return job
+}
+
+// himalayasLocations is where a Himalayas job can be done from, in words.
+// Himalayas encodes "worldwide" as an empty restriction list, which its own
+// worldwide search confirms, and an absence would read as "not stated"
+// (ADR-0023 §1), so it is written out.
+func himalayasLocations(restrictions []string) []string {
+	if len(restrictions) == 0 {
+		return []string{"Worldwide"}
+	}
+	return restrictions
 }
 
 // normalizeEmploymentType maps a source's spelling onto the vocabulary the
