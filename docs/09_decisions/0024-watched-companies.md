@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed, and implemented with it.
+Accepted, and implemented.
+Accepted on 2026-10-01, after watching companies on a real installation.
 It records `docs/02_features/17_company_watchlists.md` D4 (decided on 2026-09-30), and how the feature's other decisions are built.
 It changes one thing the spec said, from measurement: see §6.
 
