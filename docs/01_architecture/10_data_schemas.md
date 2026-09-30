@@ -37,6 +37,23 @@ Job
 
 `workable`, `relocation` and `visa_sponsorship` are derived from the fields above by core (ADR-0023), never written by a source.
 
+## WatchedCompany
+
+```text
+WatchedCompany
+- id
+- board { provider: greenhouse | lever | ashby, region: "" | eu, name }
+- name
+- url
+- added_from
+- added_at
+- checked_at
+- check: "" | ok | gone | unreachable | failed
+- open_roles
+```
+
+A company whose own hiring page discovery reads (ADR-0024). Its jobs are ordinary jobs, with `source_id` `company-pages` and the page's own address as `canonical_url`.
+
 ## Candidate
 
 ```text

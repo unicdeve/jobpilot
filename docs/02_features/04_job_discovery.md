@@ -28,7 +28,7 @@ Discovery is connector-driven, not scraper-first.
 
 Initial public source implementations should prioritize stable APIs/feeds/public ATS pages where practical.
 
-Seven sources are registered, all public APIs needing no credentials, so discovery works on a fresh install with nothing configured:
+Seven job boards are registered, all public APIs needing no credentials, so discovery works on a fresh install with nothing configured, and an eighth source reads the companies the candidate watches:
 
 | source | what it adds |
 | --- | --- |
@@ -39,8 +39,9 @@ Seven sources are registered, all public APIs needing no credentials, so discove
 | Hacker News, "Who is hiring?" | postings that exist on no job board, written by the hiring team |
 | We Work Remotely | remote engineering roles, most of them open anywhere, with the employer's own list of countries where it gives one |
 | Jobicy | remote roles, read by region: the jobs open anywhere and those open where the candidate works from |
+| Company pages | every opening on the Greenhouse, Lever and Ashby hiring pages of the companies the candidate watches; none until one is watched (`docs/02_features/17_company_watchlists.md`, ADR-0024) |
 
-Why each of the last three reads what it reads, and why Working Nomads is not a source, is ADR-0023.
+Why Himalayas, We Work Remotely and Jobicy read what they read, and why Working Nomads is not a source, is ADR-0023.
 
 ### Why Google is not a source
 

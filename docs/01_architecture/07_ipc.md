@@ -55,10 +55,20 @@ different failure modes, so they are different endpoints.
   `GET` and `PUT /v1/settings/discovery` read and turn that off.
 - `GET /v1/sources` names the sources a search asks (`[{"id", "name"}]`), so
   a client can say what a search is waiting on while it runs.
+- `GET /v1/companies` lists the watched companies (`{"companies": [...]}`),
+  `POST /v1/companies` watches one by `{"address"}` or `{"job_id"}` — 201,
+  or 200 with the company already watched — `PUT /v1/companies/{id}`
+  renames one (`{"name"}`), and `DELETE /v1/companies/{id}` stops watching
+  it. An address that is not a supported hiring page is 400, a board its
+  provider says is not there 422, and one that did not answer 503.
+  `GET /v1/companies/suggestions` is the starter list less what is watched,
+  and `GET /v1/jobs/{id}/company` the hiring page a job is on and the
+  watched company it is, if any (ADR-0024 §8).
 
 `POST /v1/jobs/search` rejects empty criteria with 400 rather than importing
 every posting both boards return.
 A search that some sources did not answer is still a 200, naming them.
+A source made of parts that answered for some of them — company pages, some of whose boards failed — is `ok`, and names the parts that failed in `failing` (ADR-0024 §5).
 One that no source answered is 503 when none could be reached, which is what
 being offline looks like, and 502 when at least one was reached and failed. Saved searches live under `/v1/searches`
 (list, create, get, update, delete, and `POST /v1/searches/{id}/default`),

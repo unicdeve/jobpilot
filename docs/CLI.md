@@ -35,6 +35,10 @@ This document lists the currently implemented CLI commands for the JobPilot.
 - `jobpilot-cli job not-interested [id]`: Rules a job out. It leaves your lists and search results, and scouts pass it over; its match and applications are unchanged. `job interested [id]` undoes it. Neither asks, since both are reversible.
 - `jobpilot-cli job delete [id]`: Deletes a job with its match and applications. A later search may store it again; to keep it away, mark it not interested instead.
 - `jobpilot-cli search show [id]`: Shows one stored job in full, including its description, where it can be done from, and what it says about relocation and visa sponsorship, with the sentence each was read from. Reads local history only.
+- `jobpilot-cli company watch [address]`: Watches a company, from the address of its Greenhouse, Lever or Ashby hiring page or of any posting on it. Its board is read once to check it, and the company is named from it. From then on your saved searches find its openings like any source's; watching imports nothing by itself (`docs/02_features/17_company_watchlists.md`).
+- `jobpilot-cli company list`: Lists the companies you watch, with when each page was last checked and how that went: its open roles, or that it was gone or could not be reached.
+- `jobpilot-cli company rename [id] [name]` and `company unwatch [id]`: Rename a watched company, or stop watching it. Jobs already found from it stay.
+- `jobpilot-cli company suggestions`: Lists the starter list's companies you do not watch yet, each with how many of its open roles could be done from anywhere or from more than one continent when measured, and the address to watch it by.
 - `jobpilot-cli search import [url]`: Imports one job by its URL. When no source's API can fetch that URL, the page is opened in the browser worker and its content extracted (see `docs/02_features/04_job_discovery.md` AC-007). Requires internet access.
 
 ## Deleting Data

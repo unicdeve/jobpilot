@@ -62,6 +62,7 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 - JobMatch
 - SavedSearch (named search criteria; see `docs/02_features/04_job_discovery.md` AC-001)
 - PersonalAnswer (what the candidate says about themselves, owned by the candidate or one application; ADR-0022)
+- WatchedCompany (a company whose hiring page discovery reads, with its last check; ADR-0024)
 - Application
 - ApplicationQuestion
 - ApplicationAnswer
@@ -89,5 +90,11 @@ All of it is derived from columns the row already holds, so no source is asked a
 When the daemon starts, it reads again every job whose `signals_version` is below `domain.SignalsVersion`, in the background, and a change to the vocabulary reaches old jobs as well as new ones.
 
 `saved_searches` gains `work_from`, an ISO code, and `include_relocation`, the two criteria that use them.
+
+## Watched companies
+
+`watched_companies` (migration `00020`, ADR-0024 §2) holds each company the candidate watches: its board's provider, region and name, what it is called, the address it was added from and when, and its last check — `checked_at`, `check_status` (`ok`, `gone`, `unreachable` or `failed`) and `open_roles`.
+One board is one row, its name compared without case.
+It references nothing and nothing references it; "delete all data" deletes it and deleting the profile does not.
 
 Vector search is not required for MVP. Add it only when a concrete retrieval requirement exists.

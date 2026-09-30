@@ -2,9 +2,10 @@
 
 ## Status
 
-Specified; not implemented.
-D1 to D6 were decided on 2026-09-30, and storage is recorded in an ADR written with the implementation, as ADR-0022 was for About you.
-It builds on ADR-0023 (proposed), which reads where a job can be done from; this feature supplies jobs for that reading from a new kind of source.
+Implemented.
+D1 to D6 were decided on 2026-09-30, and ADR-0024 records storage and how the feature is built, written with the implementation, as ADR-0022 was for About you.
+It builds on ADR-0023, which reads where a job can be done from; this feature supplies jobs for that reading from a new kind of source.
+"What building it changed", at the end, records where measuring the providers changed what this spec said.
 
 ## Purpose
 
@@ -51,7 +52,8 @@ Probed the same day, neither answered in a way that could be built on — Workab
   The request is the same public read a careers page makes, and nothing is sent to the company.
   AGENTS.md principle 5 is untouched: this finds jobs, it does not apply to them.
 - **The company's own words win on location.**
-  A structured field (Lever's `country`, Ashby's `workplaceType` and `address`) is used as it is; free text goes through ADR-0023's reading like every other source's.
+  Each provider's own list of a posting's locations is read with ADR-0023's rules, like every other source's, and its workplace type becomes the job's remote type.
+  Lever's `country` and Ashby's `address` are not used for where: measured, they name the posting's office or hiring entity (ADR-0024 §6).
 
 ## Behaviour
 
@@ -83,7 +85,7 @@ The provider's workplace type becomes `RemoteType`, and its locations become `Lo
 
 - Desktop: Settings → Job searches gains "Companies you watch": each company, its provider, when it was last checked and whether that worked, with Add and Remove, and below it the starter list's suggestions, each with what was measured and when.
 - CLI: `jobpilot-cli company watch <url>`, `company list` and `company unwatch <id>`.
-- CLI: `company suggestions` lists the starter list with what was measured, and `company watch` takes a suggestion's board as well as an address.
+- CLI: `company suggestions` lists the starter list with what was measured and each suggestion's address, which is what `company watch` takes.
 - Removing a company leaves its jobs where they are, as removing a saved search does; deleting data follows ADR-0021 (D4).
 
 ## Decisions
@@ -108,7 +110,7 @@ Storing every posting of a watched company was rejected: it fills the local data
 
 ### D4. A `watched_companies` table, recorded in an ADR
 
-It holds the provider, the board's name, the display name, the address it was added from, when it was added, when it was last checked and how that went.
+It holds the provider, the board's name, the display name, the address it was added from, when it was added, when it was last checked and how that went, and how many postings the board held then.
 It is the candidate's own data and gains a record kind in ADR-0021's deletion rules: deleted with "delete all data", not with a profile.
 The ADR is written with the implementation, as ADR-0022 was.
 A setting holding a list of addresses was rejected: it has no room for when each was checked, and it is not something ADR-0021 knows how to delete.
@@ -177,3 +179,25 @@ Given the seed file, when the starter list is regenerated, then it holds only th
   It is regenerated in the repository, and a candidate's installation never measures boards it has not been asked to watch.
 - Merging a job found on a board with the same job found on the company's page.
   They have different URLs, so today they are two jobs; recognising them as one is a question for AC-005 of `04_job_discovery.md`, not for this feature.
+
+## What building it changed
+
+Built on 2026-09-30.
+The decisions hold; measuring the three providers changed four things this spec said, each recorded in ADR-0024:
+
+- **Structured locations are not where a job can be done from (§6).**
+  Ashby's `address` and Lever's `country` name the office or hiring entity: Railway's "Global" roles carry a San Francisco address, and Toptal's "Europe and Canada" roles GB.
+  Each provider's list of locations is read instead.
+- **Lever and Ashby name the company on their hosted pages, not in their APIs (§4).**
+  The name is read from the page once, when a company is watched.
+  Lever's API answers a site that does not exist with an empty list, and its page with 404, so the page also decides whether the board is there.
+- **A starter entry needs its board to name the company.**
+  PostHog's and Cursor's Ashby pages give no name, so the generator drops them rather than suggest a company it cannot name.
+- **The starter list is ordered by how many roles qualified**, so the suggestions read first have the most to offer; measured on 2026-09-30, 38 of 87 seed boards qualified, from Canonical's 274 of 306 roles to one role at several.
+
+Measuring also found two mistakes in ADR-0023's reading, fixed with it, so `SignalsVersion` is 2 and every stored job is read again:
+
+- "Georgia" beside the United States, or a city there, is the US state: "Remote, US, Georgia" had read as Georgia the country, which put Celonis and Elastic on the list.
+- A three-letter name is a city only when it is the city's own, like Ulm: GeoNames lists airport codes among cities' names, and Stripe's "Tor", for Toronto, had read as Slovyansk.
+  "NYC" and "SF" are kept by hand.
+- "AMER" is the Americas.

@@ -65,7 +65,7 @@ In the database (`jobpilot.db` in the data directory):
 
 - about the user: the candidate and its four child tables, resumes (as converted text; the original file is never copied, only its path is recorded)
 - derived from the user and a job: matches, applications with their questions and answers, cover letter versions and state transitions
-- about the search: jobs, saved searches, scouts
+- about the search: jobs, saved searches, scouts, watched companies (ADR-0024)
 - the trail: agent runs and their events
 - configuration: LLM settings, the names of stored API keys (never the keys)
 
@@ -134,7 +134,7 @@ Applications that used it keep everything already generated from it and record t
 ### Delete the profile
 
 Deletes the candidate and all of its details, its resumes, its matches and its applications with everything under them.
-Keeps what is about the search rather than the person: jobs, saved searches, scouts, settings and API keys.
+Keeps what is about the search rather than the person: jobs, saved searches, scouts, watched companies, settings and API keys.
 The installation then returns to first-run setup.
 
 ### Clear history

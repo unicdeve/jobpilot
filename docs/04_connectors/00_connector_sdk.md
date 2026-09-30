@@ -65,6 +65,7 @@ A connector writes the source's own words into `Job.Locations` and does not inte
 What they mean follows `RemoteType`: for a remote job, where the candidate may be; for an onsite or hybrid job, where the office is.
 A source that says "worldwide" by saying nothing — Himalayas' empty `locationRestrictions` — writes it out as "Worldwide", since an absence reads as not stated.
 Where a source has both a board's label and the employer's own list, the connector writes the narrower: We Work Remotely's `country` over its `region`.
+A field that names an office or a hiring entity is not a location, however structured: Ashby's `address` and Lever's `country` are left out, since a role open anywhere carries one (ADR-0024 §6).
 
 ### Unreachable is not the same as failed
 
