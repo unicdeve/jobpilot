@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, Building2, Check, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
@@ -41,7 +41,7 @@ import {
   remoteLabel,
   salaryLabel,
   scoreTone,
-  sourceLabel,
+  jobSource,
 } from "../lib/format";
 import {
   useAnalyzeMatch,
@@ -50,9 +50,11 @@ import {
   useCountries,
   useCreateApplication,
   useJob,
+  useJobCompany,
   useJobMatch,
   useResumes,
   useSetJobInterest,
+  useWatchCompany,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { Application, ApplicationMode, Job, JobMatch } from "../lib/types";
@@ -237,18 +239,23 @@ function RuledOutBanner({ job }: { job: Job }) {
 }
 
 function JobHeading({ job }: { job: Job }) {
+  // A location of "Remote" says what the remote type already does.
   const facts = [
-    remoteLabel(job.remote_type),
-    employmentLabel(job.employment_type),
-    jobLocation(job),
-    salaryLabel(job),
-  ].filter(Boolean) as string[];
+    ...new Set(
+      [remoteLabel(job.remote_type), employmentLabel(job.employment_type), jobLocation(job), salaryLabel(job)].filter(
+        (fact): fact is string => !!fact,
+      ),
+    ),
+  ];
   const posted = relativeTime(job.posted_at);
 
   return (
     <header>
       <h2 className="text-xl leading-tight font-semibold select-text">{job.title}</h2>
-      <p className="mt-1 text-sm text-subtle-foreground select-text">{job.company_name || "Unknown company"}</p>
+      <div className="mt-1 flex min-h-6 items-center gap-2">
+        <p className="text-sm text-subtle-foreground select-text">{job.company_name || "Unknown company"}</p>
+        <WatchCompany job={job} />
+      </div>
       {facts.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {facts.map((fact) => (
@@ -259,13 +266,54 @@ function JobHeading({ job }: { job: Job }) {
         </div>
       )}
       <p className="mt-3 text-xs text-muted-foreground">
-        From {sourceLabel(job.source_id)}
+        From {jobSource(job)}
         {posted && <span title={dateTime(job.posted_at)}> · posted {posted}</span>}
         {!posted && relativeTime(job.discovered_at) && (
           <span title={dateTime(job.discovered_at)}> · found {relativeTime(job.discovered_at)}</span>
         )}
       </p>
     </header>
+  );
+}
+
+/// WatchCompany offers to watch the company whose hiring page the posting
+/// is on, so its later openings reach the candidate's searches
+/// (docs/02_features/17_company_watchlists.md AC-002). A job on no page
+/// JobPilot reads offers nothing, and a company already watched says so.
+function WatchCompany({ job }: { job: Job }) {
+  const { notify } = useToast();
+  const { data } = useJobCompany(job.id);
+  const watch = useWatchCompany({
+    onSuccess: (company) =>
+      notify(`Watching ${company.name}. Your searches now look at its hiring page too.`, "success"),
+    onError: (err) => notify(`Couldn’t watch this company: ${err.message}`),
+  });
+
+  if (!data?.board) return null;
+  if (data.company) {
+    return (
+      <Link
+        to="/settings?section=searches"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        title={`Its hiring page, ${data.company.url}, is read by your searches`}
+      >
+        <Check className="size-3" />
+        Watching
+      </Link>
+    );
+  }
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="text-muted-foreground"
+      disabled={watch.isPending}
+      title={`Find its openings on ${data.url}`}
+      onClick={() => watch.mutate({ job_id: job.id })}
+    >
+      <Building2 data-icon="inline-start" />
+      {watch.isPending ? "Checking its page…" : "Watch this company"}
+    </Button>
   );
 }
 
@@ -293,7 +341,7 @@ function WhereSection({ job }: { job: Job }) {
       summary = !quote
         ? "The posting doesn’t say where it can be done from."
         : quote === job.title
-          ? `${sourceLabel(job.source_id)}’s listing and the title disagree about where this can be done from:`
+          ? `The listing on ${jobSource(job)} and the title disagree about where this can be done from:`
           : "It isn’t clear where this can be done from. The posting says:";
   }
   const openToYou =
@@ -324,7 +372,7 @@ function WhereSection({ job }: { job: Job }) {
           </p>
           {quote && <Evidence>{quote}</Evidence>}
           {workable?.scope !== "anywhere" && listed.length > 0 && (
-            <SourceLocations source={sourceLabel(job.source_id)} locations={listed} />
+            <SourceLocations source={capitalize(jobSource(job))} locations={listed} />
           )}
         </div>
         {offers.map(({ topic, offer }) => (
@@ -559,4 +607,8 @@ function StartApplicationButton({ candidateId, jobId, again }: { candidateId: st
       </DialogContent>
     </Dialog>
   );
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

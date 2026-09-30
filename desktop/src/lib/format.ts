@@ -11,11 +11,21 @@ export const SOURCE_LABELS: Record<string, string> = {
   hackernews: "Hacker News",
   weworkremotely: "We Work Remotely",
   jobicy: "Jobicy",
+  "company-pages": "Company pages",
   "browser-import": "Added by URL",
 };
 
 export function sourceLabel(sourceId: string): string {
   return SOURCE_LABELS[sourceId] ?? sourceId;
+}
+
+/// jobSource is where one job was found. A job from a company's own page
+/// names the company's page rather than the source that read it; a list
+/// row, which names the company a line above, just says "Hiring page".
+export function jobSource(job: Pick<Job, "source_id" | "company_name">, short = false): string {
+  if (job.source_id !== "company-pages") return sourceLabel(job.source_id);
+  if (short || !job.company_name) return short ? "Hiring page" : "the company’s hiring page";
+  return `${job.company_name}’s hiring page`;
 }
 
 export const REMOTE_LABELS = {
@@ -174,8 +184,16 @@ export function discoverySummary(
   const failed = result.sources.filter((s) => s.status === "failed").map((s) => sourceLabel(s.source_id));
   if (unreachable.length > 0) sentences.push(`Couldn’t reach ${joinNames(unreachable)}.`);
   if (failed.length > 0) sentences.push(`${joinNames(failed)} answered with an error.`);
+  const failing = failingCompanies([result]);
+  if (failing.length > 0) sentences.push(`Couldn’t read the hiring page of ${joinNames(failing)}.`);
 
-  return { message: sentences.join(" "), complete: unreachable.length + failed.length === 0 };
+  return { message: sentences.join(" "), complete: unreachable.length + failed.length + failing.length === 0 };
+}
+
+/// failingCompanies names the watched companies whose pages did not
+/// answer, each once (ADR-0024 §5).
+function failingCompanies(results: DiscoveryResult[]): string[] {
+  return [...new Set(results.flatMap((result) => result.sources.flatMap((source) => source.failing ?? [])))];
 }
 
 /// RefreshFailure is a search a launch refresh could not run. offline is a
@@ -221,13 +239,15 @@ export function refreshSummary(
   const failed = named("failed").filter((name) => !unreachable.includes(name));
   if (unreachable.length > 0) sentences.push(`Couldn’t reach ${joinNames(unreachable)}.`);
   if (failed.length > 0) sentences.push(`${joinNames(failed)} answered with an error.`);
+  const failing = failingCompanies(results);
+  if (failing.length > 0) sentences.push(`Couldn’t read the hiring page of ${joinNames(failing)}.`);
   if (failures.length > 0) {
     sentences.push(`${failures.length} ${failures.length === 1 ? "search" : "searches"} couldn’t run.`);
   }
 
   return {
     message: sentences.join(" "),
-    complete: unreachable.length + failed.length + failures.length === 0,
+    complete: unreachable.length + failed.length + failing.length + failures.length === 0,
   };
 }
 

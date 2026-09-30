@@ -4,6 +4,9 @@
 
 import type {
   AboutYou,
+  JobCompany,
+  StarterCompany,
+  WatchedCompany,
   AboutYouUpdate,
   ApplicationAnswer,
   AgentRunDetail,
@@ -127,6 +130,18 @@ export interface ApiClient {
   /// listCountries returns every country a search can work from, and the
   /// profile's own.
   listCountries(): Promise<Countries>;
+  /// listCompanies returns the companies whose hiring pages are watched.
+  listCompanies(): Promise<WatchedCompany[]>;
+  /// watchCompany watches a company by the address of its hiring page or a
+  /// posting on it, or by a stored job whose posting is on it. A company
+  /// already watched resolves to itself.
+  watchCompany(by: { address: string } | { job_id: string }): Promise<WatchedCompany>;
+  renameCompany(id: string, name: string): Promise<WatchedCompany>;
+  unwatchCompany(id: string): Promise<void>;
+  /// companySuggestions is the starter list, less what is watched.
+  companySuggestions(): Promise<StarterCompany[]>;
+  /// jobCompany is the hiring page a stored job is on, if any.
+  jobCompany(jobId: string): Promise<JobCompany>;
   /// runSavedSearch discovers jobs using a saved search's criteria. The
   /// daemon reads the criteria itself, so no caller has to hold them and
   /// post them back — the shape that allowed an empty search to be sent.
@@ -363,6 +378,17 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         work_from: workFrom || undefined,
       }),
     listCountries: () => request<Countries>(daemon, "GET", "/v1/countries"),
+    listCompanies: () =>
+      request<{ companies: WatchedCompany[] }>(daemon, "GET", "/v1/companies").then((body) => body.companies),
+    watchCompany: (by) => request<WatchedCompany>(daemon, "POST", "/v1/companies", by),
+    renameCompany: (id, name) =>
+      request<WatchedCompany>(daemon, "PUT", `/v1/companies/${encodeURIComponent(id)}`, { name }),
+    unwatchCompany: (id) => request<void>(daemon, "DELETE", `/v1/companies/${encodeURIComponent(id)}`),
+    companySuggestions: () =>
+      request<{ suggestions: StarterCompany[] }>(daemon, "GET", "/v1/companies/suggestions").then(
+        (body) => body.suggestions,
+      ),
+    jobCompany: (jobId) => request<JobCompany>(daemon, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/company`),
     listScouts: () => request<Scout[]>(daemon, "GET", "/v1/scouts"),
     createScout: (scout) => request<Scout>(daemon, "POST", "/v1/scouts", scout),
     updateScout: (id, scout) =>

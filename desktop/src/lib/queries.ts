@@ -59,6 +59,9 @@ import type {
   SearchCriteria,
   SearchTemplateGroup,
   SourceInfo,
+  StarterCompany,
+  WatchedCompany,
+  JobCompany,
 } from "./types";
 
 /// keys centralizes every cache key. Invalidating a prefix invalidates
@@ -79,6 +82,14 @@ export const keys = {
   searchTemplates: ["search-templates"] as const,
   sources: ["sources"] as const,
   countries: ["countries"] as const,
+  /// companies covers the watched companies, the suggestions left, and
+  /// each job's company, which all change when one is watched.
+  companies: {
+    all: ["companies"] as const,
+    list: ["companies", "list"] as const,
+    suggestions: ["companies", "suggestions"] as const,
+    job: (jobId: string) => ["companies", "job", jobId] as const,
+  },
   /// discovery is a mutation key, not a query key: every discovery run
   /// carries it, so any screen can see what is searching.
   discovery: ["discovery"] as const,
@@ -590,6 +601,11 @@ export function useRunSavedSearch(opts?: MutationOpts<DiscoveryResult, Discovery
       // The search now says when it last ran.
       void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
       opts?.onSuccess?.(...args);
+    },
+    onSettled: (...args) => {
+      // A search checks every watched company, whether or not it found jobs.
+      void queryClient.invalidateQueries({ queryKey: keys.companies.list });
+      opts?.onSettled?.(...args);
     },
   });
 }
@@ -1156,4 +1172,54 @@ export function useScoutRuns(limit = 10) {
     queryKey: keys.scoutRuns,
     queryFn: () => api.listScoutRuns(limit),
   });
+}
+
+/// useCompanies lists the watched companies, with how each was last checked.
+/// A search checks them, so the list is refetched whenever a search ends.
+export function useCompanies() {
+  const api = useApi();
+  return useQuery<WatchedCompany[]>({ queryKey: keys.companies.list, queryFn: () => api.listCompanies() });
+}
+
+/// useCompanySuggestions is the starter list, less what is watched.
+export function useCompanySuggestions() {
+  const api = useApi();
+  return useQuery<StarterCompany[]>({
+    queryKey: keys.companies.suggestions,
+    queryFn: () => api.companySuggestions(),
+  });
+}
+
+/// useJobCompany is the hiring page a job's posting is on, and the watched
+/// company it is, so the job can offer to watch it (spec AC-002).
+export function useJobCompany(jobId: string) {
+  const api = useApi();
+  return useQuery<JobCompany>({ queryKey: keys.companies.job(jobId), queryFn: () => api.jobCompany(jobId) });
+}
+
+function useCompanyMutation<TData, TVars>(fn: (vars: TVars) => Promise<TData>, opts?: MutationOpts<TData, TVars>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    ...opts,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.companies.all });
+      opts?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useWatchCompany(opts?: MutationOpts<WatchedCompany, { address: string } | { job_id: string }>) {
+  const api = useApi();
+  return useCompanyMutation((by) => api.watchCompany(by), opts);
+}
+
+export function useRenameCompany(opts?: MutationOpts<WatchedCompany, { id: string; name: string }>) {
+  const api = useApi();
+  return useCompanyMutation(({ id, name }) => api.renameCompany(id, name), opts);
+}
+
+export function useUnwatchCompany(opts?: MutationOpts<void, string>) {
+  const api = useApi();
+  return useCompanyMutation((id) => api.unwatchCompany(id), opts);
 }

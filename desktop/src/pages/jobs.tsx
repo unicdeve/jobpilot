@@ -34,7 +34,7 @@ import {
   remoteLabel,
   scoreTone,
   SOURCE_LABELS,
-  sourceLabel,
+  jobSource,
   workableLabel,
 } from "../lib/format";
 import {
@@ -516,7 +516,7 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
           <p className="line-clamp-2 text-[13px] leading-snug font-medium">{job.title}</p>
           <p className="mt-0.5 truncate text-xs text-subtle-foreground">{job.company_name || "Unknown company"}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {[where, sourceLabel(job.source_id), age].filter(Boolean).join(" · ")}
+            {[where, jobSource(job, true), age].filter(Boolean).join(" · ")}
           </p>
           <MovingHelp job={job} />
         </div>

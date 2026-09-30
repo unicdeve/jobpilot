@@ -2,6 +2,7 @@ import { cn } from "cn";
 import { Database, Ellipsis, KeyRound, Monitor, Moon, Palette, Plus, Search, Sparkles, Sun } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { CompanySettings } from "../components/company-settings";
 import { ConfirmDialog } from "../components/confirm";
 import { CredentialSettings } from "../components/credential-settings";
 import { DataSettings } from "../components/data-settings";
@@ -390,6 +391,8 @@ function JobSearchSettings() {
       )}
 
       <RefreshOnLaunchSetting />
+
+      <CompanySettings />
 
       <ConfirmDialog
         open={deleting !== null}

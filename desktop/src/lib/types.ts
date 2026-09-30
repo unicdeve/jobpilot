@@ -250,6 +250,9 @@ export interface SourceOutcome {
   source_name: string;
   status: SourceStatus;
   found: number;
+  /// failing names the parts of a source that did not answer: the watched
+  /// companies whose pages failed (ADR-0024 §5).
+  failing?: string[];
 }
 
 /// DiscoveryResult mirrors domain.DiscoveryResult: the jobs a search
@@ -638,4 +641,54 @@ export interface DeletionReach {
 export interface DeletionResult {
   reach: DeletionReach;
   notices?: string[];
+}
+
+/// BoardProvider is an applicant-tracking system whose hiring pages
+/// JobPilot reads (docs/02_features/17_company_watchlists.md).
+export type BoardProvider = "greenhouse" | "lever" | "ashby";
+
+/// Board mirrors domain.Board: one company's hiring page on a provider.
+export interface Board {
+  provider: BoardProvider;
+  region?: string;
+  name: string;
+}
+
+/// BoardCheck is how reading a watched company's page last went; empty
+/// before the first.
+export type BoardCheck = "" | "ok" | "gone" | "unreachable" | "failed";
+
+/// WatchedCompany mirrors domain.WatchedCompany.
+export interface WatchedCompany {
+  id: string;
+  board: Board;
+  name: string;
+  /// url is the company's hiring page.
+  url: string;
+  added_from: string;
+  added_at: string;
+  checked_at?: string;
+  check: BoardCheck;
+  /// open_roles is how many postings the page held when last read, before
+  /// any search's criteria.
+  open_roles: number;
+}
+
+/// StarterCompany mirrors domain.StarterCompany: a suggestion, with what
+/// was measured to put it on the list.
+export interface StarterCompany {
+  board: Board;
+  name: string;
+  url: string;
+  measured_on: string;
+  open_roles: number;
+  qualifying_roles: number;
+}
+
+/// JobCompany is the hiring page a job's posting is on, and the watched
+/// company it is, if any.
+export interface JobCompany {
+  board: Board | null;
+  url?: string;
+  company: WatchedCompany | null;
 }
