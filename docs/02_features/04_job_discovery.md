@@ -169,3 +169,37 @@ The setting is the daemon's (`GET` and `PUT /v1/settings/discovery`), so it hold
 
 The Dashboard once ran a live search every time it rendered, which put a network round trip and a database write in the path of opening the app, and two of them raced on SQLite.
 This is not that: nothing waits on it, it runs through the queue one search at a time, and it runs at most once in six hours for each search.
+
+## Proposed: where a job can be done from
+
+AC-010 to AC-013 are proposed by ADR-0023 and not implemented.
+The measurements behind them, and the reasons for each rule, are in the ADR.
+
+### AC-010
+Given a job, when it is stored, then it says where it can be done from: anywhere, a set of countries, or not stated.
+
+For a remote job that is read from where the source says the candidate may be; for an onsite or hybrid job, from where the office is.
+Reading it is deterministic and in core, from countries, regions and cities that core holds, with no network and no model.
+A location core does not recognise leaves the job "not stated" rather than guessed at.
+A description sentence that restricts a job labelled anywhere, or labelled with places, makes it "not stated" and is shown with it; it never narrows the job to other places.
+
+The Jobs screen and a job's page show where a job can be done from, and a job "not stated" shows the sentence that made it so, when there is one.
+The stored list can be narrowed the same way a search is.
+
+### AC-011
+Given a saved search with "I can work from" set, when it runs, then it keeps a job that can be done from anywhere, from that country, or that does not say, and no other job, unless AC-012 brings it in.
+
+A search without it behaves as before.
+The saved-search form fills it in from the profile's country when that is a country core knows, and templates never set it.
+
+### AC-012
+Given a job, when it is stored, then it says whether it offers relocation and whether it offers visa sponsorship — offered, mentioned, declined, or not mentioned — and shows the sentence that said so.
+
+A saved search can also include jobs elsewhere that offer or mention relocation or visa sponsorship.
+Such a job is still left out when its visa sponsorship is declined and the candidate has no work authorization for its country.
+
+### AC-013
+Given a search with a title or keywords, when discovery asks Himalayas, then it uses Himalayas' search with them and with "I can work from", reading up to five pages, rather than its newest four.
+
+We Work Remotely and Jobicy are sources, each keeping its own URL as the job's canonical URL, and Jobicy is asked for each of its feeds at most once an hour.
+Working Nomads is not a source until its terms permit it.

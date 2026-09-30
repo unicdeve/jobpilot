@@ -6,6 +6,7 @@
 - Resume management
 - Job discovery
 - Search templates
+- Company watchlists
 - Job matching
 - Cover letters
 - About you: personal cover letters and answers
