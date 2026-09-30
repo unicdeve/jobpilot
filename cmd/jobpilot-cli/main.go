@@ -54,6 +54,7 @@ func main() {
 	rootCmd.AddCommand(newActivityCmd(client))
 	rootCmd.AddCommand(newJobCmd(client))
 	rootCmd.AddCommand(newDataCmd(client))
+	rootCmd.AddCommand(newCompanyCmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
@@ -424,6 +425,9 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 
 			if unanswered := result.Unanswered(); len(unanswered) > 0 {
 				fmt.Printf("⚠️  %s — results may be incomplete.\n", describeUnansweredSources(unanswered))
+			}
+			if failing := failingParts(result.Sources); len(failing) > 0 {
+				fmt.Printf("⚠️  Couldn't read the hiring page of %s. See 'company list'.\n", joinNames(failing))
 			}
 
 			if len(result.Jobs) == 0 {
@@ -1530,6 +1534,16 @@ func describeUnansweredSources(sources []domain.SourceOutcome) string {
 		parts = append(parts, joinNames(failed)+" answered with an error")
 	}
 	return strings.Join(parts, "; ")
+}
+
+// failingParts names the parts of the sources that answered that did not:
+// the watched companies whose pages failed (ADR-0024 §5).
+func failingParts(sources []domain.SourceOutcome) []string {
+	var failing []string
+	for _, source := range sources {
+		failing = append(failing, source.Failing...)
+	}
+	return failing
 }
 
 // joinNames lists names as a sentence does: "A", "A and B", "A, B and C".

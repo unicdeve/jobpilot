@@ -235,6 +235,13 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, savedSearchSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
+	// The companies the candidate watches are one more source, "Company
+	// pages", read from each company's own Greenhouse, Lever or Ashby page
+	// (ADR-0024).
+	companySvc := services.NewCompanyWatchService(sqlite.NewWatchedCompanyRepository(db.Conn()),
+		discovery.NewCompanyBoards(discovery.DefaultBoardEndpoints), jobRepo)
+	sources = append(sources, companySvc.Source())
+
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter).
 		WithCandidates(candRepo)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
@@ -271,5 +278,6 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Activity:    services.NewAgentActivityService(agentRunRepo, agentEventRepo),
 		Deletion:    deletionSvc,
 		AboutYou:    aboutYouSvc,
+		Companies:   companySvc,
 	}, nil
 }
