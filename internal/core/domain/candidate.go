@@ -4,8 +4,11 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 )
 
 // LinkKind is what a link is, because forms ask for them one at a time:
@@ -193,6 +196,23 @@ func (c Candidate) LinkOf(kind LinkKind) (CandidateLink, bool) {
 		}
 	}
 	return CandidateLink{}, false
+}
+
+// AuthorizedCountries is the ISO codes of the countries the candidate has
+// said they may work in without sponsorship. A country written in a way
+// JobPilot cannot place is left out, which errs toward a job being hidden
+// from a relocation search rather than shown as one they could take.
+func (c Candidate) AuthorizedCountries() []string {
+	var codes []string
+	for _, authorization := range c.WorkAuthorizations {
+		if !authorization.IsAuthorized || authorization.RequiresSponsorship {
+			continue
+		}
+		if code, ok := geo.ResolveCountry(authorization.Country); ok && !slices.Contains(codes, code) {
+			codes = append(codes, code)
+		}
+	}
+	return codes
 }
 
 // LocationDisplay is the candidate's location as a person would write it,

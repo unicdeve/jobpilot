@@ -34,6 +34,13 @@ type Job struct {
 	// ruled out stays stored, leaves the lists and a search's result, and
 	// is passed over by scouts (docs/02_features/15_data_deletion.md).
 	NotInterestedAt *time.Time `json:"not_interested_at,omitempty"`
+	// Workable, Relocation and VisaSponsorship are read from the job's own
+	// fields by ReadSignals (ADR-0023). SignalsVersion is the version of the
+	// reading that produced them, so a job read by an older one is read again.
+	Workable        Workable `json:"workable"`
+	Relocation      Offer    `json:"relocation"`
+	VisaSponsorship Offer    `json:"visa_sponsorship"`
+	SignalsVersion  int      `json:"-"`
 }
 
 // SearchCriteria defines the parameters for finding jobs.
@@ -51,6 +58,12 @@ type SearchCriteria struct {
 	SalaryMin         float64  `json:"salary_min"`
 	SalaryMax         float64  `json:"salary_max"`
 	ExcludedCompanies []string `json:"excluded_companies"`
+	// WorkFrom is the ISO 3166-1 alpha-2 code of the country the candidate
+	// works from, or empty for no preference (ADR-0023 §4).
+	WorkFrom string `json:"work_from"`
+	// IncludeRelocation also keeps jobs elsewhere that offer or mention
+	// relocation or visa sponsorship. It matters only with WorkFrom set.
+	IncludeRelocation bool `json:"include_relocation"`
 }
 
 // IsEmpty reports whether the criteria would match every job in existence.
@@ -66,10 +79,23 @@ func (c SearchCriteria) IsEmpty() bool {
 		strings.TrimSpace(c.RemotePreference) == "" &&
 		strings.TrimSpace(c.EmploymentType) == "" &&
 		c.SalaryMin == 0 && c.SalaryMax == 0 &&
-		len(c.ExcludedCompanies) == 0
+		len(c.ExcludedCompanies) == 0 &&
+		strings.TrimSpace(c.WorkFrom) == ""
 }
 
-// Matches reports whether job satisfies every criterion that is set.
+// Matches reports whether job satisfies every criterion that is set, for a
+// candidate with no work authorization recorded. See MatchesFor.
+func (c SearchCriteria) Matches(job Job) bool {
+	return c.MatchesFor(job, nil)
+}
+
+// MatchesFor reports whether job satisfies every criterion that is set.
+//
+// authorized is the countries the candidate may work in without
+// sponsorship, as ISO codes (Candidate.AuthorizedCountries). It is read
+// only for a job elsewhere that a search including relocation would bring
+// in, and a nil list is the stricter answer: such a job that declines visa
+// sponsorship is left out.
 //
 // This is the one definition of what a search means. It is applied by
 // JobDiscoveryService to results from any source that cannot filter
@@ -80,7 +106,7 @@ func (c SearchCriteria) IsEmpty() bool {
 // the job: a salary bound skips postings whose salary is unknown rather than
 // discarding them, since most boards publish no salary at all and treating
 // absence as a mismatch would hide nearly everything.
-func (c SearchCriteria) Matches(job Job) bool {
+func (c SearchCriteria) MatchesFor(job Job, authorized []string) bool {
 	if !matchesAllTerms(c.Keywords, job.Title+" "+job.DescriptionMarkdown) {
 		return false
 	}
@@ -99,11 +125,44 @@ func (c SearchCriteria) Matches(job Job) bool {
 	if !withinSalary(c, job) {
 		return false
 	}
+	if !c.workableFor(job, authorized) {
+		return false
+	}
 
 	for _, excluded := range c.ExcludedCompanies {
 		if strings.EqualFold(strings.TrimSpace(excluded), strings.TrimSpace(job.CompanyName)) {
 			return false
 		}
+	}
+	return true
+}
+
+// workableFor applies WorkFrom and IncludeRelocation (ADR-0023 §4).
+//
+// A job that does not say where it can be done from is kept, as a job with
+// no salary is kept by a salary bound: most of what could hide it is a
+// source's silence. Only a job that says it is open elsewhere, and does not
+// help the candidate get there, is left out.
+func (c SearchCriteria) workableFor(job Job, authorized []string) bool {
+	from := strings.TrimSpace(c.WorkFrom)
+	if from == "" || !job.Workable.Known() || job.Workable.OpenTo(from) {
+		return true
+	}
+	if !c.IncludeRelocation {
+		return false
+	}
+	if !job.Relocation.Available() && !job.VisaSponsorship.Available() {
+		return false
+	}
+	// A job that refuses sponsorship is one only a candidate already
+	// allowed to work there can take (ADR-0023 §5).
+	if job.VisaSponsorship.Status == OfferDeclined {
+		for _, country := range authorized {
+			if job.Workable.OpenTo(country) {
+				return true
+			}
+		}
+		return false
 	}
 	return true
 }
@@ -214,6 +273,12 @@ type JobFilter struct {
 	// Interest says whether jobs the user ruled out are included. The zero
 	// value leaves them out, as every list the user browses does.
 	Interest JobInterest
+	// WorkFrom and IncludeRelocation narrow the list as they narrow a
+	// search (SearchCriteria.MatchesFor), and AuthorizedCountries is the
+	// candidate's, which JobDiscoveryService.ListJobs fills in.
+	WorkFrom            string
+	IncludeRelocation   bool
+	AuthorizedCountries []string
 }
 
 // JobInterest selects jobs by whether the user marked them not interested.

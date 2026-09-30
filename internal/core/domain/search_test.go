@@ -22,10 +22,13 @@ func TestSearchCriteria_IsEmpty(t *testing.T) {
 		{SalaryMin: 1},
 		{SalaryMax: 1},
 		{ExcludedCompanies: []string{"Acme"}},
+		{WorkFrom: "NG"},
 	}
 	for _, c := range set {
 		assert.False(t, c.IsEmpty(), "%+v should count as set", c)
 	}
+	assert.True(t, SearchCriteria{IncludeRelocation: true}.IsEmpty(),
+		"including relocation widens a search; alone it narrows nothing")
 }
 
 func TestSearchCriteria_Matches(t *testing.T) {
@@ -97,6 +100,57 @@ func TestSearchCriteria_Matches_UnknownSalaryIsKept(t *testing.T) {
 
 	assert.True(t, SearchCriteria{SalaryMin: 200000}.Matches(job))
 	assert.True(t, SearchCriteria{SalaryMax: 10}.Matches(job))
+}
+
+func TestSearchCriteria_Matches_WorkFrom(t *testing.T) {
+	t.Parallel()
+
+	read := func(remote string, locations []string, description string) Job {
+		job := Job{RemoteType: remote, Locations: locations, DescriptionMarkdown: description}
+		ReadSignals(&job)
+		return job
+	}
+	anywhere := read(RemoteTypeRemote, []string{"Worldwide"}, "")
+	emea := read(RemoteTypeRemote, []string{"EMEA"}, "")
+	usOnly := read(RemoteTypeRemote, []string{"Remote (US)"}, "")
+	unstated := read(RemoteTypeRemote, []string{"Remote"}, "")
+	berlinRelocation := read(RemoteTypeOnsite, []string{"Berlin"}, "We offer an attractive relocation package.")
+	berlinNoVisa := read(RemoteTypeOnsite, []string{"Berlin"},
+		"We offer relocation support. We are unable to offer visa sponsorship for this role.")
+	berlinPlain := read(RemoteTypeOnsite, []string{"Berlin"}, "Join our team.")
+	unread := Job{RemoteType: RemoteTypeRemote, Locations: []string{"Remote (US)"}}
+
+	fromNigeria := SearchCriteria{WorkFrom: "NG"}
+	assert.True(t, fromNigeria.Matches(anywhere))
+	assert.True(t, fromNigeria.Matches(emea), "Nigeria is in EMEA")
+	assert.False(t, fromNigeria.Matches(usOnly))
+	assert.True(t, fromNigeria.Matches(unstated), "a job that does not say is kept, as a job with no salary is")
+	assert.True(t, fromNigeria.Matches(unread), "a job not yet read is kept too")
+	assert.False(t, fromNigeria.Matches(berlinRelocation), "a job abroad needs the search to include relocation")
+
+	moving := SearchCriteria{WorkFrom: "ng", IncludeRelocation: true}
+	assert.True(t, moving.Matches(berlinRelocation))
+	assert.False(t, moving.Matches(berlinPlain), "a job abroad that offers no help is left out")
+	assert.False(t, moving.Matches(berlinNoVisa),
+		"a job that refuses sponsorship is for someone already allowed to work there")
+	assert.True(t, moving.MatchesFor(berlinNoVisa, []string{"DE"}))
+	assert.False(t, moving.Matches(usOnly))
+
+	assert.True(t, SearchCriteria{}.Matches(usOnly), "without WorkFrom, nothing changes")
+}
+
+func TestCandidate_AuthorizedCountries(t *testing.T) {
+	t.Parallel()
+
+	candidate := Candidate{WorkAuthorizations: []WorkAuthorization{
+		{Country: "Nigeria", IsAuthorized: true},
+		{Country: "Deutschland", IsAuthorized: true},
+		{Country: "United States", IsAuthorized: true, RequiresSponsorship: true},
+		{Country: "United Kingdom", IsAuthorized: false},
+		{Country: "Atlantis", IsAuthorized: true},
+		{Country: "nigeria", IsAuthorized: true},
+	}}
+	assert.Equal(t, []string{"NG", "DE"}, candidate.AuthorizedCountries())
 }
 
 func TestSearchTerms(t *testing.T) {
