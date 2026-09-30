@@ -30,7 +30,7 @@ AIR=bin/air
 DB_PATH ?=
 
 .PHONY: all build clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
-	tidy test test-integration check \
+	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
 all: build
@@ -141,6 +141,13 @@ test:
 # docs/08_development/testing.md.
 test-integration:
 	go test -race -tags=integration ./...
+
+# starter-list measures the boards in internal/tools/genstarter/seed.txt and
+# writes the companies JobPilot suggests watching. It reads every board over
+# the network, so it is run by hand before each release rather than by
+# check; see docs/02_features/17_company_watchlists.md.
+starter-list:
+	go generate ./internal/core/domain/
 
 # Formatting/linting/static checks + tests passing, per docs/08_development/definition_of_done.md.
 check: fmt-check vet vet-integration lint lint-integration test test-integration
