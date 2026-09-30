@@ -17,6 +17,7 @@ import (
 
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
@@ -78,6 +79,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("POST /v1/searches/{id}/run", handleRunSavedSearch(svc.Searches, svc.Discovery))
 	mux.HandleFunc("GET /v1/search-templates", handleListSearchTemplates(svc.Searches))
 	mux.HandleFunc("POST /v1/search-templates/import", handleImportSearchTemplates(svc.Searches))
+	mux.HandleFunc("GET /v1/countries", handleListCountries(svc.Candidates))
 
 	mux.HandleFunc("GET /v1/scouts", handleListScouts(svc.Scouts))
 	mux.HandleFunc("POST /v1/scouts", handleCreateScout(svc.Scouts))
@@ -401,9 +403,46 @@ func handleListSearchTemplates(svc *services.SavedSearchService) http.HandlerFun
 	}
 }
 
+// Country is one country a search can work from.
+type Country struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// Countries is every country, by name, and the profile's own country as a
+// code — empty when there is no profile, or its country is not one JobPilot
+// can place. A new saved search starts with it (ADR-0023 §4).
+type Countries struct {
+	Countries      []Country `json:"countries"`
+	ProfileCountry string    `json:"profile_country"`
+}
+
+// handleListCountries serves the country tables, so no client holds a
+// copy that could disagree with the daemon's.
+func handleListCountries(candidates ports.CandidateRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		all := geo.Countries()
+		result := Countries{Countries: make([]Country, len(all))}
+		for i, country := range all {
+			result.Countries[i] = Country{Code: country.Code, Name: country.Name}
+		}
+		candidate, err := candidates.GetFirstCandidate(r.Context())
+		switch {
+		case err == nil && candidate != nil:
+			result.ProfileCountry, _ = geo.ResolveCountry(candidate.LocationCountry)
+		case err != nil && !errors.Is(err, ports.ErrNoCandidate):
+			writeErrIfAny(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 // importTemplatesRequest names the templates to adopt, by template ID.
 type importTemplatesRequest struct {
 	TemplateIDs []string `json:"template_ids"`
+	// WorkFrom is the country every created search starts with, if any.
+	WorkFrom string `json:"work_from,omitempty"`
 }
 
 func handleImportSearchTemplates(svc *services.SavedSearchService) http.HandlerFunc {
@@ -414,7 +453,7 @@ func handleImportSearchTemplates(svc *services.SavedSearchService) http.HandlerF
 			return
 		}
 
-		created, err := svc.ImportTemplates(r.Context(), req.TemplateIDs)
+		created, err := svc.ImportTemplates(r.Context(), req.TemplateIDs, req.WorkFrom)
 		if err != nil {
 			// An unknown template ID and an empty selection are both the
 			// caller's to correct.
@@ -456,7 +495,7 @@ func handleRunSavedSearch(searches *services.SavedSearchService, discovery *serv
 // itself failing.
 func searchStatus(err error) int {
 	switch {
-	case errors.Is(err, services.ErrEmptyCriteria):
+	case errors.Is(err, services.ErrEmptyCriteria), errors.Is(err, services.ErrInvalidWorkFrom):
 		return http.StatusBadRequest
 	case errors.Is(err, services.ErrSourcesUnreachable):
 		return http.StatusServiceUnavailable
@@ -553,6 +592,14 @@ func handleListJobs(svc *services.JobDiscoveryService) http.HandlerFunc {
 			SourceID:   query.Get("source"),
 			RemoteType: query.Get("remote"),
 			Interest:   domain.JobInterest(query.Get("interest")),
+			WorkFrom:   query.Get("work_from"),
+		}
+		if raw := query.Get("include_relocation"); raw != "" {
+			filter.IncludeRelocation, err = strconv.ParseBool(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("invalid include_relocation %q: must be true or false", raw))
+				return
+			}
 		}
 		if raw := query.Get("posted_since"); raw != "" {
 			filter.PostedSince, err = time.Parse(time.RFC3339, raw)

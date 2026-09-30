@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
@@ -28,6 +29,10 @@ type JobDiscoveryService struct {
 	llmProvider      ports.LLMProvider
 	newBrowserWorker ports.BrowserWorkerFactory
 	converter        ports.DocumentConverter
+	// candidates, when set, is where the candidate's work authorizations
+	// are read from, for a search that includes relocation. See
+	// WithCandidates.
+	candidates ports.CandidateRepository
 }
 
 // NewJobDiscoveryService constructs a JobDiscoveryService backed by the given
@@ -42,6 +47,83 @@ func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource,
 		llmProvider:      llmProvider,
 		newBrowserWorker: newBrowserWorker,
 		converter:        converter,
+	}
+}
+
+// WithCandidates lets a search that includes relocation read the
+// candidate's work authorizations, so a job that refuses sponsorship is kept
+// for a candidate already allowed to work there (ADR-0023 §5). Without it,
+// such a job is left out, which is the answer for a candidate who has
+// recorded none.
+func (s *JobDiscoveryService) WithCandidates(candidates ports.CandidateRepository) *JobDiscoveryService {
+	s.candidates = candidates
+	return s
+}
+
+// authorizedCountries is the candidate's, when a search needs them and
+// there is a candidate to ask. A failure to read them is logged and treated
+// as none: the stricter answer, and not a reason to fail the search.
+func (s *JobDiscoveryService) authorizedCountries(ctx context.Context, workFrom string, includeRelocation bool) []string {
+	if s.candidates == nil || workFrom == "" || !includeRelocation {
+		return nil
+	}
+	candidate, err := s.candidates.GetFirstCandidate(ctx)
+	if err != nil || candidate == nil {
+		if err != nil && !errors.Is(err, ports.ErrNoCandidate) {
+			slog.WarnContext(ctx, "could not read work authorizations for a search", "error", err)
+		}
+		return nil
+	}
+	return candidate.AuthorizedCountries()
+}
+
+// ErrInvalidWorkFrom is returned for a country that is not an ISO 3166-1
+// alpha-2 code JobPilot knows. Such a filter would match only the jobs that
+// do not say where they can be done from.
+var ErrInvalidWorkFrom = errors.New("not a country JobPilot knows; use its two-letter ISO code, such as NG or DE")
+
+// normalizeWorkFrom returns a country code in upper case, and refuses one
+// that is not a country.
+func normalizeWorkFrom(workFrom string) (string, error) {
+	workFrom = strings.ToUpper(strings.TrimSpace(workFrom))
+	if workFrom == "" {
+		return "", nil
+	}
+	if _, ok := geo.CountryByCode(workFrom); !ok {
+		return "", fmt.Errorf("%q is %w", workFrom, ErrInvalidWorkFrom)
+	}
+	return workFrom, nil
+}
+
+// signalBatchSize is how many stored jobs ReadStoredSignals reads at once.
+const signalBatchSize = 200
+
+// ReadStoredSignals reads again every stored job last read by an older
+// version of domain.ReadSignals, and returns how many it read.
+//
+// The daemon calls it when it starts (ADR-0023 §3). What it derives comes
+// only from what each job already stores, so a change to the vocabulary
+// reaches old jobs as well as new ones without asking any source.
+func (s *JobDiscoveryService) ReadStoredSignals(ctx context.Context) (int, error) {
+	read := 0
+	for {
+		jobs, err := s.repo.ListUnread(ctx, domain.SignalsVersion, signalBatchSize)
+		if err != nil {
+			return read, fmt.Errorf("failed to list the jobs to read: %w", err)
+		}
+		if len(jobs) == 0 {
+			return read, nil
+		}
+		for _, job := range jobs {
+			if err := ctx.Err(); err != nil {
+				return read, err
+			}
+			domain.ReadSignals(job)
+			if err := s.repo.SaveSignals(ctx, job); err != nil {
+				return read, err
+			}
+			read++
+		}
 	}
 }
 
@@ -74,6 +156,12 @@ func (s *JobDiscoveryService) ListJobs(ctx context.Context, filter domain.JobFil
 	if !filter.Interest.Valid() {
 		return nil, fmt.Errorf("%w: unknown interest %q", ErrInvalidJobFilter, filter.Interest)
 	}
+	workFrom, err := normalizeWorkFrom(filter.WorkFrom)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidJobFilter, err)
+	}
+	filter.WorkFrom = workFrom
+	filter.AuthorizedCountries = s.authorizedCountries(ctx, filter.WorkFrom, filter.IncludeRelocation)
 
 	switch {
 	case limit <= 0:
@@ -155,6 +243,12 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 	if criteria.IsEmpty() {
 		return nil, ErrEmptyCriteria
 	}
+	workFrom, err := normalizeWorkFrom(criteria.WorkFrom)
+	if err != nil {
+		return nil, err
+	}
+	criteria.WorkFrom = workFrom
+	authorized := s.authorizedCountries(ctx, criteria.WorkFrom, criteria.IncludeRelocation)
 
 	sources := s.searchable()
 	if len(sources) == 0 {
@@ -188,15 +282,22 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 		}
 		answered = true
 
-		jobs := answer.jobs
+		// Read before filtering: where a job can be done from is one of
+		// the criteria (ADR-0023).
+		jobs := make([]domain.Job, len(answer.jobs))
+		for i, job := range answer.jobs {
+			domain.ReadSignals(&job)
+			jobs[i] = job
+		}
 		if !source.Capabilities().FiltersServerSide {
 			// Filtered here, not trusted: see FiltersServerSide.
-			jobs = make([]domain.Job, 0, len(answer.jobs))
-			for _, job := range answer.jobs {
-				if criteria.Matches(job) {
-					jobs = append(jobs, job)
+			kept := make([]domain.Job, 0, len(jobs))
+			for _, job := range jobs {
+				if criteria.MatchesFor(job, authorized) {
+					kept = append(kept, job)
 				}
 			}
+			jobs = kept
 		}
 		outcome.Found = len(jobs)
 		result.Sources[i] = outcome
@@ -368,6 +469,7 @@ func (s *JobDiscoveryService) ImportJob(ctx context.Context, url string) (*domai
 		return existing, nil
 	}
 
+	domain.ReadSignals(job)
 	if err := s.repo.Save(ctx, job); err != nil {
 		return nil, fmt.Errorf("failed to save imported job: %w", err)
 	}

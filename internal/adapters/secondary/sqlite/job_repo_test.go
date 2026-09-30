@@ -379,3 +379,125 @@ func TestJobRepository_NotInterested(t *testing.T) {
 
 	assert.Error(t, repo.SetNotInterested(ctx, "no-such-job", &later))
 }
+
+// signalJobs are jobs as ReadSignals reads them, one of each kind the
+// "I can work from" filter decides on.
+func signalJobs() []domain.Job {
+	read := func(url, remote string, locations []string, description string) domain.Job {
+		job := domain.Job{CanonicalURL: url, Title: url, RemoteType: remote, Locations: locations, DescriptionMarkdown: description}
+		domain.ReadSignals(&job)
+		return job
+	}
+	return []domain.Job{
+		read("anywhere", domain.RemoteTypeRemote, []string{"Worldwide"}, ""),
+		read("emea", domain.RemoteTypeRemote, []string{"EMEA"}, ""),
+		read("us-only", domain.RemoteTypeRemote, []string{"Remote (US)"}, ""),
+		read("unstated", domain.RemoteTypeRemote, []string{"Remote"}, ""),
+		read("berlin-relocation", domain.RemoteTypeOnsite, []string{"Berlin"}, "We offer an attractive relocation package."),
+		read("berlin-no-visa", domain.RemoteTypeOnsite, []string{"Berlin"},
+			"We offer relocation support. We are unable to offer visa sponsorship for this role."),
+		read("berlin-plain", domain.RemoteTypeOnsite, []string{"Berlin"}, "Join our team."),
+	}
+}
+
+func TestJobRepository_StoresSignals(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	job := signalJobs()[5]
+	require.NoError(t, repo.Save(ctx, &job))
+
+	got, err := repo.GetByID(ctx, job.ID)
+	require.NoError(t, err)
+	assert.Equal(t, job.Workable, got.Workable)
+	assert.Equal(t, []string{"DE"}, got.Workable.Countries)
+	assert.Equal(t, domain.OfferOffered, got.Relocation.Status)
+	assert.Equal(t, domain.OfferDeclined, got.VisaSponsorship.Status)
+	assert.NotEmpty(t, got.VisaSponsorship.Evidence)
+	assert.Equal(t, domain.SignalsVersion, got.SignalsVersion)
+}
+
+func TestJobRepository_ReadsUnreadJobsAgain(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	unread := &domain.Job{CanonicalURL: "https://acme.example/old", RemoteType: domain.RemoteTypeRemote, Locations: []string{"EMEA"}}
+	require.NoError(t, repo.Save(ctx, unread))
+	current := signalJobs()[0]
+	require.NoError(t, repo.Save(ctx, &current))
+
+	got, err := repo.GetByID(ctx, unread.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.WorkableUnknown, got.Workable.Scope, "a job not read yet does not say where it can be done from")
+
+	pending, err := repo.ListUnread(ctx, domain.SignalsVersion, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, unread.ID, pending[0].ID)
+
+	domain.ReadSignals(pending[0])
+	require.NoError(t, repo.SaveSignals(ctx, pending[0]))
+
+	pending, err = repo.ListUnread(ctx, domain.SignalsVersion, 10)
+	require.NoError(t, err)
+	assert.Empty(t, pending)
+	got, err = repo.GetByID(ctx, unread.ID)
+	require.NoError(t, err)
+	assert.True(t, got.Workable.OpenTo("NG"))
+}
+
+// TestJobRepository_WorkFromAgreesWithMatches holds the stored list's SQL
+// to domain.SearchCriteria.MatchesFor: for every job and every filter, the
+// two keep the same jobs.
+func TestJobRepository_WorkFromAgreesWithMatches(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	repo := NewJobRepository(db.Conn())
+	ctx := context.Background()
+
+	jobs := signalJobs()
+	for i := range jobs {
+		require.NoError(t, repo.Save(ctx, &jobs[i]))
+	}
+
+	for _, tc := range []struct {
+		workFrom   string
+		relocation bool
+		authorized []string
+	}{
+		{"NG", false, nil},
+		{"NG", true, nil},
+		{"NG", true, []string{"DE"}},
+		{"US", false, nil},
+		{"DE", false, nil},
+	} {
+		name := fmt.Sprintf("%s relocation=%v authorized=%v", tc.workFrom, tc.relocation, tc.authorized)
+		t.Run(name, func(t *testing.T) {
+			criteria := domain.SearchCriteria{WorkFrom: tc.workFrom, IncludeRelocation: tc.relocation}
+			var want []string
+			for _, job := range jobs {
+				if criteria.MatchesFor(job, tc.authorized) {
+					want = append(want, job.CanonicalURL)
+				}
+			}
+
+			listed, err := repo.List(ctx, domain.JobFilter{
+				WorkFrom: tc.workFrom, IncludeRelocation: tc.relocation, AuthorizedCountries: tc.authorized,
+			}, 100, 0)
+			require.NoError(t, err)
+			var got []string
+			for _, job := range listed {
+				got = append(got, job.CanonicalURL)
+			}
+			assert.ElementsMatch(t, want, got)
+			assert.NotEmpty(t, want)
+		})
+	}
+}

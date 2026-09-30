@@ -20,6 +20,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 )
 
 func main() {
@@ -486,7 +487,15 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 				return err
 			}
 
-			filter := domain.JobFilter{Keywords: keywords, SourceID: source, RemoteType: remote}
+			workFrom, relocation, err := workFromFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+
+			filter := domain.JobFilter{
+				Keywords: keywords, SourceID: source, RemoteType: remote,
+				WorkFrom: workFrom, IncludeRelocation: relocation,
+			}
 			if notInterested {
 				filter.Interest = domain.JobsNotInterested
 			}
@@ -541,6 +550,7 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 	listCmd.Flags().String("remote", "", "Only list remote, hybrid or onsite jobs")
 	listCmd.Flags().Int("posted-within-days", 0, "Only list jobs posted in the last this many days")
 	listCmd.Flags().Bool("not-interested", false, "List only the jobs marked not interested, most recently first")
+	workFromFlags(listCmd)
 	listCmd.Flags().Int("limit", 0, "Maximum jobs to list (default 50, maximum 200)")
 	listCmd.Flags().Int("offset", 0, "Skip this many jobs before listing")
 	cmd.AddCommand(listCmd)
@@ -559,6 +569,16 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 			fmt.Printf("ID:       %s\n", job.ID)
 			fmt.Printf("URL:      %s\n", job.CanonicalURL)
 			fmt.Printf("Location: %s\n", strings.Join(job.Locations, ", "))
+			fmt.Printf("Open to:  %s\n", describeWorkable(job.Workable))
+			if job.Workable.Note != "" {
+				fmt.Printf("          The posting says: %q\n", job.Workable.Note)
+			}
+			if line := describeOffer("Relocate:", job.Relocation); line != "" {
+				fmt.Println(line)
+			}
+			if line := describeOffer("Visa:    ", job.VisaSponsorship); line != "" {
+				fmt.Println(line)
+			}
 			fmt.Printf("Type:     %s · %s\n", job.RemoteType, job.EmploymentType)
 			if len(job.Skills) > 0 {
 				fmt.Printf("Skills:   %s\n", strings.Join(job.Skills, ", "))
@@ -775,6 +795,38 @@ func criteriaFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64("salary-min", 0, "Lowest acceptable advertised salary (jobs without a salary are kept)")
 	cmd.Flags().Float64("salary-max", 0, "Highest acceptable advertised salary (jobs without a salary are kept)")
 	cmd.Flags().StringSlice("exclude-company", nil, "Company to exclude; repeatable")
+	workFromFlags(cmd)
+}
+
+// workFromFlags registers where the candidate works from, for the commands
+// that search and the one that lists stored jobs (ADR-0023 §4).
+func workFromFlags(cmd *cobra.Command) {
+	cmd.Flags().String("work-from", "", "The country you work from, e.g. Nigeria or NG: keeps jobs open there or anywhere, and jobs that do not say")
+	cmd.Flags().Bool("include-relocation", false, "With --work-from, also keep jobs elsewhere that offer or mention relocation or visa sponsorship")
+}
+
+// workFromFromFlags reads the flags workFromFlags registers, resolving a
+// country as a person writes it to its ISO code.
+func workFromFromFlags(cmd *cobra.Command) (string, bool, error) {
+	workFrom, err := cmd.Flags().GetString("work-from")
+	if err != nil {
+		return "", false, err
+	}
+	relocation, err := cmd.Flags().GetBool("include-relocation")
+	if err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(workFrom) == "" {
+		if relocation {
+			return "", false, fmt.Errorf("--include-relocation needs --work-from: relocation is from somewhere")
+		}
+		return "", false, nil
+	}
+	code, ok := geo.ResolveCountry(workFrom)
+	if !ok {
+		return "", false, fmt.Errorf("--work-from %q is not a country JobPilot knows; try its name or its two-letter code", workFrom)
+	}
+	return code, relocation, nil
 }
 
 // criteriaFromFlags reads the flags registered by criteriaFlags.
@@ -806,7 +858,38 @@ func criteriaFromFlags(cmd *cobra.Command) (domain.SearchCriteria, error) {
 	if c.ExcludedCompanies, err = cmd.Flags().GetStringSlice("exclude-company"); err != nil {
 		return c, err
 	}
+	if c.WorkFrom, c.IncludeRelocation, err = workFromFromFlags(cmd); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+// describeWorkable says where a job can be done from, as ADR-0023 reads it.
+func describeWorkable(w domain.Workable) string {
+	switch w.Scope {
+	case domain.WorkableAnywhere:
+		return "anywhere"
+	case domain.WorkableListed:
+		return strings.Join(w.Places, ", ")
+	}
+	return "not stated"
+}
+
+// describeOffer is one line on relocation or visa sponsorship, with the
+// sentence it was read from, or empty when the posting does not mention it.
+func describeOffer(label string, offer domain.Offer) string {
+	var status string
+	switch offer.Status {
+	case domain.OfferOffered:
+		status = "offered"
+	case domain.OfferMentioned:
+		status = "mentioned"
+	case domain.OfferDeclined:
+		status = "not offered"
+	default:
+		return ""
+	}
+	return fmt.Sprintf("%s %s — %q", label, status, offer.Evidence)
 }
 
 // describeCriteria renders the criteria that are set, for listing commands.
@@ -831,6 +914,13 @@ func describeCriteria(c domain.SearchCriteria) string {
 	}
 	if len(c.ExcludedCompanies) > 0 {
 		parts = append(parts, "excluding "+strings.Join(c.ExcludedCompanies, ", "))
+	}
+	if c.WorkFrom != "" {
+		from := "work from " + geo.CountryName(c.WorkFrom)
+		if c.IncludeRelocation {
+			from += ", or relocate"
+		}
+		parts = append(parts, from)
 	}
 	return strings.Join(parts, "  ")
 }
@@ -870,14 +960,30 @@ func newSearchTemplateCmd(client *httpapi.Client) *cobra.Command {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
+	importCmd := &cobra.Command{
 		Use:   "import [id...]",
 		Short: "Create a saved search from each named template",
 		Long: "The searches created are ordinary saved searches. Edit, rename or delete them\n" +
-			"as you like — nothing links them back to the template they came from.",
+			"as you like — nothing links them back to the template they came from.\n" +
+			"Each starts with your profile's country as the one you work from, unless --work-from says otherwise.",
 		Args: cobra.MinimumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			created, err := client.ImportSearchTemplates(context.Background(), args)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			workFrom, err := cmd.Flags().GetString("work-from")
+			if err != nil {
+				return err
+			}
+			code := ""
+			if strings.TrimSpace(workFrom) != "" {
+				var ok bool
+				if code, ok = geo.ResolveCountry(workFrom); !ok {
+					return fmt.Errorf("--work-from %q is not a country JobPilot knows; try its name or its two-letter code", workFrom)
+				}
+			} else if countries, err := client.ListCountries(ctx); err == nil {
+				code = countries.ProfileCountry
+			}
+
+			created, err := client.ImportSearchTemplates(ctx, args, code)
 			if err != nil {
 				return fmt.Errorf("importing search templates: %w", err)
 			}
@@ -889,7 +995,9 @@ func newSearchTemplateCmd(client *httpapi.Client) *cobra.Command {
 				len(created), plural(len(created), "search", "searches"), created[0].Name)
 			return nil
 		},
-	})
+	}
+	importCmd.Flags().String("work-from", "", "The country you work from (default: your profile's)")
+	cmd.AddCommand(importCmd)
 
 	return cmd
 }

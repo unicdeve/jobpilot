@@ -181,6 +181,28 @@ func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (i
 	return len(f.matching(filter)), nil
 }
 
+func (f *fakeJobRepository) ListUnread(_ context.Context, version, limit int) ([]*domain.Job, error) {
+	var jobs []*domain.Job
+	for _, job := range f.jobs {
+		if job.SignalsVersion < version && len(jobs) < limit {
+			copied := *job
+			jobs = append(jobs, &copied)
+		}
+	}
+	return jobs, nil
+}
+
+func (f *fakeJobRepository) SaveSignals(_ context.Context, job *domain.Job) error {
+	for _, stored := range f.jobs {
+		if stored.ID == job.ID {
+			stored.Workable, stored.Relocation, stored.VisaSponsorship = job.Workable, job.Relocation, job.VisaSponsorship
+			stored.SignalsVersion = job.SignalsVersion
+			return nil
+		}
+	}
+	return fmt.Errorf("job not found: %s", job.ID)
+}
+
 func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
 	j, ok := f.jobs[id]
 	if !ok {
@@ -1222,6 +1244,8 @@ func TestServer_AgentActivity_Errors(t *testing.T) {
 		{"missing run", "/v1/agent-runs/does-not-exist", http.StatusNotFound, "agent run not found"},
 		{"unknown remote type", "/v1/jobs?remote=anywhere", http.StatusBadRequest, `unknown remote type "anywhere"`},
 		{"unreadable posting date", "/v1/jobs?posted_since=yesterday", http.StatusBadRequest, `invalid posted_since "yesterday"`},
+		{"unknown country", "/v1/jobs?work_from=Atlantis", http.StatusBadRequest, "not a country JobPilot knows"},
+		{"unreadable relocation", "/v1/jobs?work_from=NG&include_relocation=maybe", http.StatusBadRequest, `invalid include_relocation "maybe"`},
 	}
 
 	for _, tt := range tests {
@@ -1469,7 +1493,7 @@ func TestClient_SearchTemplates(t *testing.T) {
 	assert.NotEmpty(t, first.ID)
 	assert.False(t, first.Criteria.IsEmpty())
 
-	created, err := client.ImportSearchTemplates(ctx, []string{first.ID})
+	created, err := client.ImportSearchTemplates(ctx, []string{first.ID}, "")
 	require.NoError(t, err)
 	require.Len(t, created, 1)
 	assert.Equal(t, first.Name, created[0].Name)
@@ -1482,7 +1506,7 @@ func TestClient_SearchTemplates(t *testing.T) {
 	require.Len(t, searches, 1)
 	assert.Equal(t, created[0].ID, searches[0].ID)
 
-	again, err := client.ImportSearchTemplates(ctx, []string{first.ID})
+	again, err := client.ImportSearchTemplates(ctx, []string{first.ID}, "")
 	require.NoError(t, err)
 	assert.Equal(t, first.Name+" 2", again[0].Name)
 }
@@ -1491,14 +1515,14 @@ func TestClient_ImportSearchTemplates_RejectsAnUnknownID(t *testing.T) {
 	client, _, _ := testServer(t)
 	ctx := context.Background()
 
-	_, err := client.ImportSearchTemplates(ctx, []string{"backend-engineer", "not-a-template"})
+	_, err := client.ImportSearchTemplates(ctx, []string{"backend-engineer", "not-a-template"}, "")
 	assert.ErrorContains(t, err, "not-a-template")
 
 	searches, err := client.ListSavedSearches(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, searches, "a mistyped ID should cost nothing, not half an import")
 
-	_, err = client.ImportSearchTemplates(ctx, nil)
+	_, err = client.ImportSearchTemplates(ctx, nil, "")
 	assert.ErrorContains(t, err, "no templates chosen")
 }
 
@@ -2307,4 +2331,21 @@ func TestServer_AboutYou(t *testing.T) {
 		map[string]any{"answers": map[string]string{"favourite_colour": "blue"}})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, status, "a question that does not exist is the client's mistake")
+}
+
+func TestServer_Countries(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+
+	countries, err := client.ListCountries(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, countries.ProfileCountry, "no profile, no country of its own")
+	assert.Contains(t, countries.Countries, Country{Code: "NG", Name: "Nigeria"})
+	assert.Greater(t, len(countries.Countries), 200)
+
+	profile := domain.Candidate{FirstName: "Ada", LocationCountry: "Deutschland"}
+	require.NoError(t, client.InitializeProfile(ctx, &profile))
+	countries, err = client.ListCountries(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "DE", countries.ProfileCountry, "the profile's country as the user wrote it, read as a code")
 }

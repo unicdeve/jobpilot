@@ -83,6 +83,19 @@ func run() error {
 		return fmt.Errorf("wiring services: %w", err)
 	}
 
+	// Jobs stored before the reading last changed are read again, in the
+	// background: nothing waits on it, and a job not yet read is treated as
+	// not saying where it can be done from (ADR-0023 §3).
+	go func() {
+		read, err := svc.Discovery.ReadStoredSignals(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Printf("reading stored jobs again: %v", err)
+		case read > 0:
+			log.Printf("read %d stored jobs again for where they can be done from", read)
+		}
+	}()
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("binding loopback listener: %w", err)
@@ -218,7 +231,8 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, savedSearchSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
-	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter)
+	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter).
+		WithCandidates(candRepo)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 	applicationSvc := services.NewApplicationService(appRepo)
 	aboutYouSvc := services.NewAboutYouService(

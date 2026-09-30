@@ -196,7 +196,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		t.Parallel()
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 
-		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "fullstack-engineer"})
+		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "fullstack-engineer"}, "")
 		require.NoError(t, err)
 		require.Len(t, created, 2)
 
@@ -219,7 +219,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		t.Parallel()
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 
-		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "frontend-engineer"})
+		created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer", "frontend-engineer"}, "")
 		require.NoError(t, err)
 
 		assert.True(t, created[0].IsDefault, "a user whose first searches are imported still needs a default")
@@ -231,15 +231,15 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 		ctx := context.Background()
 
-		first, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		first, err := svc.ImportTemplates(ctx, []string{"backend-engineer"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, "Backend Engineer", first[0].Name)
 
-		second, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		second, err := svc.ImportTemplates(ctx, []string{"backend-engineer"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, "Backend Engineer 2", second[0].Name)
 
-		third, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		third, err := svc.ImportTemplates(ctx, []string{"backend-engineer"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, "Backend Engineer 3", third[0].Name)
 	})
@@ -252,7 +252,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		mine, err := svc.Create(ctx, "backend engineer", domain.SearchCriteria{Keywords: "rust"})
 		require.NoError(t, err)
 
-		created, err := svc.ImportTemplates(ctx, []string{"backend-engineer"})
+		created, err := svc.ImportTemplates(ctx, []string{"backend-engineer"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, "Backend Engineer 2", created[0].Name,
 			"names are compared without case, as SQLite compares them")
@@ -267,7 +267,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 
 		created, err := svc.ImportTemplates(context.Background(),
-			[]string{"backend-engineer", "backend-engineer"})
+			[]string{"backend-engineer", "backend-engineer"}, "")
 
 		require.NoError(t, err)
 		assert.Len(t, created, 1)
@@ -278,7 +278,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 
 		_, err := svc.ImportTemplates(context.Background(),
-			[]string{"backend-engineer", "not-a-template"})
+			[]string{"backend-engineer", "not-a-template"}, "")
 
 		assert.ErrorContains(t, err, "not-a-template")
 
@@ -291,7 +291,7 @@ func TestSavedSearchService_ImportTemplates(t *testing.T) {
 		t.Parallel()
 		svc := NewSavedSearchService(newFakeSavedSearchRepository())
 
-		_, err := svc.ImportTemplates(context.Background(), nil)
+		_, err := svc.ImportTemplates(context.Background(), nil, "")
 
 		assert.ErrorContains(t, err, "no templates chosen")
 	})
@@ -335,4 +335,34 @@ func searchNames(searches []*domain.SavedSearch) []string {
 		names[i] = search.Name
 	}
 	return names
+}
+
+func TestSavedSearchService_WorkFrom(t *testing.T) {
+	t.Parallel()
+
+	svc := NewSavedSearchService(newFakeSavedSearchRepository())
+	ctx := context.Background()
+
+	search, err := svc.Create(ctx, "Remote from Lagos", domain.SearchCriteria{Title: "engineer", WorkFrom: " ng "})
+	require.NoError(t, err)
+	assert.Equal(t, "NG", search.Criteria.WorkFrom, "stored as the ISO code, in capitals")
+
+	_, err = svc.Create(ctx, "Nowhere", domain.SearchCriteria{Title: "engineer", WorkFrom: "Atlantis"})
+	assert.ErrorIs(t, err, ErrInvalidWorkFrom)
+
+	_, err = svc.Update(ctx, search.ID, search.Name, domain.SearchCriteria{Title: "engineer", WorkFrom: "XX"})
+	assert.ErrorIs(t, err, ErrInvalidWorkFrom)
+}
+
+func TestSavedSearchService_ImportTemplates_WorkFrom(t *testing.T) {
+	t.Parallel()
+
+	svc := NewSavedSearchService(newFakeSavedSearchRepository())
+	created, err := svc.ImportTemplates(context.Background(), []string{"backend-engineer"}, "ng")
+	require.NoError(t, err)
+	require.Len(t, created, 1)
+	assert.Equal(t, "NG", created[0].Criteria.WorkFrom, "the user's country, which no template sets")
+
+	_, err = svc.ImportTemplates(context.Background(), []string{"backend-engineer"}, "Atlantis")
+	assert.ErrorIs(t, err, ErrInvalidWorkFrom)
 }

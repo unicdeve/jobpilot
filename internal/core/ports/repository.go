@@ -49,6 +49,11 @@ type JobRepository interface {
 	// SetNotInterested marks a job not interested as of at, or clears the
 	// mark when at is nil.
 	SetNotInterested(ctx context.Context, id string, at *time.Time) error
+	// ListUnread returns up to limit jobs whose signals were read by a
+	// version of domain.ReadSignals older than version.
+	ListUnread(ctx context.Context, version, limit int) ([]*domain.Job, error)
+	// SaveSignals stores what domain.ReadSignals read from a job.
+	SaveSignals(ctx context.Context, job *domain.Job) error
 }
 
 // SavedSearchRepository persists the user's named search criteria.

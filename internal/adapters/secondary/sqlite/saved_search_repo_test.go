@@ -25,6 +25,8 @@ func goSearch(name string) *domain.SavedSearch {
 			SalaryMin:         100000,
 			SalaryMax:         180000,
 			ExcludedCompanies: []string{"Acme", "Globex"},
+			WorkFrom:          "NG",
+			IncludeRelocation: true,
 		},
 	}
 }

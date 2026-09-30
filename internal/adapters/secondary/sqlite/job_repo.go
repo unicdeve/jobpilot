@@ -39,21 +39,56 @@ func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 		company_url, description_markdown, locations, remote_type,
 		employment_type, salary_min, salary_max, salary_currency,
 		salary_period, experience_min, experience_max, skills,
-		posted_at, expires_at, discovered_at, updated_at, raw_source_reference
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		posted_at, expires_at, discovered_at, updated_at, raw_source_reference,
+		` + signalColumns + `
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := r.db.ExecContext(ctx, query,
+	args := []any{
 		job.ID, job.CanonicalURL, job.SourceID, job.SourceJobID, job.Title, job.CompanyName,
 		job.CompanyURL, job.DescriptionMarkdown, joinStrings(job.Locations), job.RemoteType,
 		job.EmploymentType, job.SalaryMin, job.SalaryMax, job.SalaryCurrency,
 		job.SalaryPeriod, job.ExperienceMin, job.ExperienceMax, joinStrings(job.Skills),
 		job.PostedAt, job.ExpiresAt, job.DiscoveredAt, job.UpdatedAt, job.RawSourceReference,
-	)
+	}
+	_, err := r.db.ExecContext(ctx, query, append(args, signalValues(job)...)...)
 	if err != nil {
 		return fmt.Errorf("failed to save job: %w", err)
 	}
 
 	return nil
+}
+
+// signalColumns are what domain.ReadSignals derives (ADR-0023 §3), in the
+// order signalValues writes them and scanJob reads them.
+const signalColumns = `workable_scope, workable_places, workable_countries, workable_note,
+	relocation, relocation_evidence, visa_sponsorship, visa_evidence, signals_version`
+
+// signalValues are a job's signals as signalColumns stores them.
+func signalValues(job *domain.Job) []any {
+	return []any{
+		string(job.Workable.Scope), joinStrings(job.Workable.Places),
+		joinCountries(job.Workable.Countries), job.Workable.Note,
+		string(job.Relocation.Status), job.Relocation.Evidence,
+		string(job.VisaSponsorship.Status), job.VisaSponsorship.Evidence,
+		job.SignalsVersion,
+	}
+}
+
+// joinCountries stores ISO codes as ",DE,FR,", so that one country is the
+// pattern ",DE," whichever position it holds.
+func joinCountries(codes []string) string {
+	if len(codes) == 0 {
+		return ""
+	}
+	return "," + strings.Join(codes, ",") + ","
+}
+
+func splitCountries(stored string) []string {
+	trimmed := strings.Trim(stored, ",")
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, ",")
 }
 
 // jobColumns are the columns scanJob reads, in its order.
@@ -62,7 +97,7 @@ const jobColumns = `id, canonical_url, source_id, source_job_id, title, company_
 	employment_type, salary_min, salary_max, salary_currency,
 	salary_period, experience_min, experience_max, skills,
 	posted_at, expires_at, discovered_at, updated_at, raw_source_reference,
-	not_interested_at`
+	not_interested_at, ` + signalColumns
 
 // rowScanner is what *sql.Row and *sql.Rows have in common.
 type rowScanner interface {
@@ -72,7 +107,7 @@ type rowScanner interface {
 // scanJob reads a job selected with jobColumns.
 func scanJob(row rowScanner) (*domain.Job, error) {
 	var j domain.Job
-	var locations, skills string
+	var locations, skills, places, countries string
 	var notInterested sql.NullTime
 	err := row.Scan(
 		&j.ID, &j.CanonicalURL, &j.SourceID, &j.SourceJobID, &j.Title, &j.CompanyName,
@@ -81,12 +116,21 @@ func scanJob(row rowScanner) (*domain.Job, error) {
 		&j.SalaryPeriod, &j.ExperienceMin, &j.ExperienceMax, &skills,
 		&j.PostedAt, &j.ExpiresAt, &j.DiscoveredAt, &j.UpdatedAt, &j.RawSourceReference,
 		&notInterested,
+		&j.Workable.Scope, &places, &countries, &j.Workable.Note,
+		&j.Relocation.Status, &j.Relocation.Evidence,
+		&j.VisaSponsorship.Status, &j.VisaSponsorship.Evidence, &j.SignalsVersion,
 	)
 	if err != nil {
 		return nil, err
 	}
 	j.Locations = splitStrings(locations)
 	j.Skills = splitStrings(skills)
+	j.Workable.Places = splitStrings(places)
+	j.Workable.Countries = splitCountries(countries)
+	if j.Workable.Scope == "" {
+		// Not read yet: the daemon reads it when it starts (ADR-0023 §3).
+		j.Workable.Scope = domain.WorkableUnknown
+	}
 	if notInterested.Valid {
 		at := notInterested.Time
 		j.NotInterestedAt = &at
@@ -152,6 +196,10 @@ func jobFilterClause(filter domain.JobFilter) (string, []any) {
 		clauses = append(clauses, "LOWER(remote_type) = ?")
 		args = append(args, filter.RemoteType)
 	}
+	if clause, workArgs := workableClause(filter); clause != "" {
+		clauses = append(clauses, clause)
+		args = append(args, workArgs...)
+	}
 	switch filter.Interest {
 	case domain.JobsInterested:
 		clauses = append(clauses, "not_interested_at IS NULL")
@@ -169,6 +217,75 @@ func jobFilterClause(filter domain.JobFilter) (string, []any) {
 		return "", nil
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// workableClause is domain.SearchCriteria.MatchesFor's rule for WorkFrom
+// and IncludeRelocation, in SQL, so the stored list and a search agree on
+// what "I can work from" keeps. domain.SearchCriteria's tests and this
+// adapter's hold the two to the same cases.
+func workableClause(filter domain.JobFilter) (string, []any) {
+	from := strings.ToUpper(strings.TrimSpace(filter.WorkFrom))
+	if from == "" {
+		return "", nil
+	}
+	keep := []string{
+		"workable_scope NOT IN ('anywhere', 'listed')",
+		"workable_scope = 'anywhere'",
+		"workable_countries LIKE ?",
+	}
+	args := []any{"%," + from + ",%"}
+	if filter.IncludeRelocation {
+		authorized := "0"
+		if len(filter.AuthorizedCountries) > 0 {
+			likes := make([]string, len(filter.AuthorizedCountries))
+			for i, country := range filter.AuthorizedCountries {
+				likes[i] = "workable_countries LIKE ?"
+				args = append(args, "%,"+strings.ToUpper(country)+",%")
+			}
+			authorized = "(" + strings.Join(likes, " OR ") + ")"
+		}
+		keep = append(keep, `((relocation IN ('offered', 'mentioned') OR visa_sponsorship IN ('offered', 'mentioned'))
+			AND (visa_sponsorship != 'declined' OR `+authorized+`))`)
+	}
+	return "(" + strings.Join(keep, " OR ") + ")", args
+}
+
+// ListUnread returns up to limit jobs read by a version of domain.ReadSignals
+// older than version, the ones never read first.
+func (r *JobRepository) ListUnread(ctx context.Context, version, limit int) ([]*domain.Job, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+jobColumns+` FROM jobs
+		WHERE signals_version < ? ORDER BY signals_version, id LIMIT ?`, version, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs to read: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	jobs := make([]*domain.Job, 0)
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan job: %w", err)
+		}
+		jobs = append(jobs, j)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating jobs: %w", err)
+	}
+	return jobs, nil
+}
+
+// SaveSignals stores what domain.ReadSignals read from a job, and nothing
+// else about it.
+func (r *JobRepository) SaveSignals(ctx context.Context, job *domain.Job) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET
+		workable_scope = ?, workable_places = ?, workable_countries = ?, workable_note = ?,
+		relocation = ?, relocation_evidence = ?, visa_sponsorship = ?, visa_evidence = ?,
+		signals_version = ?
+		WHERE id = ?`, append(signalValues(job), job.ID)...)
+	if err != nil {
+		return fmt.Errorf("failed to store what job %s says: %w", job.ID, err)
+	}
+	return nil
 }
 
 // Count returns how many stored jobs match filter. Callers paginating

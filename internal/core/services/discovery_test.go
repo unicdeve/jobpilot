@@ -887,3 +887,94 @@ func TestJobDiscoveryService_NotInterested(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestJobDiscoveryService_Search_WorkFrom(t *testing.T) {
+	t.Parallel()
+
+	listing := []domain.Job{
+		{CanonicalURL: "https://acme.example/anywhere", Title: "Backend Engineer", RemoteType: "remote", Locations: []string{"Worldwide"}},
+		{CanonicalURL: "https://acme.example/us", Title: "Backend Engineer", RemoteType: "remote", Locations: []string{"Remote (US)"}},
+		{CanonicalURL: "https://acme.example/berlin", Title: "Backend Engineer", RemoteType: "onsite", Locations: []string{"Berlin"},
+			DescriptionMarkdown: "We offer relocation support. We are unable to offer visa sponsorship for this role."},
+	}
+	search := func(t *testing.T, svc *JobDiscoveryService, criteria domain.SearchCriteria) []string {
+		t.Helper()
+		result, err := svc.Search(context.Background(), criteria)
+		require.NoError(t, err)
+		var urls []string
+		for _, job := range result.Jobs {
+			urls = append(urls, job.CanonicalURL)
+		}
+		return urls
+	}
+
+	t.Run("jobs are read before they are filtered and stored", func(t *testing.T) {
+		t.Parallel()
+		repo := newFakeJobRepository()
+		svc := NewJobDiscoveryService(repo, []ports.JobSource{searchableSource("board", listing, nil)}, nil, nil, nil)
+
+		urls := search(t, svc, domain.SearchCriteria{Title: "backend", WorkFrom: "ng"})
+
+		assert.Equal(t, []string{"https://acme.example/anywhere"}, urls)
+		stored, err := repo.GetByCanonicalURL(context.Background(), "https://acme.example/anywhere")
+		require.NoError(t, err)
+		assert.Equal(t, domain.WorkableAnywhere, stored.Workable.Scope)
+		assert.Equal(t, domain.SignalsVersion, stored.SignalsVersion)
+	})
+
+	t.Run("a job refusing sponsorship is kept for a candidate allowed to work there", func(t *testing.T) {
+		t.Parallel()
+		criteria := domain.SearchCriteria{Title: "backend", WorkFrom: "NG", IncludeRelocation: true}
+
+		without := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{searchableSource("board", listing, nil)}, nil, nil, nil)
+		assert.Equal(t, []string{"https://acme.example/anywhere"}, search(t, without, criteria),
+			"with no work authorization to read, a job that refuses sponsorship is left out")
+
+		candidates := newFakeCandidateRepository()
+		candidates.candidates["c"] = &domain.Candidate{ID: "c", WorkAuthorizations: []domain.WorkAuthorization{
+			{Country: "Germany", IsAuthorized: true},
+		}}
+		with := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{searchableSource("board", listing, nil)}, nil, nil, nil).
+			WithCandidates(candidates)
+		assert.Equal(t, []string{"https://acme.example/anywhere", "https://acme.example/berlin"}, search(t, with, criteria))
+	})
+
+	t.Run("a country that is not one is refused", func(t *testing.T) {
+		t.Parallel()
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{searchableSource("board", listing, nil)}, nil, nil, nil)
+		_, err := svc.Search(context.Background(), domain.SearchCriteria{Title: "backend", WorkFrom: "Nigeria"})
+		assert.ErrorIs(t, err, ErrInvalidWorkFrom)
+	})
+}
+
+func TestJobDiscoveryService_ReadStoredSignals(t *testing.T) {
+	t.Parallel()
+
+	repo := newFakeJobRepository()
+	ctx := context.Background()
+	for i := range signalBatchSize + 5 {
+		job := &domain.Job{CanonicalURL: fmt.Sprintf("https://acme.example/%d", i), RemoteType: "remote", Locations: []string{"EMEA"}}
+		require.NoError(t, repo.Save(ctx, job))
+	}
+	svc := NewJobDiscoveryService(repo, nil, nil, nil, nil)
+
+	read, err := svc.ReadStoredSignals(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, signalBatchSize+5, read, "every unread job is read, across batches")
+
+	again, err := svc.ReadStoredSignals(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, again, "a job read by the current version is not read again")
+
+	stored, err := repo.GetByCanonicalURL(ctx, "https://acme.example/0")
+	require.NoError(t, err)
+	assert.True(t, stored.Workable.OpenTo("NG"))
+}
+
+func TestJobDiscoveryService_ListJobs_WorkFrom(t *testing.T) {
+	t.Parallel()
+
+	svc := NewJobDiscoveryService(newFakeJobRepository(), nil, nil, nil, nil)
+	_, err := svc.ListJobs(context.Background(), domain.JobFilter{WorkFrom: "Atlantis"}, 10, 0)
+	assert.ErrorIs(t, err, ErrInvalidJobFilter)
+}

@@ -143,14 +143,16 @@ func TestMigration00012_AgentActivity(t *testing.T) {
 	_, err = provider.UpTo(ctx, 11)
 	require.NoError(t, err)
 
-	search := seedSavedSearch(t, db)
 	conn := db.Conn()
 	exec := func(query string, args ...any) {
 		t.Helper()
 		_, err := conn.ExecContext(ctx, query, args...)
 		require.NoError(t, err)
 	}
-	exec(`INSERT INTO scouts (id, name, saved_search_id) VALUES ('scout-1', 'Daily Go', ?)`, search.ID)
+	// Written as the schema at 11 holds it, not through the repository,
+	// which writes the columns later migrations add.
+	exec(`INSERT INTO saved_searches (id, name, keywords, is_default) VALUES ('search-1', 'Go roles', 'Go', 1)`)
+	exec(`INSERT INTO scouts (id, name, saved_search_id) VALUES ('scout-1', 'Daily Go', 'search-1')`)
 	exec(`INSERT INTO agent_runs (id, task_type, status) VALUES ('run-scout', 'scout_run', 'completed')`)
 	exec(`INSERT INTO agent_runs (id, task_type, status) VALUES ('run-browser', 'prepare_application', 'completed')`)
 	for _, row := range [][]string{

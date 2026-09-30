@@ -217,6 +217,28 @@ func (f *fakeJobRepository) Count(_ context.Context, filter domain.JobFilter) (i
 	return len(f.matching(filter)), nil
 }
 
+func (f *fakeJobRepository) ListUnread(_ context.Context, version, limit int) ([]*domain.Job, error) {
+	var jobs []*domain.Job
+	for _, job := range f.jobs {
+		if job.SignalsVersion < version && len(jobs) < limit {
+			copied := *job
+			jobs = append(jobs, &copied)
+		}
+	}
+	return jobs, nil
+}
+
+func (f *fakeJobRepository) SaveSignals(_ context.Context, job *domain.Job) error {
+	for _, stored := range f.jobs {
+		if stored.ID == job.ID {
+			stored.Workable, stored.Relocation, stored.VisaSponsorship = job.Workable, job.Relocation, job.VisaSponsorship
+			stored.SignalsVersion = job.SignalsVersion
+			return nil
+		}
+	}
+	return fmt.Errorf("job not found: %s", job.ID)
+}
+
 func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
 	j, ok := f.jobs[id]
 	if !ok {

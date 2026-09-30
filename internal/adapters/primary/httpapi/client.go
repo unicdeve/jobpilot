@@ -132,6 +132,12 @@ func (c *Client) ListJobs(ctx context.Context, filter domain.JobFilter, limit, o
 	if filter.Interest != "" {
 		query.Set("interest", string(filter.Interest))
 	}
+	if filter.WorkFrom != "" {
+		query.Set("work_from", filter.WorkFrom)
+	}
+	if filter.IncludeRelocation {
+		query.Set("include_relocation", "true")
+	}
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
 	}
@@ -184,6 +190,14 @@ func (c *Client) CreateSavedSearch(ctx context.Context, name string, criteria do
 	return &search, nil
 }
 
+// ListCountries returns the countries a search can work from, and the
+// profile's own country when it is one.
+func (c *Client) ListCountries(ctx context.Context) (*Countries, error) {
+	var countries Countries
+	_, err := c.do(ctx, http.MethodGet, "/v1/countries", nil, &countries)
+	return &countries, err
+}
+
 // ListSearchTemplates returns the catalog of ready-made searches.
 func (c *Client) ListSearchTemplates(ctx context.Context) ([]domain.SearchTemplateGroup, error) {
 	var groups []domain.SearchTemplateGroup
@@ -191,9 +205,10 @@ func (c *Client) ListSearchTemplates(ctx context.Context) ([]domain.SearchTempla
 	return groups, err
 }
 
-// ImportSearchTemplates creates a saved search from each named template.
-func (c *Client) ImportSearchTemplates(ctx context.Context, templateIDs []string) ([]*domain.SavedSearch, error) {
-	req := importTemplatesRequest{TemplateIDs: templateIDs}
+// ImportSearchTemplates creates a saved search from each named template,
+// each starting with workFrom as the country the candidate works from.
+func (c *Client) ImportSearchTemplates(ctx context.Context, templateIDs []string, workFrom string) ([]*domain.SavedSearch, error) {
+	req := importTemplatesRequest{TemplateIDs: templateIDs, WorkFrom: workFrom}
 	var created []*domain.SavedSearch
 	_, err := c.do(ctx, http.MethodPost, "/v1/search-templates/import", req, &created)
 	return created, err

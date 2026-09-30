@@ -30,6 +30,11 @@ func NewSavedSearchService(repo ports.SavedSearchRepository) *SavedSearchService
 // default, so a user who sets up exactly one never has to also nominate it.
 func (s *SavedSearchService) Create(ctx context.Context, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
 	name = strings.TrimSpace(name)
+	workFrom, err := normalizeWorkFrom(criteria.WorkFrom)
+	if err != nil {
+		return nil, err
+	}
+	criteria.WorkFrom = workFrom
 	if err := s.validate(ctx, name, criteria, ""); err != nil {
 		return nil, err
 	}
@@ -54,6 +59,11 @@ func (s *SavedSearchService) Create(ctx context.Context, name string, criteria d
 // status alone — that is SetDefault's job.
 func (s *SavedSearchService) Update(ctx context.Context, id, name string, criteria domain.SearchCriteria) (*domain.SavedSearch, error) {
 	name = strings.TrimSpace(name)
+	workFrom, err := normalizeWorkFrom(criteria.WorkFrom)
+	if err != nil {
+		return nil, err
+	}
+	criteria.WorkFrom = workFrom
 	if err := s.validate(ctx, name, criteria, id); err != nil {
 		return nil, err
 	}
@@ -170,13 +180,22 @@ func (s *SavedSearchService) Templates() []domain.SearchTemplateGroup {
 // renames and deletes them like any other, and nothing records where they
 // came from. A template is a starting point, not a subscription.
 //
+// workFrom, when set, is the country the candidate works from, which every
+// search created starts with. A template never sets it — a location belongs
+// to the user, not to the kind of work — so the client passes the one the
+// user gave, usually their profile's (ADR-0023 §4).
+//
 // Every ID is resolved before anything is written, so a mistyped one costs
 // nothing. A repository failure partway through keeps the searches already
 // created — the alternative, deleting them, discards work the user asked for
 // to tidy up an error they can simply retry past.
-func (s *SavedSearchService) ImportTemplates(ctx context.Context, templateIDs []string) ([]*domain.SavedSearch, error) {
+func (s *SavedSearchService) ImportTemplates(ctx context.Context, templateIDs []string, workFrom string) ([]*domain.SavedSearch, error) {
 	if len(templateIDs) == 0 {
 		return nil, fmt.Errorf("no templates chosen")
+	}
+	workFrom, err := normalizeWorkFrom(workFrom)
+	if err != nil {
+		return nil, err
 	}
 
 	templates := make([]domain.SearchTemplate, 0, len(templateIDs))
@@ -208,7 +227,9 @@ func (s *SavedSearchService) ImportTemplates(ctx context.Context, templateIDs []
 		name := availableName(template.Name, taken)
 		taken[strings.ToLower(name)] = true
 
-		search, err := s.Create(ctx, name, template.Criteria)
+		criteria := template.Criteria
+		criteria.WorkFrom = workFrom
+		search, err := s.Create(ctx, name, criteria)
 		if err != nil {
 			return created, fmt.Errorf("failed to import template %q: %w", template.ID, err)
 		}

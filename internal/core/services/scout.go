@@ -220,10 +220,11 @@ func (s *ScoutService) considerJobs(
 		report.Considered++
 		verdict := domain.ScoutVerdict{JobID: job.ID, JobTitle: job.Title, Considered: true}
 		input := domain.EligibilityInput{
-			Job:            job,
-			Criteria:       search.Criteria,
-			AlreadyApplied: applied[job.ID],
-			CreatedSoFar:   report.Created,
+			Job:                 job,
+			Criteria:            search.Criteria,
+			AlreadyApplied:      applied[job.ID],
+			CreatedSoFar:        report.Created,
+			AuthorizedCountries: candidate.AuthorizedCountries(),
 		}
 
 		if ok, reason := scout.PreScreen(input); !ok {
