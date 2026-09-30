@@ -16,6 +16,7 @@ import type {
   ApplicationState,
   ApplicationStateTransition,
   Candidate,
+  Countries,
   CoverLetter,
   DeletionReach,
   DeletionResult,
@@ -120,7 +121,12 @@ export interface ApiClient {
   listCredentials(): Promise<CredentialRef[]>;
   setCredential(source: string, label: string, secret: string): Promise<CredentialRef>;
   deleteCredential(source: string, label: string): Promise<void>;
-  importSearchTemplates(templateIds: string[]): Promise<SavedSearch[]>;
+  /// importSearchTemplates adopts templates as saved searches, each starting
+  /// with workFrom as the country the candidate works from.
+  importSearchTemplates(templateIds: string[], workFrom?: string): Promise<SavedSearch[]>;
+  /// listCountries returns every country a search can work from, and the
+  /// profile's own.
+  listCountries(): Promise<Countries>;
   /// runSavedSearch discovers jobs using a saved search's criteria. The
   /// daemon reads the criteria itself, so no caller has to hold them and
   /// post them back — the shape that allowed an empty search to be sent.
@@ -322,6 +328,8 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       if (filter.remote) params.remote = filter.remote;
       if (filter.postedSince) params.posted_since = filter.postedSince.toISOString();
       if (filter.interest) params.interest = filter.interest;
+      if (filter.workFrom) params.work_from = filter.workFrom;
+      if (filter.workFrom && filter.includeRelocation) params.include_relocation = "true";
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
@@ -349,10 +357,12 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       request<CredentialRef>(daemon, "PUT", credentialPath(source, label), { secret }),
     deleteCredential: (source, label) =>
       request<void>(daemon, "DELETE", credentialPath(source, label)),
-    importSearchTemplates: (templateIds) =>
+    importSearchTemplates: (templateIds, workFrom) =>
       request<SavedSearch[]>(daemon, "POST", "/v1/search-templates/import", {
         template_ids: templateIds,
+        work_from: workFrom || undefined,
       }),
+    listCountries: () => request<Countries>(daemon, "GET", "/v1/countries"),
     listScouts: () => request<Scout[]>(daemon, "GET", "/v1/scouts"),
     createScout: (scout) => request<Scout>(daemon, "POST", "/v1/scouts", scout),
     updateScout: (id, scout) =>

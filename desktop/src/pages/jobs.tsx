@@ -27,7 +27,16 @@ import {
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { jobLocation, relativeTime, REMOTE_LABELS, remoteLabel, scoreTone, SOURCE_LABELS, sourceLabel } from "../lib/format";
+import {
+  jobLocation,
+  relativeTime,
+  REMOTE_LABELS,
+  remoteLabel,
+  scoreTone,
+  SOURCE_LABELS,
+  sourceLabel,
+  workableLabel,
+} from "../lib/format";
 import {
   activeFilterCount,
   type JobFilters,
@@ -41,6 +50,7 @@ import {
 import {
   useApplications,
   useCandidateId,
+  useCountries,
   useImportJob,
   useInfiniteJobs,
   useJobsByID,
@@ -168,8 +178,18 @@ function AllJobs({
   notInterested?: boolean;
 }) {
   const view: JobsView = notInterested ? "not_interested" : "all";
+  const { data: countries } = useCountries();
+  const workFrom = filters.where ? countries?.profile_country || undefined : undefined;
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } = useInfiniteJobs(
-    { keywords: query, source: filters.source, remote: filters.remote, posted: filters.posted, notInterested },
+    {
+      keywords: query,
+      source: filters.source,
+      remote: filters.remote,
+      posted: filters.posted,
+      notInterested,
+      workFrom,
+      includeRelocation: workFrom !== undefined && filters.where === "relocate",
+    },
     PAGE_SIZE,
   );
   const { candidateId } = useCandidateId();
@@ -334,15 +354,26 @@ const TIME_ITEMS = {
   ...Object.fromEntries(Object.entries(TIME_RANGES).map(([range, { label }]) => [range, label])),
 };
 
-/// FILTER_FIELDS are the choices behind each filter, the first meaning "not
+/// filterFields are the choices behind each filter, the first meaning "not
 /// filtered". The order of VIEW_FILTERS decides the order they are shown in.
-const FILTER_FIELDS: Record<keyof JobFilters, { label: string; items: Record<string, string> }> = {
-  posted: { label: "Posted", items: TIME_ITEMS },
-  analyzed: { label: "Analyzed", items: TIME_ITEMS },
-  score: { label: "Match score", items: { [FILTER_ALL]: "Any score", ...SCORE_FLOORS } },
-  source: { label: "Source", items: { [FILTER_ALL]: "All sources", ...SOURCE_LABELS } },
-  remote: { label: "Work type", items: { [FILTER_ALL]: "Any work type", ...REMOTE_LABELS } },
-};
+/// "Where" names the profile's country, so it is built with it.
+function filterFields(country: string | undefined): Record<keyof JobFilters, { label: string; items: Record<string, string> }> {
+  return {
+    where: {
+      label: "Where you can work",
+      items: {
+        [FILTER_ALL]: "Any location",
+        open: `Doable from ${country ?? "your country"}`,
+        relocate: `From ${country ?? "your country"}, or relocating`,
+      },
+    },
+    posted: { label: "Posted", items: TIME_ITEMS },
+    analyzed: { label: "Analyzed", items: TIME_ITEMS },
+    score: { label: "Match score", items: { [FILTER_ALL]: "Any score", ...SCORE_FLOORS } },
+    source: { label: "Source", items: { [FILTER_ALL]: "All sources", ...SOURCE_LABELS } },
+    remote: { label: "Work type", items: { [FILTER_ALL]: "Any work type", ...REMOTE_LABELS } },
+  };
+}
 
 /// FilterMenu holds the current view's filters behind one toolbar button,
 /// which carries a dot while any of them is set.
@@ -359,6 +390,9 @@ function FilterMenu({
 }) {
   const count = activeFilterCount(filters, view);
   const label = count > 0 ? `Filter jobs (${count} active)` : "Filter jobs";
+  const { data: countries } = useCountries();
+  const profileCountry = countries?.countries.find((c) => c.code === countries.profile_country);
+  const fields = filterFields(profileCountry?.name);
 
   return (
     <Popover>
@@ -380,8 +414,22 @@ function FilterMenu({
           )}
         </div>
         {VIEW_FILTERS[view].map((key) => {
-          const field = FILTER_FIELDS[key];
+          const field = fields[key];
           const id = `job-filter-${key}`;
+          if (key === "where" && !profileCountry) {
+            return (
+              <div key={key} className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  Add your country to your{" "}
+                  <Link to="/profile" className="text-foreground underline">
+                    profile
+                  </Link>{" "}
+                  to see the jobs you can do from it.
+                </p>
+              </div>
+            );
+          }
           return (
             <div key={key} className="flex flex-col gap-1.5">
               <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
@@ -404,7 +452,13 @@ function FilterMenu({
 }
 
 function JobRow({ job, score }: { job: Job; score?: number }) {
-  const where = [remoteLabel(job.remote_type), jobLocation(job)].filter(Boolean).join(" · ");
+  // Where the job can be done from, as the daemon read it, reads better than
+  // the source's own words — "Munich" for "München (81671)" — and the
+  // source's words stand in when the daemon could not read them.
+  // A job whose own words contradict its source's location says so, rather
+  // than repeating the claim its page questions.
+  const place = workableLabel(job) ?? (job.workable?.note ? "Location unclear" : jobLocation(job));
+  const where = [remoteLabel(job.remote_type), place].filter(Boolean).join(" · ");
   const age = relativeTime(job.posted_at) ?? relativeTime(job.discovered_at);
   // The row is a link, which cannot hold a button, so the quick action sits
   // beside it and shows itself while the row is hovered or focused.
@@ -464,6 +518,7 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {[where, sourceLabel(job.source_id), age].filter(Boolean).join(" · ")}
           </p>
+          <MovingHelp job={job} />
         </div>
         {score !== undefined && (
           <span
@@ -475,6 +530,26 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
         )}
       </div>
     </ListItem>
+  );
+}
+
+/// MovingHelp marks a job that offers relocation or visa sponsorship. Only
+/// an offer is marked in the list; what a posting mentions or refuses is on
+/// its page, with the sentence that said it.
+function MovingHelp({ job }: { job: Job }) {
+  const offers = [
+    job.relocation?.status === "offered" && "Relocation",
+    job.visa_sponsorship?.status === "offered" && "Visa sponsorship",
+  ].filter(Boolean) as string[];
+  if (offers.length === 0) return null;
+  return (
+    <p className="mt-1 flex flex-wrap gap-1">
+      {offers.map((offer) => (
+        <span key={offer} className="rounded bg-success/12 px-1.5 py-px text-[11px] font-medium text-success">
+          {offer}
+        </span>
+      ))}
+    </p>
   );
 }
 

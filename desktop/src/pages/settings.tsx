@@ -28,6 +28,7 @@ import {
   useSaveDiscoverySettings,
   useSaveLLMSettings,
   useSavedSearches,
+  useCountries,
   useSetDefaultSavedSearch,
   useUpdateSavedSearch,
 } from "../lib/queries";
@@ -251,6 +252,8 @@ function RefreshOnLaunchSetting() {
 function JobSearchSettings() {
   const { notify } = useToast();
   const { data: searches, error, isPending } = useSavedSearches();
+  const { data: countries } = useCountries();
+  const countryName = (code: string) => countries?.countries.find((c) => c.code === code)?.name ?? code;
   const [adding, setAdding] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -358,7 +361,7 @@ function JobSearchSettings() {
                       </span>
                     )}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{describeCriteria(search.criteria)}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{describeCriteria(search.criteria, countryName)}</p>
                 </div>
                 <span className="shrink-0 text-xs text-muted-foreground" title={dateTime(search.last_run_at ?? undefined)}>
                   {search.last_run_at ? `Searched ${relativeTime(search.last_run_at)}` : "Never searched"}
@@ -403,7 +406,7 @@ function JobSearchSettings() {
 
 /// describeCriteria renders only the criteria that are set, so a search reads
 /// as what it actually narrows.
-function describeCriteria(criteria: SearchCriteria): string {
+function describeCriteria(criteria: SearchCriteria, countryName: (code: string) => string): string {
   const parts: string[] = [];
   if (criteria.keywords?.trim()) parts.push(criteria.keywords.trim());
   if (criteria.title?.trim()) parts.push(`title: ${criteria.title.trim()}`);
@@ -414,6 +417,9 @@ function describeCriteria(criteria: SearchCriteria): string {
   if (criteria.salary_max) parts.push(`≤ ${criteria.salary_max.toLocaleString()}`);
   if (criteria.excluded_companies?.length) {
     parts.push(`excluding ${criteria.excluded_companies.join(", ")}`);
+  }
+  if (criteria.work_from) {
+    parts.push(`from ${countryName(criteria.work_from)}${criteria.include_relocation ? ", or relocating" : ""}`);
   }
   return parts.join(" · ");
 }

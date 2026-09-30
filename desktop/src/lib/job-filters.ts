@@ -28,6 +28,18 @@ export const SCORE_FLOORS = {
 
 export type ScoreFloor = keyof typeof SCORE_FLOORS;
 
+/// WHERE_CHOICES narrow the list by where the candidate can take a job from,
+/// as a saved search's "I can work from" does: jobs open in their country
+/// or anywhere, and those that do not say; with "relocate", also jobs
+/// elsewhere that offer or mention relocation or visa sponsorship. Both
+/// need the profile's country, which the labels name.
+export const WHERE_CHOICES = {
+  open: "open",
+  relocate: "relocate",
+} as const;
+
+export type WhereChoice = keyof typeof WHERE_CHOICES;
+
 export type RemoteType = keyof typeof REMOTE_LABELS;
 
 /// JobFilters is every filter the screen knows. Each view reads only the
@@ -40,14 +52,16 @@ export interface JobFilters {
   /// When the job was analyzed — the "Analyzed" view.
   analyzed: TimeRange | "";
   score: ScoreFloor | "";
+  /// Where the candidate can take a job from — the "All jobs" view.
+  where: WhereChoice | "";
 }
 
 /// VIEW_FILTERS are the filters each view applies, and so the ones its
 /// filter menu shows and counts.
 export const VIEW_FILTERS = {
-  all: ["posted", "source", "remote"],
+  all: ["where", "posted", "source", "remote"],
   analyzed: ["score", "analyzed", "source", "remote"],
-  not_interested: ["posted", "source", "remote"],
+  not_interested: ["where", "posted", "source", "remote"],
 } as const satisfies Record<string, readonly (keyof JobFilters)[]>;
 
 export type JobsView = keyof typeof VIEW_FILTERS;
@@ -65,6 +79,7 @@ export function readJobFilters(params: URLSearchParams): JobFilters {
     posted: pick(TIME_RANGES, params.get("posted")),
     analyzed: pick(TIME_RANGES, params.get("analyzed")),
     score: pick(SCORE_FLOORS, params.get("score")),
+    where: pick(WHERE_CHOICES, params.get("where")),
   };
 }
 

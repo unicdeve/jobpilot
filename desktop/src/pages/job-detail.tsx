@@ -35,6 +35,8 @@ import {
   dateTime,
   employmentLabel,
   jobLocation,
+  offerLabel,
+  placesLabel,
   relativeTime,
   remoteLabel,
   salaryLabel,
@@ -45,6 +47,7 @@ import {
   useAnalyzeMatch,
   useApplications,
   useCandidateId,
+  useCountries,
   useCreateApplication,
   useJob,
   useJobMatch,
@@ -116,6 +119,8 @@ export function JobDetail() {
         <JobHeading job={job} />
 
         {existing.length > 0 && <ExistingApplications applications={existing} />}
+
+        <WhereSection job={job} />
 
         <MatchSection candidateId={candidateId} match={match ?? undefined} />
 
@@ -261,6 +266,114 @@ function JobHeading({ job }: { job: Job }) {
         )}
       </p>
     </header>
+  );
+}
+
+/// WhereSection says where the job can be done from and whether it helps a
+/// candidate move, as the daemon read the posting (ADR-0023), with the
+/// posting's own words beside each: a label read from text is only as good
+/// as the sentence it came from, so the sentence is shown.
+function WhereSection({ job }: { job: Job }) {
+  const { data: countries } = useCountries();
+  const home = countries?.countries.find((c) => c.code === countries.profile_country);
+  const workable = job.workable;
+  const places = workable?.places?.filter(Boolean) ?? [];
+
+  let summary: ReactNode;
+  let quote: string | undefined;
+  switch (workable?.scope) {
+    case "anywhere":
+      summary = "Open to candidates anywhere.";
+      break;
+    case "listed":
+      summary = `${job.remote_type === "remote" ? "Open in" : "Based in"} ${placesLabel(places)}.`;
+      break;
+    default:
+      quote = workable?.note;
+      summary = !quote
+        ? "The posting doesn’t say where it can be done from."
+        : quote === job.title
+          ? `${sourceLabel(job.source_id)}’s listing and the title disagree about where this can be done from:`
+          : "It isn’t clear where this can be done from. The posting says:";
+  }
+  const openToYou =
+    home && workable && (workable.scope === "anywhere" || (workable.countries ?? []).includes(home.code));
+  const listed = job.locations?.filter(Boolean) ?? [];
+
+  const offers = [
+    { topic: "relocation" as const, offer: job.relocation },
+    { topic: "visa" as const, offer: job.visa_sponsorship },
+  ].filter(({ offer }) => offer?.status);
+
+  return (
+    <DetailSection title="Where you can work">
+      <div className="space-y-3 text-[13px] leading-snug">
+        <div>
+          <p className="text-subtle-foreground select-text">
+            {summary}
+            {home && workable?.scope !== "unknown" && (
+              <span className={openToYou ? "text-success" : "text-warning"}>
+                {" "}
+                {openToYou
+                  ? `You can do it from ${home.name}.`
+                  : job.remote_type === "remote"
+                    ? `Not open in ${home.name}.`
+                    : `You’d have to move from ${home.name}.`}
+              </span>
+            )}
+          </p>
+          {quote && <Evidence>{quote}</Evidence>}
+          {workable?.scope !== "anywhere" && listed.length > 0 && (
+            <SourceLocations source={sourceLabel(job.source_id)} locations={listed} />
+          )}
+        </div>
+        {offers.map(({ topic, offer }) => (
+          <div key={topic}>
+            <p
+              className={
+                offer.status === "offered"
+                  ? "font-medium text-success"
+                  : offer.status === "declined"
+                    ? "font-medium text-subtle-foreground"
+                    : "font-medium text-foreground"
+              }
+            >
+              {offerLabel(topic, offer.status)}
+            </p>
+            {offer.evidence && <Evidence>{offer.evidence}</Evidence>}
+          </div>
+        ))}
+      </div>
+    </DetailSection>
+  );
+}
+
+/// SourceLocations is what the source itself listed, read out when it is
+/// short and behind a disclosure when it is a long list of countries.
+function SourceLocations({ source, locations }: { source: string; locations: string[] }) {
+  if (locations.length <= 6) {
+    return (
+      <p className="mt-1 text-xs text-muted-foreground select-text">
+        {source} lists: {locations.join(" · ")}
+      </p>
+    );
+  }
+  return (
+    <details className="mt-1 text-xs text-muted-foreground">
+      <summary className="cursor-default select-none hover:text-subtle-foreground">
+        {source} lists {locations.length} countries
+      </summary>
+      <p className="mt-1 leading-relaxed select-text">{locations.join(" · ")}</p>
+    </details>
+  );
+}
+
+/// Evidence is the posting's own sentence behind a label.
+function Evidence({ children }: { children: string }) {
+  return (
+    <blockquote className="mt-1 border-l-2 border-border pl-2.5 text-xs leading-relaxed text-muted-foreground select-text">
+      “{children}”
+    </blockquote>
   );
 }
 

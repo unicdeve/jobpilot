@@ -9,6 +9,8 @@ export const SOURCE_LABELS: Record<string, string> = {
   remoteok: "RemoteOK",
   himalayas: "Himalayas",
   hackernews: "Hacker News",
+  weworkremotely: "We Work Remotely",
+  jobicy: "Jobicy",
   "browser-import": "Added by URL",
 };
 
@@ -50,11 +52,49 @@ export function employmentLabel(employmentType: string): string | undefined {
   }
 }
 
+/// MANY_PLACES is how many places a list names before it is counted rather
+/// than read out: Himalayas lists a role open across EMEA as 149 countries.
+const MANY_PLACES = 6;
+
 /// jobLocation is where a job is, or undefined when the source did not say.
 export function jobLocation(job: Pick<Job, "locations">): string | undefined {
   const locations = job.locations?.filter(Boolean) ?? [];
   if (locations.length === 0) return undefined;
+  if (locations.length > MANY_PLACES) return `${locations.length} countries`;
   return locations.length > 2 ? `${locations.slice(0, 2).join(", ")} +${locations.length - 2}` : locations.join(", ");
+}
+
+/// workableLabel says where a job can be done from, as the daemon read it:
+/// "Anywhere", the places it names, or nothing when it does not say.
+export function workableLabel(job: Pick<Job, "workable">): string | undefined {
+  const workable = job.workable;
+  if (workable?.scope === "anywhere") return "Anywhere";
+  if (workable?.scope !== "listed") return undefined;
+  return placesLabel(workable.places);
+}
+
+/// placesLabel names up to three places, "+N" for a few more, and counts a
+/// long list: "149 countries".
+export function placesLabel(places: string[] | null | undefined): string | undefined {
+  const named = places?.filter(Boolean) ?? [];
+  if (named.length === 0) return undefined;
+  if (named.length > MANY_PLACES) return `${named.length} countries`;
+  return named.length > 3 ? `${named.slice(0, 3).join(", ")} +${named.length - 3}` : named.join(", ");
+}
+
+/// offerLabel names what a posting says about relocation or visa
+/// sponsorship, for a label shown beside the sentence it came from.
+export function offerLabel(topic: "relocation" | "visa", status: string): string | undefined {
+  const subject = topic === "relocation" ? "Relocation" : "Visa sponsorship";
+  switch (status) {
+    case "offered":
+      return `${subject} offered`;
+    case "mentioned":
+      return `${subject} mentioned`;
+    case "declined":
+      return topic === "relocation" ? "No relocation" : "No visa sponsorship";
+  }
+  return undefined;
 }
 
 /// salaryLabel renders a salary range only when the source gave one, in its

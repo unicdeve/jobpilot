@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { FormField } from "./form-field";
 import {
@@ -9,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { useCountries } from "../lib/queries";
 import type { SearchCriteria } from "../lib/types";
 
 const REMOTE_LABELS: Record<string, string> = {
@@ -38,9 +40,14 @@ export function hasCriterion(criteria: SearchCriteria): boolean {
       criteria.employment_type?.trim() ||
       criteria.salary_min ||
       criteria.salary_max ||
-      criteria.excluded_companies?.length,
+      criteria.excluded_companies?.length ||
+      criteria.work_from?.trim(),
   );
 }
+
+/// NO_COUNTRY is the "I can work from" choice for no preference, which a
+/// Select cannot hold as an empty string.
+const NO_COUNTRY = "none";
 
 export const emptyCriteria: SearchCriteria = {
   keywords: "",
@@ -56,6 +63,10 @@ export const emptyCriteria: SearchCriteria = {
 /// SavedSearchForm edits one named search. It is the only place in the
 /// desktop app where search criteria are entered, so that what the user can
 /// search on is described once.
+///
+/// A new search starts with the profile's country as the one the candidate
+/// works from (ADR-0023 §4); criteria that leave work_from undefined take
+/// it, and a search that says "" has chosen none.
 export function SavedSearchForm({
   initialName = "",
   initialCriteria = emptyCriteria,
@@ -74,10 +85,25 @@ export function SavedSearchForm({
   const [name, setName] = useState(initialName);
   const [criteria, setCriteria] = useState<SearchCriteria>(initialCriteria);
 
+  const { data: countries } = useCountries();
+
   const set = <K extends keyof SearchCriteria>(key: K, value: SearchCriteria[K]) =>
     setCriteria((current) => ({ ...current, [key]: value }));
 
-  const usable = name.trim() !== "" && hasCriterion(criteria);
+  const effective: SearchCriteria = {
+    ...criteria,
+    work_from: criteria.work_from ?? countries?.profile_country ?? "",
+  };
+  if (!effective.work_from) effective.include_relocation = false;
+  const usable = name.trim() !== "" && hasCriterion(effective);
+
+  const countryItems = useMemo(
+    () => ({
+      [NO_COUNTRY]: "No preference",
+      ...Object.fromEntries((countries?.countries ?? []).map((country) => [country.code, country.name])),
+    }),
+    [countries],
+  );
 
   return (
     <div className="space-y-3">
@@ -107,7 +133,25 @@ export function SavedSearchForm({
             onChange={(e) => set("title", e.target.value)}
           />
         </FormField>
-        <FormField label="Location" htmlFor="search-location">
+        <FormField label="I can work from" htmlFor="search-work-from">
+          <Select
+            items={countryItems}
+            value={effective.work_from || NO_COUNTRY}
+            onValueChange={(value) => set("work_from", value && value !== NO_COUNTRY ? value : "")}
+          >
+            <SelectTrigger id="search-work-from" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(countryItems).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Job location contains" htmlFor="search-location">
           <Input
             id="search-location"
             placeholder="lagos"
@@ -151,22 +195,6 @@ export function SavedSearchForm({
             </SelectContent>
           </Select>
         </FormField>
-        <FormField label="Exclude companies (comma separated)" htmlFor="search-excluded">
-          <Input
-            id="search-excluded"
-            placeholder="Acme, Globex"
-            value={(criteria.excluded_companies ?? []).join(", ")}
-            onChange={(e) =>
-              set(
-                "excluded_companies",
-                e.target.value
-                  .split(",")
-                  .map((company) => company.trim())
-                  .filter(Boolean),
-              )
-            }
-          />
-        </FormField>
         <FormField label="Minimum salary" htmlFor="search-salary-min">
           <Input
             id="search-salary-min"
@@ -185,15 +213,53 @@ export function SavedSearchForm({
             onChange={(e) => set("salary_max", Number(e.target.value) || 0)}
           />
         </FormField>
+        <div className="col-span-2">
+          <FormField label="Exclude companies (comma separated)" htmlFor="search-excluded">
+            <Input
+              id="search-excluded"
+              placeholder="Acme, Globex"
+              value={(criteria.excluded_companies ?? []).join(", ")}
+              onChange={(e) =>
+                set(
+                  "excluded_companies",
+                  e.target.value
+                    .split(",")
+                    .map((company) => company.trim())
+                    .filter(Boolean),
+                )
+              }
+            />
+          </FormField>
+        </div>
       </div>
+
+      {effective.work_from && (
+        <label className="flex items-start gap-3">
+          <Checkbox
+            className="mt-0.5"
+            checked={effective.include_relocation ?? false}
+            onCheckedChange={(checked) => set("include_relocation", checked === true)}
+          />
+          <span>
+            <span className="block text-[13px] font-medium">
+              Also include jobs elsewhere that offer relocation or visa sponsorship
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Jobs that only mention it are included too, with the sentence that says so. A job that refuses
+              sponsorship is left out unless your profile says you can already work there.
+            </span>
+          </span>
+        </label>
+      )}
 
       <p className="text-xs text-muted-foreground">
         Jobs must match every criterion you set. Keywords and title match each word in any order.
-        Salary bounds keep jobs that do not advertise one, since most boards publish no salary.
+        Salary bounds keep jobs that do not advertise one, since most boards publish no salary, and
+        “I can work from” keeps jobs that do not say where they can be done from.
       </p>
 
       <div className="flex items-center gap-2">
-        <Button onClick={() => onSubmit(name.trim(), criteria)} disabled={!usable || pending}>
+        <Button onClick={() => onSubmit(name.trim(), effective)} disabled={!usable || pending}>
           {pending ? "Saving…" : submitLabel}
         </Button>
         {onCancel && (

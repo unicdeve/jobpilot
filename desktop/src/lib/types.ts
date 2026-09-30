@@ -161,6 +161,48 @@ export interface Job {
   raw_source_reference: string;
   /// When the user ruled the job out; absent while it is in their lists.
   not_interested_at?: string;
+  /// Where the job can be done from, and what it says about relocation and
+  /// visa sponsorship, as the daemon reads them (ADR-0023).
+  workable: Workable;
+  relocation: Offer;
+  visa_sponsorship: Offer;
+}
+
+/// WorkableScope is how far a job says it can be done from.
+export type WorkableScope = "anywhere" | "listed" | "unknown";
+
+/// Workable mirrors domain.Workable. places are the job's locations as the
+/// daemon read them ("EMEA", "Berlin"); countries are their ISO codes,
+/// regions expanded. note is the posting's sentence that made the job
+/// unknown, when one did.
+export interface Workable {
+  scope: WorkableScope;
+  places: string[] | null;
+  countries: string[] | null;
+  note?: string;
+}
+
+/// OfferStatus is what a posting says about relocation or visa sponsorship.
+/// Empty is a posting that does not mention it.
+export type OfferStatus = "offered" | "mentioned" | "declined" | "";
+
+/// Offer mirrors domain.Offer: a status and the sentence it came from.
+export interface Offer {
+  status: OfferStatus;
+  evidence?: string;
+}
+
+/// Country is one country a search can work from.
+export interface Country {
+  code: string;
+  name: string;
+}
+
+/// Countries mirrors GET /v1/countries: every country, and the profile's
+/// own as a code, empty when it has none JobPilot can place.
+export interface Countries {
+  countries: Country[];
+  profile_country: string;
 }
 
 /// JobListFilter narrows the stored jobs the daemon lists. Every field is
@@ -175,6 +217,12 @@ export interface JobListFilter {
   /// Which jobs to include by whether they were ruled out. Absent lists the
   /// ones the user has not, as every list does by default.
   interest?: "not_interested" | "all";
+  /// The country the candidate works from, as a code: keeps the jobs open
+  /// there or anywhere, and the ones that do not say.
+  workFrom?: string;
+  /// With workFrom, also keeps jobs elsewhere that offer or mention
+  /// relocation or visa sponsorship.
+  includeRelocation?: boolean;
 }
 
 /// JobPage is one page of stored jobs plus the total matching the same
@@ -224,6 +272,10 @@ export interface SearchCriteria {
   salary_min?: number;
   salary_max?: number;
   excluded_companies?: string[];
+  /// The ISO code of the country the candidate works from, or empty.
+  work_from?: string;
+  /// With work_from, also keeps jobs elsewhere that help the candidate move.
+  include_relocation?: boolean;
 }
 
 /// SavedSearch is a named set of criteria the user keeps and re-runs.

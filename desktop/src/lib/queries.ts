@@ -35,6 +35,7 @@ import type {
   ApplicationState,
   ApplicationStateTransition,
   Candidate,
+  Countries,
   CoverLetter,
   DeletionReach,
   DeletionResult,
@@ -77,6 +78,7 @@ export const keys = {
   savedSearches: ["saved-searches"] as const,
   searchTemplates: ["search-templates"] as const,
   sources: ["sources"] as const,
+  countries: ["countries"] as const,
   /// discovery is a mutation key, not a query key: every discovery run
   /// carries it, so any screen can see what is searching.
   discovery: ["discovery"] as const,
@@ -152,6 +154,10 @@ export interface StoredJobsFilter {
   posted: TimeRange | "";
   /// notInterested lists only the jobs the user ruled out.
   notInterested?: boolean;
+  /// workFrom and includeRelocation narrow the list as a saved search's
+  /// "I can work from" does.
+  workFrom?: string;
+  includeRelocation?: boolean;
 }
 
 /// useInfiniteJobs pages through stored jobs. Every page already loaded stays
@@ -173,6 +179,8 @@ export function useInfiniteJobs(filter: StoredJobsFilter, pageSize: number) {
           remote: filter.remote,
           postedSince,
           interest: filter.notInterested ? "not_interested" : undefined,
+          workFrom: filter.workFrom,
+          includeRelocation: filter.includeRelocation,
         },
         pageSize,
         pageParam,
@@ -475,12 +483,15 @@ export function useSearchTemplates() {
   });
 }
 
-/// useImportSearchTemplates adopts templates as ordinary saved searches.
+/// useImportSearchTemplates adopts templates as ordinary saved searches,
+/// each starting with the profile's country as the one the candidate works
+/// from, which no template sets (ADR-0023 §4).
 export function useImportSearchTemplates(opts?: MutationOpts<SavedSearch[], string[]>) {
   const api = useApi();
   const queryClient = useQueryClient();
+  const { data: countries } = useCountries();
   return useMutation({
-    mutationFn: (templateIds: string[]) => api.importSearchTemplates(templateIds),
+    mutationFn: (templateIds: string[]) => api.importSearchTemplates(templateIds, countries?.profile_country),
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.savedSearches });
@@ -528,6 +539,18 @@ export function useDeleteCredential(opts?: MutationOpts<void, CredentialRef>) {
       void queryClient.invalidateQueries({ queryKey: keys.credentials });
       opts?.onSuccess?.(...args);
     },
+  });
+}
+
+/// useCountries lists the countries a search can work from, and the
+/// profile's own. The list is the daemon's and does not change while it
+/// runs; the profile's country is refreshed when the profile is saved.
+export function useCountries() {
+  const api = useApi();
+  return useQuery<Countries>({
+    queryKey: keys.countries,
+    queryFn: () => api.listCountries(),
+    staleTime: Infinity,
   });
 }
 
@@ -579,6 +602,7 @@ export function useUpdateProfile(opts?: MutationOpts<Candidate, Candidate>) {
     ...opts,
     onSuccess: (updated, ...rest) => {
       queryClient.setQueryData(keys.profile, updated);
+      void queryClient.invalidateQueries({ queryKey: keys.countries });
       opts?.onSuccess?.(updated, ...rest);
     },
   });
@@ -592,6 +616,7 @@ export function useInitializeProfile(opts?: MutationOpts<Candidate, Partial<Cand
     ...opts,
     onSuccess: (created, ...rest) => {
       queryClient.setQueryData(keys.profile, created);
+      void queryClient.invalidateQueries({ queryKey: keys.countries });
       opts?.onSuccess?.(created, ...rest);
     },
   });
