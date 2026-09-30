@@ -33,6 +33,9 @@ type SourceOutcome struct {
 	// Found is how many of the source's jobs matched the criteria, counting
 	// ones already stored. It is zero for a source that did not answer.
 	Found int `json:"found"`
+	// Failing names the parts of a source that did not answer, such as a
+	// watched company whose board has gone (ADR-0024 §5).
+	Failing []string `json:"failing,omitempty"`
 }
 
 // DiscoveryResult is the outcome of searching the job sources: the jobs that

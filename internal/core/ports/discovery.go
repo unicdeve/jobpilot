@@ -7,6 +7,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
@@ -54,4 +55,39 @@ type SourceCapabilities struct {
 	FiltersServerSide bool
 	CanGetJob         bool
 	CanAuthenticate   bool
+}
+
+// PartialAnswer is what a source made of several parts returns, beside the
+// jobs the others found, when some of its parts did not answer: a watched
+// company whose board has gone, say (ADR-0024 §5).
+type PartialAnswer struct {
+	// Failing names the parts that did not answer.
+	Failing []string
+	// Err is nil when some part answered. Otherwise it is the source's own
+	// failure, wrapping ErrSourceUnreachable when no part could be reached.
+	Err error
+}
+
+func (p *PartialAnswer) Error() string {
+	if p.Err != nil {
+		return p.Err.Error()
+	}
+	return fmt.Sprintf("%d parts did not answer", len(p.Failing))
+}
+
+func (p *PartialAnswer) Unwrap() error { return p.Err }
+
+// ErrBoardGone is returned for a hiring page its provider says does not
+// exist: the company moved provider, or closed its page.
+var ErrBoardGone = errors.New("no hiring page at this address")
+
+// BoardReader reads companies' hiring pages (ADR-0024 §4).
+type BoardReader interface {
+	// ReadBoard returns every open posting on the board. A board the
+	// provider does not know is ErrBoardGone, and no answer at all wraps
+	// ErrSourceUnreachable.
+	ReadBoard(ctx context.Context, board domain.Board) (*domain.BoardContents, error)
+	// BoardName returns the company's name as its board gives it, or ""
+	// when it gives none.
+	BoardName(ctx context.Context, board domain.Board) (string, error)
 }

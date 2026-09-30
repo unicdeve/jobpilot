@@ -30,6 +30,9 @@ const (
 	// RecordPersonalAnswer is something the candidate said about
 	// themselves, for every application or for one (ADR-0022).
 	RecordPersonalAnswer RecordKind = "personal_answer"
+	// RecordWatchedCompany is a company whose hiring page the candidate
+	// watches (ADR-0024 §2). Only "delete all data" reaches it.
+	RecordWatchedCompany RecordKind = "watched_company"
 )
 
 // DeletionEffect is what deleting a referenced record does to a record

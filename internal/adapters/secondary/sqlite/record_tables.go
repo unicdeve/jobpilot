@@ -28,4 +28,5 @@ var recordTables = map[string]domain.RecordKind{
 	"credential_names":              domain.RecordCredentialName,
 	"user_settings":                 domain.RecordSettings,
 	"personal_answers":              domain.RecordPersonalAnswer,
+	"watched_companies":             domain.RecordWatchedCompany,
 }

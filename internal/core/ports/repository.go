@@ -124,3 +124,27 @@ type ScoutRepository interface {
 	List(ctx context.Context) ([]*domain.Scout, error)
 	Delete(ctx context.Context, id string) error
 }
+
+// ErrWatchedCompanyNotFound is returned for a watched company ID that names
+// none.
+var ErrWatchedCompanyNotFound = errors.New("no watched company with this ID")
+
+// WatchedCompanyRepository persists the companies the candidate watches
+// (ADR-0024 §2).
+type WatchedCompanyRepository interface {
+	// Create stores a new company, assigning its ID. It returns the one
+	// already stored instead when the board is watched already.
+	Create(ctx context.Context, company *domain.WatchedCompany) (*domain.WatchedCompany, error)
+	// GetByID returns one company, or ErrWatchedCompanyNotFound.
+	GetByID(ctx context.Context, id string) (*domain.WatchedCompany, error)
+	// GetByBoard returns the company watching board, or nil.
+	GetByBoard(ctx context.Context, board domain.Board) (*domain.WatchedCompany, error)
+	// List returns every company, by name.
+	List(ctx context.Context) ([]*domain.WatchedCompany, error)
+	// Rename changes a company's name, or returns ErrWatchedCompanyNotFound.
+	Rename(ctx context.Context, id, name string) error
+	// RecordCheck stores how reading a company's board went.
+	RecordCheck(ctx context.Context, id string, at time.Time, check domain.BoardCheck, openRoles int) error
+	// Delete removes a company, or returns ErrWatchedCompanyNotFound.
+	Delete(ctx context.Context, id string) error
+}

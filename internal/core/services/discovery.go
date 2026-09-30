@@ -271,6 +271,13 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 	for i, source := range sources {
 		answer := answers[i]
 		outcome := domain.SourceOutcome{SourceID: source.ID(), SourceName: source.Name(), Status: domain.SourceStatusOK}
+		// A source made of parts answers for the parts that answered, and
+		// names the others (ADR-0024 §5).
+		var partial *ports.PartialAnswer
+		if errors.As(answer.err, &partial) {
+			outcome.Failing = partial.Failing
+			answer.err = partial.Err
+		}
 		if answer.err != nil {
 			outcome.Status = domain.SourceStatusFailed
 			if errors.Is(answer.err, ports.ErrSourceUnreachable) {
