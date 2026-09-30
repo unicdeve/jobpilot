@@ -29,7 +29,13 @@ Job
 - discovered_at
 - updated_at
 - raw_source_reference
+- not_interested_at
+- workable { scope: anywhere | listed | unknown, places[], countries[], note }
+- relocation { status: offered | mentioned | declined | "", evidence }
+- visa_sponsorship { status, evidence }
 ```
+
+`workable`, `relocation` and `visa_sponsorship` are derived from the fields above by core (ADR-0023), never written by a source.
 
 ## Candidate
 

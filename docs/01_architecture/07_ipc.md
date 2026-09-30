@@ -34,6 +34,15 @@ different failure modes, so they are different endpoints.
 - `GET /v1/jobs` returns jobs already stored, paginated (`limit`, `offset`)
   and optionally filtered (`q`), in a `{"jobs": [...], "total": N}` envelope.
   It contacts no source and writes nothing, so it works offline.
+  `work_from` (an ISO country code) and `include_relocation` narrow it as a
+  saved search's criteria do (ADR-0023 §4); a country that is not one is 400.
+  Each job carries `workable`, `relocation` and `visa_sponsorship`, as the
+  daemon read them.
+- `GET /v1/countries` returns every country a search can work from, and the
+  profile's own country as a code (`{"countries": [{"code", "name"}],
+  "profile_country"}`), so no client holds a copy of the tables. Adopting
+  templates (`POST /v1/search-templates/import`) takes an optional
+  `work_from`, which every search created starts with.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
 - `GET` and `PUT /v1/profile/about` read and change what the candidate says
   about themselves; `DELETE /v1/profile/about/kept/{id}` forgets a kept

@@ -112,3 +112,4 @@ It is deferred because the catalog is small enough to read, and because a wrong 
 **Templates that set a location or a salary floor.**
 Every template here sets only title and keywords.
 A location belongs to the user, not to the kind of work, and a salary floor set by the product would be a claim about what a role is worth.
+The same holds for where the candidate works from (ADR-0023 §4): no template sets it, and adopting one gives each search the profile's country, which the user can change.

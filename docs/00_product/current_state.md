@@ -75,11 +75,13 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   toggle, default off, that only fills currently-empty fields unless
   checked). A draft field the LLM didn't find in the resume is left blank
   rather than guessed.
-- Job discovery: search and list against five real, no-auth public sources —
-  Arbeitnow, Remotive, RemoteOK, Himalayas and Hacker News's monthly
-  "Who is hiring?" thread — with canonical-URL deduplication. All five need
-  no credentials, so discovery works on a fresh install with nothing
-  configured. Himalayas is the only one that reliably reports a salary range
+- Job discovery: search and list against seven real, no-auth public sources —
+  Arbeitnow, Remotive, RemoteOK, Himalayas, Hacker News's monthly
+  "Who is hiring?" thread, We Work Remotely and Jobicy — with canonical-URL
+  deduplication. None needs credentials, so discovery works on a fresh
+  install with nothing configured. The last two were added by ADR-0023, and
+  Himalayas is searched by title, keywords and country rather than read from
+  its newest pages. Himalayas is the only one that reliably reports a salary range
   with its currency and period; Hacker News carries postings that exist on
   no job board, read from a convention nothing enforces, where a comment
   that does not fit is skipped rather than guessed at. Its header fields
@@ -93,7 +95,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   to new customers and ends on 2027-01-01, so no Google source will be built;
   Brave Search API is deferred as the alternative (ADR-0020). Each connector caches its fetched
   listing in memory (15 min for Arbeitnow, 4 hours for Remotive, 30 min for
-  RemoteOK and Himalayas, 1 hour for Hacker News) matching
+  RemoteOK, 1 hour for Hacker News, We Work Remotely, and each Himalayas
+  query and Jobicy feed) matching
   that API's own stated update cadence, so repeated searches don't poll
   faster than their data actually changes; job descriptions (HTML) are
   converted through the same document converter resume import uses. Filtering
@@ -290,6 +293,12 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Stored in `personal_answers` (migration `00018`), which also took `application_preferences` from the candidate.
   Desktop: Profile → About you, and a questions step before "Write one" and "Rewrite". CLI: `profile about`, `cover-letter generate` asks first, `question keep`.
   A rewritten letter now replaces the old one on screen straight away; it used to show until the application refetched.
+- Where a job can be done from (ADR-0023, `docs/02_features/04_job_discovery.md` AC-010 to AC-013): every job says whether it can be done from anywhere, from listed countries, or does not say, read deterministically from its locations against compiled country, region and city tables from GeoNames (`internal/core/domain/geo`); a title or sentence that contradicts its source's label makes it "not stated", with the sentence shown.
+  Every job also says whether it offers, mentions or refuses relocation and visa sponsorship, with the sentence each was read from.
+  A saved search has "I can work from" (a country) and "also include jobs elsewhere that offer relocation or visa sponsorship"; a job refusing sponsorship is kept only for a candidate whose profile says they can already work there.
+  New searches, from the form or templates, start with the profile's country. The stored list filters the same way, in SQL held to `SearchCriteria.MatchesFor` by a test.
+  Stored on the job (migration `00019`) and read again for every stored job when the daemon starts, whenever the reading's version changes.
+  Desktop: the saved-search form, the Jobs filter "Where you can work", readable locations and offer marks in the list, and "Where you can work" on a job's page. CLI: `--work-from` and `--include-relocation` on saved searches and `search list`, and `search show` prints both.
 - The desktop refreshes stale searches when it opens (`docs/02_features/04_job_discovery.md` AC-009): each saved search records when it last ran (migration `00017`, from any path that ran it and got an answer), and on opening the desktop runs those not run in the last six hours, through the Discover queue, then says what they found in one line.
   It is once per launch and the desktop's, never the daemon's on starting, since a CLI command starts the daemon too.
   Settings → Job searches turns it off, and shows when each search last ran.
@@ -607,9 +616,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 ## Next
 
-1. Finding jobs a candidate can take from where they are, or that help them move (ADR-0023, proposed; `docs/02_features/04_job_discovery.md` AC-010 to AC-013).
-   Every job says where it can be done from and whether it offers relocation or visa sponsorship, a saved search says where the candidate can work from, Himalayas is searched rather than browsed, and We Work Remotely and Jobicy become sources.
-   Company watchlists follow it (`docs/02_features/17_company_watchlists.md`, D1 to D6 decided, with a measured starter list of companies to suggest).
+1. Company watchlists (`docs/02_features/17_company_watchlists.md`, D1 to D6 decided, with a measured starter list of companies to suggest), reading employers' own Greenhouse, Lever and Ashby boards; its storage needs an ADR with the implementation.
+   Beside it, a job's time-zone requirement ("CET (+/- 3 hours)", Himalayas' `timezoneRestrictions`), which ADR-0023 left unread and many global roles set, to be measured as its own decision.
 2. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
 3. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
    Beside it, the LLM clients' 30-second timeout (`llm/ollama.go`, `llm/openai_compat.go`): a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.

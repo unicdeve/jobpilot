@@ -74,4 +74,20 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 - UserSetting
 - Policy
 
+## What a job says about itself
+
+Where a job can be done from, and whether it offers relocation and visa sponsorship, are read from the job's own fields by `domain.ReadSignals` and stored on its row (ADR-0023 §3, migration `00019`):
+
+- `workable_scope` — `anywhere`, `listed` or `unknown`; empty on a row not read yet, which is treated as `unknown`
+- `workable_places` — what the locations were read as, in the product's words
+- `workable_countries` — the ISO codes they cover, regions expanded, written `,DE,FR,` so one country is a `LIKE '%,DE,%'` away
+- `workable_note` — the title or description sentence that made the job `unknown`
+- `relocation`, `visa_sponsorship` — `offered`, `mentioned`, `declined` or empty — each with its sentence in `relocation_evidence` and `visa_evidence`
+- `signals_version` — the version of the reading that produced them
+
+All of it is derived from columns the row already holds, so no source is asked again to change it.
+When the daemon starts, it reads again every job whose `signals_version` is below `domain.SignalsVersion`, in the background, and a change to the vocabulary reaches old jobs as well as new ones.
+
+`saved_searches` gains `work_from`, an ISO code, and `include_relocation`, the two criteria that use them.
+
 Vector search is not required for MVP. Add it only when a concrete retrieval requirement exists.

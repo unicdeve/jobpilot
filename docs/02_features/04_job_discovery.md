@@ -28,15 +28,19 @@ Discovery is connector-driven, not scraper-first.
 
 Initial public source implementations should prioritize stable APIs/feeds/public ATS pages where practical.
 
-Five sources are registered, all public APIs needing no credentials, so discovery works on a fresh install with nothing configured:
+Seven sources are registered, all public APIs needing no credentials, so discovery works on a fresh install with nothing configured:
 
 | source | what it adds |
 | --- | --- |
 | Arbeitnow | European board, many German listings |
 | Remotive | remote roles, tagged by category |
 | RemoteOK | remote roles, a large single feed |
-| Himalayas | remote roles, and the only source that reliably reports a salary range with its currency and period |
+| Himalayas | remote roles, searched by title, keywords and the country the candidate works from; a salary range with its currency and period, and the countries a role is open in |
 | Hacker News, "Who is hiring?" | postings that exist on no job board, written by the hiring team |
+| We Work Remotely | remote engineering roles, most of them open anywhere, with the employer's own list of countries where it gives one |
+| Jobicy | remote roles, read by region: the jobs open anywhere and those open where the candidate works from |
+
+Why each of the last three reads what it reads, and why Working Nomads is not a source, is ADR-0023.
 
 ### Why Google is not a source
 
@@ -170,9 +174,9 @@ The setting is the daemon's (`GET` and `PUT /v1/settings/discovery`), so it hold
 The Dashboard once ran a live search every time it rendered, which put a network round trip and a database write in the path of opening the app, and two of them raced on SQLite.
 This is not that: nothing waits on it, it runs through the queue one search at a time, and it runs at most once in six hours for each search.
 
-## Proposed: where a job can be done from
+## Where a job can be done from
 
-AC-010 to AC-013 are proposed by ADR-0023 and not implemented.
+AC-010 to AC-013 are ADR-0023's, and implemented.
 The measurements behind them, and the reasons for each rule, are in the ADR.
 
 ### AC-010
@@ -181,7 +185,8 @@ Given a job, when it is stored, then it says where it can be done from: anywhere
 For a remote job that is read from where the source says the candidate may be; for an onsite or hybrid job, from where the office is.
 Reading it is deterministic and in core, from countries, regions and cities that core holds, with no network and no model.
 A location core does not recognise leaves the job "not stated" rather than guessed at.
-A description sentence that restricts a job labelled anywhere, or labelled with places, makes it "not stated" and is shown with it; it never narrows the job to other places.
+A title or description sentence that restricts a job labelled anywhere, or names none of the places it is labelled with, makes it "not stated" and is shown with it; it never narrows the job to other places.
+Measured on the installation's 301 jobs after the first searches from Nigeria, that was three: two titled "(Europe)" and one "required to be based in Berlin, Munich, Stuttgart, London, or Porto", all listed by Himalayas as worldwide.
 
 The Jobs screen and a job's page show where a job can be done from, and a job "not stated" shows the sentence that made it so, when there is one.
 The stored list can be narrowed the same way a search is.
@@ -190,7 +195,8 @@ The stored list can be narrowed the same way a search is.
 Given a saved search with "I can work from" set, when it runs, then it keeps a job that can be done from anywhere, from that country, or that does not say, and no other job, unless AC-012 brings it in.
 
 A search without it behaves as before.
-The saved-search form fills it in from the profile's country when that is a country core knows, and templates never set it.
+A new saved search starts with the profile's country, when that is a country core knows, whether it is written in the form or adopted from templates; the templates themselves never set it.
+The Jobs screen's filter offers the same choice, "Doable from" the profile's country, or "or relocating".
 
 ### AC-012
 Given a job, when it is stored, then it says whether it offers relocation and whether it offers visa sponsorship — offered, mentioned, declined, or not mentioned — and shows the sentence that said so.

@@ -26,14 +26,15 @@ This document lists the currently implemented CLI commands for the JobPilot.
 ## Job Discovery
 - `jobpilot-cli search run`: Discovers jobs using your default saved search. Pass `--saved <name-or-id>` to run a different one, or give keywords for a one-off search. Discovery always needs criteria — the public job boards do no filtering of their own, so a search with nothing set would import every posting on every board. Requires internet access. It reports how many of the jobs it found are new, and names any source that could not be reached or answered with an error, since results without that source may be incomplete. When no source can be reached it says so and exits with an error; jobs already found stay available through `search list`.
 - `jobpilot-cli search saved list`: Lists your saved searches; `*` marks the default.
-- `jobpilot-cli search saved add [name]`: Saves a named search. Criteria flags: `--keywords`, `--title`, `--location`, `--remote`, `--employment`, `--salary-min`, `--salary-max`, `--exclude-company` (repeatable). The first search you save becomes the default.
+- `jobpilot-cli search saved add [name]`: Saves a named search. Criteria flags: `--keywords`, `--title`, `--location` (words the job's location must contain), `--remote`, `--employment`, `--salary-min`, `--salary-max`, `--exclude-company` (repeatable), `--work-from` (the country you work from, by name or code: keeps jobs open there or anywhere, and jobs that do not say) and `--include-relocation` (with `--work-from`, also keeps jobs elsewhere that offer or mention relocation or visa sponsorship). The first search you save becomes the default.
 - `jobpilot-cli search saved edit [name-or-id]`: Replaces a saved search's criteria; `--name` renames it.
 - `jobpilot-cli search saved delete [name-or-id]`: Deletes a saved search. Deleting the default promotes another.
 - `jobpilot-cli search saved default [name-or-id]`: Chooses the search `search run` uses by default.
-- `jobpilot-cli search list`: Lists jobs already discovered, most recent first, from local history. Reads stored data only and contacts no job source, so it works offline. Jobs marked not interested are left out. Flags: `--keywords` (only jobs whose title or company matches), `--limit` (default 50, maximum 200), `--offset` (skip this many; the output names the offset for the next page), `--not-interested` (only the jobs marked not interested, most recently first).
+- `jobpilot-cli search list`: Lists jobs already discovered, most recent first, from local history. Reads stored data only and contacts no job source, so it works offline. Jobs marked not interested are left out. Flags: `--keywords` (only jobs whose title or company matches), `--limit` (default 50, maximum 200), `--offset` (skip this many; the output names the offset for the next page), `--not-interested` (only the jobs marked not interested, most recently first), and `--work-from` and `--include-relocation`, as for a saved search.
+- `jobpilot-cli search templates list` and `search templates import [id...]`: Show the ready-made searches, and adopt some as saved searches. Each adopted search starts with your profile's country as the one you work from; `--work-from` chooses another.
 - `jobpilot-cli job not-interested [id]`: Rules a job out. It leaves your lists and search results, and scouts pass it over; its match and applications are unchanged. `job interested [id]` undoes it. Neither asks, since both are reversible.
 - `jobpilot-cli job delete [id]`: Deletes a job with its match and applications. A later search may store it again; to keep it away, mark it not interested instead.
-- `jobpilot-cli search show [id]`: Shows one stored job in full, including its description. Reads local history only.
+- `jobpilot-cli search show [id]`: Shows one stored job in full, including its description, where it can be done from, and what it says about relocation and visa sponsorship, with the sentence each was read from. Reads local history only.
 - `jobpilot-cli search import [url]`: Imports one job by its URL. When no source's API can fetch that URL, the page is opened in the browser worker and its content extracted (see `docs/02_features/04_job_discovery.md` AC-007). Requires internet access.
 
 ## Deleting Data
@@ -70,6 +71,7 @@ jobpilot-cli settings set-llm
 # Save what you are looking for, then discover against it
 jobpilot-cli search saved add "Backend Go roles" --keywords "golang backend" --remote remote
 jobpilot-cli search run
+jobpilot-cli search saved add "Remote from Lagos" --title "backend engineer" --work-from Nigeria --include-relocation
 jobpilot-cli search list --keywords golang --limit 20
 jobpilot-cli search list --limit 20 --offset 20
 ```

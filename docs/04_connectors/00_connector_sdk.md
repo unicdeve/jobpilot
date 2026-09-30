@@ -59,6 +59,13 @@ Note the distinction between the two flags. `CanSearch: false` means the
 source is skipped entirely and contributes nothing — it does not mean "can
 search but cannot filter", which is `FiltersServerSide: false`.
 
+### What a job's locations mean
+
+A connector writes the source's own words into `Job.Locations` and does not interpret them; core reads them (ADR-0023 §1).
+What they mean follows `RemoteType`: for a remote job, where the candidate may be; for an onsite or hybrid job, where the office is.
+A source that says "worldwide" by saying nothing — Himalayas' empty `locationRestrictions` — writes it out as "Worldwide", since an absence reads as not stated.
+Where a source has both a board's label and the employer's own list, the connector writes the narrower: We Work Remotely's `country` over its `region`.
+
 ### Unreachable is not the same as failed
 
 A connector's `Search` error is reported to the user, so it has to say which of two things happened.
