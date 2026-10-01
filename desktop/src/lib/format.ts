@@ -1,7 +1,7 @@
 // How stored values read on screen. Sources report these fields in their own
 // vocabulary, so anything not recognised is shown as-is rather than guessed.
 
-import type { DiscoveryResult, Job } from "./types";
+import type { DiscoveryResult, Job, TimeZone, WorkingHours } from "./types";
 
 export const SOURCE_LABELS: Record<string, string> = {
   arbeitnow: "Arbeitnow",
@@ -105,6 +105,41 @@ export function offerLabel(topic: "relocation" | "visa", status: string): string
       return topic === "relocation" ? "No relocation" : "No visa sponsorship";
   }
   return undefined;
+}
+
+/// formatOffset writes an offset as a person reads it: "UTC+1", "UTC−5",
+/// "UTC+5:30", "UTC", as the daemon's domain.FormatOffset does.
+export function formatOffset(offset: number): string {
+  let value = offset > 14 ? offset - 24 : offset;
+  if (value === 0) return "UTC";
+  const sign = value < 0 ? "−" : "+";
+  value = Math.abs(value);
+  const hours = Math.floor(value);
+  const minutes = Math.round((value - hours) * 60);
+  return `UTC${sign}${hours}${minutes > 0 ? `:${String(minutes).padStart(2, "0")}` : ""}`;
+}
+
+/// hoursWindow writes a job's working hours: "UTC−2 to UTC+4", or one zone.
+export function hoursWindow(hours: Pick<WorkingHours, "from" | "to">): string {
+  return hours.from === hours.to ? formatOffset(hours.from) : `${formatOffset(hours.from)} to ${formatOffset(hours.to)}`;
+}
+
+/// hoursShiftFor is how many hours a candidate at offset would move their
+/// day to be inside a job's window: zero inside it, measured around the
+/// clock, as domain.WorkingHours.ShiftFor.
+export function hoursShiftFor(hours: Pick<WorkingHours, "from" | "to">, offset: number): number {
+  const width = hours.to - hours.from;
+  let into = (offset - hours.from) % 24;
+  if (into < 0) into += 24;
+  if (into <= width) return 0;
+  return Math.min(into - width, 24 - into);
+}
+
+/// timeZoneLabel names a zone by its city and offset: "Lagos (UTC+1)",
+/// "Indiana/Knox (UTC−6)".
+export function timeZoneLabel(zone: TimeZone): string {
+  const place = zone.id.split("/").slice(1).join("/").replace(/_/g, " ") || zone.id;
+  return `${place} (${formatOffset(zone.offset)})`;
 }
 
 /// salaryLabel renders a salary range only when the source gave one, in its

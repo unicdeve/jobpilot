@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { Page, Panel, Section } from "../components/page";
 import { Loading } from "../components/status-line";
+import { TimeZoneField, suggestedTimeZone } from "../components/time-zone-field";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -19,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import {
+  useCountries,
   useCheckLLMHealth,
   useImportResume,
   useInitializeProfile,
@@ -118,6 +120,7 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
   const { notify } = useToast();
   // No profile yet is null, which is first run: the form creates one.
   const { data: saved, isPending } = useProfile();
+  const { data: countries } = useCountries();
   const exists = saved != null;
 
   // The form is an editable draft over whatever is saved. Keeping edits
@@ -156,19 +159,22 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
   if (isPending) return <Loading />;
 
   const profile = draft ?? saved ?? emptyProfile;
+  // A profile with no time zone starts with its country's, or this
+  // computer's (ADR-0025 §2), and saves it.
+  const timeZone = profile.time_zone || suggestedTimeZone(countries, profile.location_country);
 
   const set = <K extends keyof Candidate>(key: K, value: Candidate[K]) =>
     setDraft({ ...profile, [key]: value });
 
   const save = () => {
     if (exists) {
-      updateProfile.mutate(profile);
+      updateProfile.mutate({ ...profile, time_zone: timeZone });
       return;
     }
     // created_at/updated_at are server-assigned; sending them as "" fails
     // Go's time.Time JSON parsing, so a brand-new profile omits them.
     const { created_at, updated_at, ...rest } = profile;
-    initializeProfile.mutate(rest);
+    initializeProfile.mutate({ ...rest, time_zone: timeZone });
   };
 
   // A blank suggestion field (the LLM found nothing) never changes the
@@ -372,6 +378,24 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
               onChange={(e) => set("location_country", e.target.value)}
             />
           </FormField>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className="sm:col-span-2">
+            <FormField label="Time zone" htmlFor="time_zone">
+              <TimeZoneField
+                id="time_zone"
+                countries={countries}
+                country={profile.location_country}
+                value={timeZone}
+                onChange={(zone) => set("time_zone", zone)}
+              />
+            </FormField>
+          </div>
+          <p className="self-end pb-1.5 text-xs text-muted-foreground">
+            {!profile.time_zone && timeZone
+              ? "Suggested from your country or this computer. Saved with your profile."
+              : "A search can leave out jobs whose working hours you can’t do from here."}
+          </p>
         </div>
       </Section>
 

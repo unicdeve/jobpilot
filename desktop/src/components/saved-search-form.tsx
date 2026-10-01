@@ -10,7 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { useCountries } from "../lib/queries";
+import { Link } from "react-router-dom";
+import { timeZoneLabel } from "../lib/format";
+import { useCountries, useProfile } from "../lib/queries";
 import type { SearchCriteria } from "../lib/types";
 
 const REMOTE_LABELS: Record<string, string> = {
@@ -44,6 +46,12 @@ export function hasCriterion(criteria: SearchCriteria): boolean {
       criteria.work_from?.trim(),
   );
 }
+
+/// SHIFT_LABELS are how far a candidate would move their working day for a
+/// job's hours, up to twelve, which reaches every zone.
+const SHIFT_LABELS: Record<string, string> = Object.fromEntries(
+  Array.from({ length: 13 }, (_, hours) => [String(hours), hours === 0 ? "0 hours" : hours === 1 ? "1 hour" : `${hours} hours`]),
+);
 
 /// NO_COUNTRY is the "I can work from" choice for no preference, which a
 /// Select cannot hold as an empty string.
@@ -86,6 +94,8 @@ export function SavedSearchForm({
   const [criteria, setCriteria] = useState<SearchCriteria>(initialCriteria);
 
   const { data: countries } = useCountries();
+  const { data: profile } = useProfile();
+  const zone = countries?.time_zones.find((z) => z.id === profile?.time_zone);
 
   const set = <K extends keyof SearchCriteria>(key: K, value: SearchCriteria[K]) =>
     setCriteria((current) => ({ ...current, [key]: value }));
@@ -95,6 +105,7 @@ export function SavedSearchForm({
     work_from: criteria.work_from ?? countries?.profile_country ?? "",
   };
   if (!effective.work_from) effective.include_relocation = false;
+  if (!effective.fit_hours) effective.hours_shift = 0;
   const usable = name.trim() !== "" && hasCriterion(effective);
 
   const countryItems = useMemo(
@@ -250,6 +261,54 @@ export function SavedSearchForm({
             </span>
           </span>
         </label>
+      )}
+
+      {zone ? (
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="search-fit-hours"
+            className="mt-0.5"
+            checked={effective.fit_hours ?? false}
+            onCheckedChange={(checked) => set("fit_hours", checked === true)}
+          />
+          <div className="min-w-0">
+            <label htmlFor="search-fit-hours" className="block text-[13px] font-medium">
+              Leave out jobs whose working hours I can’t do
+            </label>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              From {timeZoneLabel(zone)}, as your profile says. Only a job that requires hours is left out; one that
+              prefers them, or says nothing, is kept.
+            </span>
+            {effective.fit_hours && (
+              <div className="mt-2 flex items-center gap-2 text-[13px]">
+                <span id="search-hours-shift-label">I can move my working day by up to</span>
+                <Select
+                  items={SHIFT_LABELS}
+                  value={String(effective.hours_shift ?? 0)}
+                  onValueChange={(value) => set("hours_shift", Number(value) || 0)}
+                >
+                  <SelectTrigger aria-labelledby="search-hours-shift-label" className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SHIFT_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          <Link to="/profile" className="underline underline-offset-2 hover:text-foreground">
+            Set your time zone
+          </Link>{" "}
+          to leave out jobs whose working hours you can’t do.
+        </p>
       )}
 
       <p className="text-xs text-muted-foreground">

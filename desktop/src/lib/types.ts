@@ -84,6 +84,9 @@ export interface Candidate {
   location_city: string;
   location_region: string;
   location_country: string;
+  /// The IANA time zone the candidate works in, such as Africa/Lagos, or
+  /// empty (ADR-0025).
+  time_zone?: string;
   notice_period_days?: number | null;
   earliest_start_date?: string | null;
   summary: string;
@@ -166,6 +169,21 @@ export interface Job {
   workable: Workable;
   relocation: Offer;
   visa_sponsorship: Offer;
+  /// The working hours the job asks for, as the daemon reads them (ADR-0025).
+  hours?: WorkingHours;
+}
+
+/// HoursStatus is whether a job requires its working hours or only prefers
+/// them. Empty is a job that asks nothing about when the candidate works.
+export type HoursStatus = "required" | "preferred" | "";
+
+/// WorkingHours mirrors domain.WorkingHours: a window of UTC offsets without
+/// daylight saving, and the sentence it was read from.
+export interface WorkingHours {
+  status: HoursStatus;
+  from: number;
+  to: number;
+  evidence?: string;
 }
 
 /// WorkableScope is how far a job says it can be done from.
@@ -203,6 +221,15 @@ export interface Country {
 export interface Countries {
   countries: Country[];
   profile_country: string;
+  time_zones: TimeZone[];
+}
+
+/// TimeZone is an IANA zone, its country, and its offset from UTC in hours
+/// without daylight saving.
+export interface TimeZone {
+  id: string;
+  country: string;
+  offset: number;
 }
 
 /// JobListFilter narrows the stored jobs the daemon lists. Every field is
@@ -279,6 +306,10 @@ export interface SearchCriteria {
   work_from?: string;
   /// With work_from, also keeps jobs elsewhere that help the candidate move.
   include_relocation?: boolean;
+  /// Leaves out jobs whose required hours the profile's time zone cannot
+  /// work, moving the candidate's day by up to hours_shift hours.
+  fit_hours?: boolean;
+  hours_shift?: number;
 }
 
 /// SavedSearch is a named set of criteria the user keeps and re-runs.

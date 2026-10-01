@@ -424,5 +424,8 @@ function describeCriteria(criteria: SearchCriteria, countryName: (code: string) 
   if (criteria.work_from) {
     parts.push(`from ${countryName(criteria.work_from)}${criteria.include_relocation ? ", or relocating" : ""}`);
   }
+  if (criteria.fit_hours) {
+    parts.push(criteria.hours_shift ? `hours I can do, moving up to ${criteria.hours_shift}h` : "hours I can do");
+  }
   return parts.join(" · ");
 }

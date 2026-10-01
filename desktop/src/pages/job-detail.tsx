@@ -42,6 +42,8 @@ import {
   salaryLabel,
   scoreTone,
   jobSource,
+  hoursShiftFor,
+  hoursWindow,
 } from "../lib/format";
 import {
   useAnalyzeMatch,
@@ -52,12 +54,13 @@ import {
   useJob,
   useJobCompany,
   useJobMatch,
+  useProfile,
   useResumes,
   useSetJobInterest,
   useWatchCompany,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { Application, ApplicationMode, Job, JobMatch } from "../lib/types";
+import type { Application, ApplicationMode, Job, JobMatch, WorkingHours } from "../lib/types";
 
 /// See docs/00_product/04_application_modes.md. Neither mode submits.
 const MODE_LABELS: Record<ApplicationMode, string> = {
@@ -375,6 +378,7 @@ function WhereSection({ job }: { job: Job }) {
             <SourceLocations source={capitalize(jobSource(job))} locations={listed} />
           )}
         </div>
+        {job.hours?.status && <HoursLine hours={job.hours} />}
         {offers.map(({ topic, offer }) => (
           <div key={topic}>
             <p
@@ -394,6 +398,38 @@ function WhereSection({ job }: { job: Job }) {
       </div>
     </DetailSection>
   );
+}
+
+/// HoursLine is the working hours a job asks for, against the candidate's
+/// own time zone when the profile has one (ADR-0025). Where and when stay
+/// separate lines: an anywhere job asking for CET hours is both.
+function HoursLine({ hours }: { hours: WorkingHours }) {
+  const { data: countries } = useCountries();
+  const { data: profile } = useProfile();
+  const zone = countries?.time_zones.find((z) => z.id === profile?.time_zone);
+  const shift = zone ? hoursShiftFor(hours, zone.offset) : undefined;
+  const required = hours.status === "required";
+
+  return (
+    <div>
+      <p className="font-medium text-foreground">
+        {required ? "Hours required" : "Hours preferred"}: {hoursWindow(hours)}
+        {shift !== undefined && (
+          <span className={shift === 0 ? "font-normal text-success" : "font-normal text-warning"}>
+            {" "}
+            {shift === 0
+              ? "· inside your time zone."
+              : `· ${shift === 1 ? "an hour" : `${formatHours(shift)} hours`} from yours${required ? "" : ", but only preferred"}.`}
+          </span>
+        )}
+      </p>
+      {hours.evidence && <Evidence>{hours.evidence}</Evidence>}
+    </div>
+  );
+}
+
+function formatHours(hours: number): string {
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
 }
 
 /// SourceLocations is what the source itself listed, read out when it is

@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { Briefcase, ChevronDown, EyeOff, Link2, ListFilter, Search, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useMatch, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,6 +36,8 @@ import {
   scoreTone,
   SOURCE_LABELS,
   jobSource,
+  hoursShiftFor,
+  hoursWindow,
   workableLabel,
 } from "../lib/format";
 import {
@@ -55,6 +58,7 @@ import {
   useInfiniteJobs,
   useJobsByID,
   useMatches,
+  useProfile,
   useSetJobInterest,
   useSavedSearches,
 } from "../lib/queries";
@@ -518,7 +522,7 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {[where, jobSource(job, true), age].filter(Boolean).join(" · ")}
           </p>
-          <MovingHelp job={job} />
+          <JobMarks job={job} />
         </div>
         {score !== undefined && (
           <span
@@ -533,15 +537,20 @@ function JobRowLink({ job, score, where, age }: { job: Job; score?: number; wher
   );
 }
 
-/// MovingHelp marks a job that offers relocation or visa sponsorship. Only
-/// an offer is marked in the list; what a posting mentions or refuses is on
-/// its page, with the sentence that said it.
-function MovingHelp({ job }: { job: Job }) {
+/// JobMarks are what a row says beyond where: help moving, which is worth
+/// seeing at a glance, and working hours a job requires, marked by whether
+/// the candidate's time zone is inside them (ADR-0025).
+function JobMarks({ job }: { job: Job }) {
+  const { data: countries } = useCountries();
+  const { data: profile } = useProfile();
   const offers = [
     job.relocation?.status === "offered" && "Relocation",
     job.visa_sponsorship?.status === "offered" && "Visa sponsorship",
   ].filter(Boolean) as string[];
-  if (offers.length === 0) return null;
+  const hours = job.hours?.status === "required" ? job.hours : undefined;
+  const zone = countries?.time_zones.find((z) => z.id === profile?.time_zone);
+  const fits = hours && zone ? hoursShiftFor(hours, zone.offset) === 0 : undefined;
+  if (offers.length === 0 && !hours) return null;
   return (
     <p className="mt-1 flex flex-wrap gap-1">
       {offers.map((offer) => (
@@ -549,6 +558,17 @@ function MovingHelp({ job }: { job: Job }) {
           {offer}
         </span>
       ))}
+      {hours && (
+        <span
+          title={hours.evidence}
+          className={cn(
+            "rounded px-1.5 py-px text-[11px] font-medium",
+            fits === undefined ? "bg-muted text-subtle-foreground" : fits ? "bg-success/12 text-success" : "bg-warning/14 text-warning",
+          )}
+        >
+          Hours {hoursWindow(hours)}
+        </span>
+      )}
     </p>
   );
 }
