@@ -33,9 +33,10 @@ Job
 - workable { scope: anywhere | listed | unknown, places[], countries[], note }
 - relocation { status: offered | mentioned | declined | "", evidence }
 - visa_sponsorship { status, evidence }
+- hours { status: required | preferred | "", from, to, evidence }
 ```
 
-`workable`, `relocation` and `visa_sponsorship` are derived from the fields above by core (ADR-0023), never written by a source.
+`workable`, `relocation`, `visa_sponsorship` and `hours` are derived from the fields above by core (ADR-0023, ADR-0025), never written by a source.
 
 ## WatchedCompany
 
@@ -63,6 +64,7 @@ Candidate
 - last_name
 - contact
 - location
+- time_zone
 - summary
 - work_preferences
 - salary_preferences

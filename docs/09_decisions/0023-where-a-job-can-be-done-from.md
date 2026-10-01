@@ -217,6 +217,7 @@ Both new connectors report unreachable apart from failed, as every connector doe
 - The Jobs screen can show where a job can be done from and its relocation and visa labels, each with the sentence behind it, and the stored list gains the same filter as a search.
 - A job's time-zone requirement ("CET (+/- 3 hours)", Himalayas' `timezoneRestrictions`) is not read.
   Many global roles ask for overlap with European or American hours, so it is the next thing to measure, as its own decision.
+  It was measured and is now read: ADR-0025.
 - Remotive's API now returns 16 jobs.
   It stays a source; whether it earns its place is a question for later, not for this decision.
 

@@ -54,8 +54,8 @@ alongside it; see [docs/08_development/hot_reload.md](docs/08_development/hot_re
 
 ## Third-party data
 
-The countries and cities JobPilot reads job locations against are generated from
-[GeoNames](https://www.geonames.org/), licensed under
+The countries, cities and time zones JobPilot reads job locations and hours
+against are generated from [GeoNames](https://www.geonames.org/), licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They are compiled
 into the daemon (`internal/core/domain/geo`), and placing a job never contacts
 GeoNames.

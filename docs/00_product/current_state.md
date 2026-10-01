@@ -306,6 +306,11 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Stored in `watched_companies` (migration `00020`), deleted with "delete all data" and not with the profile.
   Desktop: Settings → Job searches → Companies you watch, with suggestions, and "Watch this company" beside a job's company. CLI: `company watch|list|rename|unwatch|suggestions`.
   Building it fixed ADR-0023's reading of "Georgia" beside the United States and of airport codes read as cities, and taught it "AMER"; stored jobs are read again for it.
+- Working hours (ADR-0025, `docs/02_features/18_time_zones.md`): every job says the time zones it requires or prefers, as one window of UTC offsets read deterministically from its description — "CET (+/- 3 hours)", "UTC−6 to UTC+3", "overlap at least 4 hours with US Eastern", "9:00 AM – 12:00 PM PST", "home based in EMEA time zones" — with the sentence shown; sentences that only mention working across zones are not read.
+  The profile gains a time zone (an IANA zone, from GeoNames' table of 418, compiled into `geo`), prefilled from the country when it has one zone and from the computer otherwise.
+  A saved search can leave out jobs whose required hours the candidate cannot work, allowing them to move their day by up to 12 hours they choose; preferences never leave a job out.
+  Stored on the job, profile and saved search (migration `00021`), and every stored job is read again.
+  Desktop: Profile → Location → Time zone, the saved-search form, an hours mark on each job in the list and an hours line on its page. CLI: `profile update`, `--fit-hours` and `--hours-shift`, and `search show`.
 - The desktop refreshes stale searches when it opens (`docs/02_features/04_job_discovery.md` AC-009): each saved search records when it last ran (migration `00017`, from any path that ran it and got an answer), and on opening the desktop runs those not run in the last six hours, through the Discover queue, then says what they found in one line.
   It is once per launch and the desktop's, never the daemon's on starting, since a CLI command starts the daemon too.
   Settings → Job searches turns it off, and shows when each search last ran.
@@ -623,8 +628,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 ## Next
 
-1. A job's time-zone requirement ("CET (+/- 3 hours)", Himalayas' `timezoneRestrictions`), which ADR-0023 left unread and many global roles set, to be measured as its own decision.
-   Beside it, Workable and SmartRecruiters as company-page providers, once their public endpoints are measured (`docs/02_features/17_company_watchlists.md` D6).
+1. Workable and SmartRecruiters as company-page providers, once their public endpoints are measured (`docs/02_features/17_company_watchlists.md` D6).
 2. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
 3. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
    Beside it, the LLM clients' 30-second timeout (`llm/ollama.go`, `llm/openai_compat.go`): a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.

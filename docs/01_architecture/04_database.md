@@ -91,6 +91,9 @@ When the daemon starts, it reads again every job whose `signals_version` is belo
 
 `saved_searches` gains `work_from`, an ISO code, and `include_relocation`, the two criteria that use them.
 
+The working hours a job asks for are read the same way and stored beside them (ADR-0025, migration `00021`): `hours_status` (`required`, `preferred` or empty), `hours_from` and `hours_to`, UTC offsets without daylight saving, and `hours_evidence`.
+`candidates.time_zone` holds the candidate's IANA zone, and `saved_searches` gains `fit_hours` and `hours_shift`.
+
 ## Watched companies
 
 `watched_companies` (migration `00020`, ADR-0024 §2) holds each company the candidate watches: its board's provider, region and name, what it is called, the address it was added from and when, and its last check — `checked_at`, `check_status` (`ok`, `gone`, `unreachable` or `failed`) and `open_roles`.

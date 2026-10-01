@@ -38,9 +38,11 @@ different failure modes, so they are different endpoints.
   saved search's criteria do (ADR-0023 §4); a country that is not one is 400.
   Each job carries `workable`, `relocation` and `visa_sponsorship`, as the
   daemon read them.
-- `GET /v1/countries` returns every country a search can work from, and the
-  profile's own country as a code (`{"countries": [{"code", "name"}],
-  "profile_country"}`), so no client holds a copy of the tables. Adopting
+- `GET /v1/countries` returns every country a search can work from, the
+  profile's own country as a code, and every time zone with its country and
+  standard offset (`{"countries": [{"code", "name"}], "profile_country",
+  "time_zones": [{"id", "country", "offset"}]}`), so no client holds a copy
+  of the tables. A profile's `time_zone` that is not one is 400 (ADR-0025). Adopting
   templates (`POST /v1/search-templates/import`) takes an optional
   `work_from`, which every search created starts with.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
