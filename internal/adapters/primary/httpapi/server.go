@@ -206,7 +206,12 @@ func handleInitializeProfile(svc *services.OnboardingService) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.InitializeProfile(r.Context(), &profile); writeErrIfAny(w, err) {
+		err := svc.InitializeProfile(r.Context(), &profile)
+		if errors.Is(err, services.ErrInvalidTimeZone) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if writeErrIfAny(w, err) {
 			return
 		}
 		writeJSON(w, http.StatusOK, profile)
@@ -238,7 +243,12 @@ func handleUpdateProfile(svc *services.ProfileService) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.UpdateProfile(r.Context(), &profile); writeErrIfAny(w, err) {
+		err := svc.UpdateProfile(r.Context(), &profile)
+		if errors.Is(err, services.ErrInvalidTimeZone) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if writeErrIfAny(w, err) {
 			return
 		}
 		writeJSON(w, http.StatusOK, profile)
@@ -413,10 +423,13 @@ type Country struct {
 
 // Countries is every country, by name, and the profile's own country as a
 // code — empty when there is no profile, or its country is not one JobPilot
-// can place. A new saved search starts with it (ADR-0023 §4).
+// can place. A new saved search starts with it (ADR-0023 §4). It also
+// carries every time zone, with its country and standard offset, so a
+// client can offer a country's zones (ADR-0025 §2).
 type Countries struct {
-	Countries      []Country `json:"countries"`
-	ProfileCountry string    `json:"profile_country"`
+	Countries      []Country      `json:"countries"`
+	ProfileCountry string         `json:"profile_country"`
+	TimeZones      []geo.TimeZone `json:"time_zones"`
 }
 
 // handleListCountries serves the country tables, so no client holds a
@@ -424,7 +437,7 @@ type Countries struct {
 func handleListCountries(candidates ports.CandidateRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		all := geo.Countries()
-		result := Countries{Countries: make([]Country, len(all))}
+		result := Countries{Countries: make([]Country, len(all)), TimeZones: geo.TimeZones()}
 		for i, country := range all {
 			result.Countries[i] = Country{Code: country.Code, Name: country.Name}
 		}

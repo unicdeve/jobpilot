@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
@@ -2342,10 +2343,18 @@ func TestServer_Countries(t *testing.T) {
 	assert.Empty(t, countries.ProfileCountry, "no profile, no country of its own")
 	assert.Contains(t, countries.Countries, Country{Code: "NG", Name: "Nigeria"})
 	assert.Greater(t, len(countries.Countries), 200)
+	assert.Contains(t, countries.TimeZones, geo.TimeZone{ID: "Africa/Lagos", Country: "NG", Offset: 1})
 
 	profile := domain.Candidate{FirstName: "Ada", LocationCountry: "Deutschland"}
 	require.NoError(t, client.InitializeProfile(ctx, &profile))
 	countries, err = client.ListCountries(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "DE", countries.ProfileCountry, "the profile's country as the user wrote it, read as a code")
+
+	profile.TimeZone = "Berlin"
+	resp, err := client.do(ctx, http.MethodPut, "/v1/profile", profile, nil)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "a time zone JobPilot does not know is the caller's to fix")
+	profile.TimeZone = "Europe/Berlin"
+	require.NoError(t, client.UpdateProfile(ctx, &profile))
 }

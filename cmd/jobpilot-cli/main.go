@@ -249,9 +249,9 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("First Name: %s\nLast Name: %s\nEmail: %s\nPhone: %s\nLocation: %s\nSummary: %s\nSkills: %s\n",
+			fmt.Printf("First Name: %s\nLast Name: %s\nEmail: %s\nPhone: %s\nLocation: %s\nTime zone: %s\nSummary: %s\nSkills: %s\n",
 				profile.FirstName, profile.LastName, profile.Email, profile.Phone,
-				profile.LocationDisplay(), profile.Summary, profile.RenderSkills())
+				profile.LocationDisplay(), describeTimeZone(profile.TimeZone), profile.Summary, profile.RenderSkills())
 			if experience, ok := profile.CurrentExperience(); ok {
 				fmt.Printf("Current role: %s at %s\n", experience.Title, experience.Company)
 			}
@@ -299,6 +299,7 @@ func newProfileCmd(client *httpapi.Client) *cobra.Command {
 			updateField("City", profile.LocationCity, func(v string) { profile.LocationCity = v })
 			updateField("State/Region", profile.LocationRegion, func(v string) { profile.LocationRegion = v })
 			updateField("Country", profile.LocationCountry, func(v string) { profile.LocationCountry = v })
+			updateField("Time zone (e.g. Africa/Lagos)", suggestedTimeZone(*profile), func(v string) { profile.TimeZone = strings.TrimSpace(v) })
 			updateField("Summary", profile.Summary, func(v string) { profile.Summary = v })
 			updateField("Skills (comma separated)", profile.RenderSkills(),
 				func(v string) { profile.Skills = parseSkills(v) })
@@ -583,6 +584,9 @@ func newSearchCmd(client *httpapi.Client) *cobra.Command {
 			if line := describeOffer("Visa:    ", job.VisaSponsorship); line != "" {
 				fmt.Println(line)
 			}
+			if line := describeHours(job.Hours); line != "" {
+				fmt.Println(line)
+			}
 			fmt.Printf("Type:     %s · %s\n", job.RemoteType, job.EmploymentType)
 			if len(job.Skills) > 0 {
 				fmt.Printf("Skills:   %s\n", strings.Join(job.Skills, ", "))
@@ -800,6 +804,8 @@ func criteriaFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64("salary-max", 0, "Highest acceptable advertised salary (jobs without a salary are kept)")
 	cmd.Flags().StringSlice("exclude-company", nil, "Company to exclude; repeatable")
 	workFromFlags(cmd)
+	cmd.Flags().Bool("fit-hours", false, "Leave out jobs whose required working hours your profile's time zone cannot work")
+	cmd.Flags().Int("hours-shift", 0, fmt.Sprintf("With --fit-hours, how many hours you would move your working day for a job (0 to %d)", domain.MaxHoursShift))
 }
 
 // workFromFlags registers where the candidate works from, for the commands
@@ -865,7 +871,52 @@ func criteriaFromFlags(cmd *cobra.Command) (domain.SearchCriteria, error) {
 	if c.WorkFrom, c.IncludeRelocation, err = workFromFromFlags(cmd); err != nil {
 		return c, err
 	}
+	if c.FitHours, err = cmd.Flags().GetBool("fit-hours"); err != nil {
+		return c, err
+	}
+	if c.HoursShift, err = cmd.Flags().GetInt("hours-shift"); err != nil {
+		return c, err
+	}
+	if c.HoursShift != 0 && !c.FitHours {
+		return c, fmt.Errorf("--hours-shift needs --fit-hours: it is how far you would move your day for a job's hours")
+	}
 	return c, nil
+}
+
+// describeHours is one line on the working hours a job asks for, with the
+// sentence it was read from, or empty when it asks for none (ADR-0025).
+func describeHours(hours domain.WorkingHours) string {
+	if !hours.Known() {
+		return ""
+	}
+	verb := "required"
+	if hours.Status == domain.HoursPreferred {
+		verb = "preferred"
+	}
+	return fmt.Sprintf("Hours:    %s, %s — %q", hours.Window(), verb, hours.Evidence)
+}
+
+// describeTimeZone is a profile's time zone with its offset.
+func describeTimeZone(id string) string {
+	zone, ok := geo.TimeZoneByID(id)
+	if !ok {
+		return "not set"
+	}
+	return fmt.Sprintf("%s (%s)", zone.ID, domain.FormatOffset(zone.Offset))
+}
+
+// suggestedTimeZone is the profile's zone, or its country's when the
+// country has only one (ADR-0025 §2).
+func suggestedTimeZone(profile domain.Candidate) string {
+	if profile.TimeZone != "" {
+		return profile.TimeZone
+	}
+	if code, ok := geo.ResolveCountry(profile.LocationCountry); ok {
+		if zones := geo.TimeZonesOf(code); len(zones) == 1 {
+			return zones[0].ID
+		}
+	}
+	return ""
 }
 
 // describeWorkable says where a job can be done from, as ADR-0023 reads it.
@@ -925,6 +976,13 @@ func describeCriteria(c domain.SearchCriteria) string {
 			from += ", or relocate"
 		}
 		parts = append(parts, from)
+	}
+	if c.FitHours {
+		hours := "fit my hours"
+		if c.HoursShift > 0 {
+			hours += fmt.Sprintf(", shifting up to %dh", c.HoursShift)
+		}
+		parts = append(parts, hours)
 	}
 	return strings.Join(parts, "  ")
 }
