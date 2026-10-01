@@ -129,9 +129,9 @@ type EligibilityInput struct {
 	AlreadyApplied bool
 	// CreatedSoFar is how many applications this run has already made.
 	CreatedSoFar int
-	// AuthorizedCountries is where the candidate may work without
-	// sponsorship, for a saved search that includes relocation.
-	AuthorizedCountries []string
+	// Seeker is the candidate the saved search runs for: where they may
+	// work without sponsorship, and their time zone.
+	Seeker Seeker
 }
 
 // PreScreen applies the checks that do not need a match score, and says
@@ -148,7 +148,7 @@ func (s Scout) PreScreen(in EligibilityInput) (bool, string) {
 		// Before anything else about the job: the user's answer to it
 		// outranks every rule, and it saves the model call scoring would make.
 		return false, "you marked this job not interested"
-	case !in.Criteria.MatchesFor(*in.Job, in.AuthorizedCountries):
+	case !in.Criteria.MatchesFor(*in.Job, in.Seeker):
 		return false, "does not match the saved search"
 	case in.AlreadyApplied:
 		return false, "an application for this job already exists"

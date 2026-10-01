@@ -41,7 +41,7 @@ func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 		salary_period, experience_min, experience_max, skills,
 		posted_at, expires_at, discovered_at, updated_at, raw_source_reference,
 		` + signalColumns + `
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	args := []any{
 		job.ID, job.CanonicalURL, job.SourceID, job.SourceJobID, job.Title, job.CompanyName,
@@ -58,10 +58,11 @@ func (r *JobRepository) Save(ctx context.Context, job *domain.Job) error {
 	return nil
 }
 
-// signalColumns are what domain.ReadSignals derives (ADR-0023 §3), in the
-// order signalValues writes them and scanJob reads them.
+// signalColumns are what domain.ReadSignals derives (ADR-0023 §3,
+// ADR-0025), in the order signalValues writes them and scanJob reads them.
 const signalColumns = `workable_scope, workable_places, workable_countries, workable_note,
-	relocation, relocation_evidence, visa_sponsorship, visa_evidence, signals_version`
+	relocation, relocation_evidence, visa_sponsorship, visa_evidence,
+	hours_status, hours_from, hours_to, hours_evidence, signals_version`
 
 // signalValues are a job's signals as signalColumns stores them.
 func signalValues(job *domain.Job) []any {
@@ -70,6 +71,7 @@ func signalValues(job *domain.Job) []any {
 		joinCountries(job.Workable.Countries), job.Workable.Note,
 		string(job.Relocation.Status), job.Relocation.Evidence,
 		string(job.VisaSponsorship.Status), job.VisaSponsorship.Evidence,
+		string(job.Hours.Status), job.Hours.From, job.Hours.To, job.Hours.Evidence,
 		job.SignalsVersion,
 	}
 }
@@ -118,7 +120,8 @@ func scanJob(row rowScanner) (*domain.Job, error) {
 		&notInterested,
 		&j.Workable.Scope, &places, &countries, &j.Workable.Note,
 		&j.Relocation.Status, &j.Relocation.Evidence,
-		&j.VisaSponsorship.Status, &j.VisaSponsorship.Evidence, &j.SignalsVersion,
+		&j.VisaSponsorship.Status, &j.VisaSponsorship.Evidence,
+		&j.Hours.Status, &j.Hours.From, &j.Hours.To, &j.Hours.Evidence, &j.SignalsVersion,
 	)
 	if err != nil {
 		return nil, err
@@ -280,6 +283,7 @@ func (r *JobRepository) SaveSignals(ctx context.Context, job *domain.Job) error 
 	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET
 		workable_scope = ?, workable_places = ?, workable_countries = ?, workable_note = ?,
 		relocation = ?, relocation_evidence = ?, visa_sponsorship = ?, visa_evidence = ?,
+		hours_status = ?, hours_from = ?, hours_to = ?, hours_evidence = ?,
 		signals_version = ?
 		WHERE id = ?`, append(signalValues(job), job.ID)...)
 	if err != nil {

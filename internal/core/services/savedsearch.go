@@ -35,6 +35,9 @@ func (s *SavedSearchService) Create(ctx context.Context, name string, criteria d
 		return nil, err
 	}
 	criteria.WorkFrom = workFrom
+	if err := validateHoursShift(criteria); err != nil {
+		return nil, err
+	}
 	if err := s.validate(ctx, name, criteria, ""); err != nil {
 		return nil, err
 	}
@@ -64,6 +67,9 @@ func (s *SavedSearchService) Update(ctx context.Context, id, name string, criter
 		return nil, err
 	}
 	criteria.WorkFrom = workFrom
+	if err := validateHoursShift(criteria); err != nil {
+		return nil, err
+	}
 	if err := s.validate(ctx, name, criteria, id); err != nil {
 		return nil, err
 	}
@@ -79,6 +85,17 @@ func (s *SavedSearchService) Update(ctx context.Context, id, name string, criter
 		return nil, err
 	}
 	return search, nil
+}
+
+// ErrInvalidHoursShift is returned for a shift of a candidate's day outside
+// zero to twelve hours.
+var ErrInvalidHoursShift = fmt.Errorf("hours shift must be between 0 and %d", domain.MaxHoursShift)
+
+func validateHoursShift(criteria domain.SearchCriteria) error {
+	if criteria.HoursShift < 0 || criteria.HoursShift > domain.MaxHoursShift {
+		return ErrInvalidHoursShift
+	}
+	return nil
 }
 
 // validate enforces the two rules that keep a saved search usable: it has a

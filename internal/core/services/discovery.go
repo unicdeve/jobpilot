@@ -50,31 +50,49 @@ func NewJobDiscoveryService(repo ports.JobRepository, sources []ports.JobSource,
 	}
 }
 
-// WithCandidates lets a search that includes relocation read the
-// candidate's work authorizations, so a job that refuses sponsorship is kept
-// for a candidate already allowed to work there (ADR-0023 §5). Without it,
-// such a job is left out, which is the answer for a candidate who has
-// recorded none.
+// WithCandidates lets a search read the candidate it runs for: their work
+// authorizations, so a job that refuses sponsorship is kept for a candidate
+// already allowed to work there (ADR-0023 §5), and their time zone, for a
+// search that fits the hours a job asks (ADR-0025 §3). Without it, such a
+// job is left out, and hours narrow nothing.
 func (s *JobDiscoveryService) WithCandidates(candidates ports.CandidateRepository) *JobDiscoveryService {
 	s.candidates = candidates
 	return s
 }
 
 // authorizedCountries is the candidate's, when a search needs them and
-// there is a candidate to ask. A failure to read them is logged and treated
-// as none: the stricter answer, and not a reason to fail the search.
+// there is a candidate to ask.
 func (s *JobDiscoveryService) authorizedCountries(ctx context.Context, workFrom string, includeRelocation bool) []string {
-	if s.candidates == nil || workFrom == "" || !includeRelocation {
+	if workFrom == "" || !includeRelocation {
 		return nil
+	}
+	return s.seeker(ctx).AuthorizedCountries
+}
+
+// seekerFor is the candidate a search runs for, read only when its
+// criteria use them.
+func (s *JobDiscoveryService) seekerFor(ctx context.Context, criteria domain.SearchCriteria) domain.Seeker {
+	if (criteria.WorkFrom == "" || !criteria.IncludeRelocation) && !criteria.FitHours {
+		return domain.Seeker{}
+	}
+	return s.seeker(ctx)
+}
+
+// seeker reads the candidate. A failure to is logged and treated as no
+// candidate: the stricter answer for relocation, the looser for hours, and
+// not a reason to fail the search.
+func (s *JobDiscoveryService) seeker(ctx context.Context) domain.Seeker {
+	if s.candidates == nil {
+		return domain.Seeker{}
 	}
 	candidate, err := s.candidates.GetFirstCandidate(ctx)
 	if err != nil || candidate == nil {
 		if err != nil && !errors.Is(err, ports.ErrNoCandidate) {
-			slog.WarnContext(ctx, "could not read work authorizations for a search", "error", err)
+			slog.WarnContext(ctx, "could not read the candidate for a search", "error", err)
 		}
-		return nil
+		return domain.Seeker{}
 	}
-	return candidate.AuthorizedCountries()
+	return candidate.Seeker()
 }
 
 // ErrInvalidWorkFrom is returned for a country that is not an ISO 3166-1
@@ -248,7 +266,7 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 		return nil, err
 	}
 	criteria.WorkFrom = workFrom
-	authorized := s.authorizedCountries(ctx, criteria.WorkFrom, criteria.IncludeRelocation)
+	seeker := s.seekerFor(ctx, criteria)
 
 	sources := s.searchable()
 	if len(sources) == 0 {
@@ -300,7 +318,7 @@ func (s *JobDiscoveryService) Search(ctx context.Context, criteria domain.Search
 			// Filtered here, not trusted: see FiltersServerSide.
 			kept := make([]domain.Job, 0, len(jobs))
 			for _, job := range jobs {
-				if criteria.MatchesFor(job, authorized) {
+				if criteria.MatchesFor(job, seeker) {
 					kept = append(kept, job)
 				}
 			}

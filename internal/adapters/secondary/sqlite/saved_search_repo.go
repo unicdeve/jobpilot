@@ -24,7 +24,7 @@ func NewSavedSearchRepository(db *sql.DB) *SavedSearchRepository {
 
 const savedSearchColumns = `id, name, keywords, title, location, remote_preference,
 	employment_type, salary_min, salary_max, excluded_companies, work_from,
-	include_relocation, is_default, created_at, updated_at`
+	include_relocation, fit_hours, hours_shift, is_default, created_at, updated_at`
 
 // savedSearchSelect is what is read back: the written columns plus the
 // last run, which only MarkRun writes.
@@ -40,7 +40,7 @@ func (r *SavedSearchRepository) Save(ctx context.Context, search *domain.SavedSe
 	}
 
 	query := `INSERT INTO saved_searches (` + savedSearchColumns + `)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	ON CONFLICT(id) DO UPDATE SET
 		name = excluded.name,
 		keywords = excluded.keywords,
@@ -53,13 +53,15 @@ func (r *SavedSearchRepository) Save(ctx context.Context, search *domain.SavedSe
 		excluded_companies = excluded.excluded_companies,
 		work_from = excluded.work_from,
 		include_relocation = excluded.include_relocation,
+		fit_hours = excluded.fit_hours,
+		hours_shift = excluded.hours_shift,
 		updated_at = CURRENT_TIMESTAMP`
 
 	c := search.Criteria
 	_, err := r.db.ExecContext(ctx, query,
 		search.ID, search.Name, c.Keywords, c.Title, c.Location, c.RemotePreference,
 		c.EmploymentType, c.SalaryMin, c.SalaryMax, joinStrings(c.ExcludedCompanies),
-		c.WorkFrom, c.IncludeRelocation, search.IsDefault,
+		c.WorkFrom, c.IncludeRelocation, c.FitHours, c.HoursShift, search.IsDefault,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save search %q: %w", search.Name, err)
@@ -76,6 +78,7 @@ func (r *SavedSearchRepository) scan(row interface{ Scan(...any) error }) (*doma
 		&s.ID, &s.Name, &s.Criteria.Keywords, &s.Criteria.Title, &s.Criteria.Location,
 		&s.Criteria.RemotePreference, &s.Criteria.EmploymentType, &s.Criteria.SalaryMin,
 		&s.Criteria.SalaryMax, &excluded, &s.Criteria.WorkFrom, &s.Criteria.IncludeRelocation,
+		&s.Criteria.FitHours, &s.Criteria.HoursShift,
 		&s.IsDefault, &s.CreatedAt, &s.UpdatedAt, &lastRun,
 	)
 	if err != nil {

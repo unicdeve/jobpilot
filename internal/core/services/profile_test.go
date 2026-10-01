@@ -72,3 +72,18 @@ func TestProfileService_UpdateProfile(t *testing.T) {
 		assert.Equal(t, "updated", repo.candidates["cand-1"].Summary)
 	})
 }
+
+func TestProfileService_UpdateProfile_TimeZone(t *testing.T) {
+	t.Parallel()
+	repo := newFakeCandidateRepository()
+	svc := NewProfileService(repo)
+	candidate := &domain.Candidate{FirstName: "Ada"}
+	require.NoError(t, repo.Save(context.Background(), candidate))
+
+	candidate.TimeZone = "africa/lagos"
+	require.NoError(t, svc.UpdateProfile(context.Background(), candidate))
+	assert.Equal(t, "Africa/Lagos", candidate.TimeZone, "stored as GeoNames writes it")
+
+	candidate.TimeZone = "Lagos"
+	assert.ErrorIs(t, svc.UpdateProfile(context.Background(), candidate), ErrInvalidTimeZone)
+}

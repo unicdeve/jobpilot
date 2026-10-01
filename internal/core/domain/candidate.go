@@ -165,6 +165,9 @@ type Candidate struct {
 	LocationCity    string `json:"location_city"`
 	LocationRegion  string `json:"location_region"`
 	LocationCountry string `json:"location_country"`
+	// TimeZone is the IANA zone the candidate works in, such as
+	// Africa/Lagos, or empty (ADR-0025 §2).
+	TimeZone string `json:"time_zone"`
 
 	// NoticePeriodDays and EarliestStartDate answer "when are you
 	// available". Both are pointers because zero is an answer —
@@ -213,6 +216,20 @@ func (c Candidate) AuthorizedCountries() []string {
 		}
 	}
 	return codes
+}
+
+// UTCOffset is the candidate's time zone's offset from UTC without
+// daylight saving, in hours, and whether they have a zone JobPilot knows.
+func (c Candidate) UTCOffset() (float64, bool) {
+	zone, ok := geo.TimeZoneByID(c.TimeZone)
+	return zone.Offset, ok
+}
+
+// Seeker is what a search needs to know about the candidate it runs for.
+func (c Candidate) Seeker() Seeker {
+	seeker := Seeker{AuthorizedCountries: c.AuthorizedCountries()}
+	seeker.UTCOffset, seeker.HasTimeZone = c.UTCOffset()
+	return seeker
 }
 
 // LocationDisplay is the candidate's location as a person would write it,

@@ -80,3 +80,15 @@ func TestOnboardingService_InitializeProfile(t *testing.T) {
 		assert.ErrorContains(t, err, "failed to save initial profile")
 	})
 }
+
+func TestOnboardingService_InitializeProfile_RefusesAnUnknownTimeZone(t *testing.T) {
+	t.Parallel()
+	svc := NewOnboardingService(newFakeCandidateRepository(), nil, nil, nil, nil)
+
+	err := svc.InitializeProfile(context.Background(), &domain.Candidate{FirstName: "Ada", TimeZone: "Lagos"})
+	assert.ErrorIs(t, err, ErrInvalidTimeZone)
+
+	profile := &domain.Candidate{FirstName: "Ada", TimeZone: "africa/lagos"}
+	require.NoError(t, svc.InitializeProfile(context.Background(), profile))
+	assert.Equal(t, "Africa/Lagos", profile.TimeZone)
+}

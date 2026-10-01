@@ -978,3 +978,51 @@ func TestJobDiscoveryService_ListJobs_WorkFrom(t *testing.T) {
 	_, err := svc.ListJobs(context.Background(), domain.JobFilter{WorkFrom: "Atlantis"}, 10, 0)
 	assert.ErrorIs(t, err, ErrInvalidJobFilter)
 }
+
+// A search that fits hours reads the candidate's time zone, and leaves out
+// only the jobs whose required hours are further than they would shift
+// (ADR-0025 §3).
+func TestJobDiscoveryService_Search_FitHours(t *testing.T) {
+	t.Parallel()
+
+	listing := []domain.Job{
+		{CanonicalURL: "https://acme.example/cet", Title: "Backend Engineer", RemoteType: "remote", Locations: []string{"Worldwide"},
+			DescriptionMarkdown: "Located in CET timezone (+/- 3 hours)."},
+		{CanonicalURL: "https://acme.example/eastern", Title: "Backend Engineer", RemoteType: "remote", Locations: []string{"Worldwide"},
+			DescriptionMarkdown: "Able to overlap at least 4 hours a day with US Eastern Time."},
+		{CanonicalURL: "https://acme.example/pacific", Title: "Backend Engineer", RemoteType: "remote", Locations: []string{"Worldwide"},
+			DescriptionMarkdown: "This role is open to remote locations within the Pacific Standard Time Zone."},
+	}
+	candidates := newFakeCandidateRepository()
+	require.NoError(t, candidates.Save(context.Background(), &domain.Candidate{FirstName: "Ada", TimeZone: "Africa/Lagos"}))
+	search := func(criteria domain.SearchCriteria) []string {
+		svc := NewJobDiscoveryService(newFakeJobRepository(), []ports.JobSource{searchableSource("board", listing, nil)}, nil, nil, nil).
+			WithCandidates(candidates)
+		result, err := svc.Search(context.Background(), criteria)
+		require.NoError(t, err)
+		var urls []string
+		for _, job := range result.Jobs {
+			urls = append(urls, job.CanonicalURL)
+		}
+		return urls
+	}
+
+	assert.Len(t, search(domain.SearchCriteria{Title: "backend"}), 3, "off, nothing is left out")
+	assert.Equal(t, []string{"https://acme.example/cet"}, search(domain.SearchCriteria{Title: "backend", FitHours: true}))
+	assert.Equal(t, []string{"https://acme.example/cet", "https://acme.example/eastern"},
+		search(domain.SearchCriteria{Title: "backend", FitHours: true, HoursShift: 2}))
+	assert.Len(t, search(domain.SearchCriteria{Title: "backend", FitHours: true, HoursShift: 9}), 3)
+}
+
+func TestSavedSearchService_RefusesAShiftPastTwelveHours(t *testing.T) {
+	t.Parallel()
+	svc := NewSavedSearchService(newFakeSavedSearchRepository())
+
+	_, err := svc.Create(context.Background(), "Too far", domain.SearchCriteria{Title: "engineer", FitHours: true, HoursShift: 13})
+	assert.ErrorIs(t, err, ErrInvalidHoursShift)
+	_, err = svc.Create(context.Background(), "Backwards", domain.SearchCriteria{Title: "engineer", HoursShift: -1})
+	assert.ErrorIs(t, err, ErrInvalidHoursShift)
+	search, err := svc.Create(context.Background(), "Fine", domain.SearchCriteria{Title: "engineer", FitHours: true, HoursShift: 12})
+	require.NoError(t, err)
+	assert.Equal(t, 12, search.Criteria.HoursShift)
+}

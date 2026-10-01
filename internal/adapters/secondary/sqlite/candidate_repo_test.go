@@ -105,6 +105,7 @@ func TestCandidateRepository_LinksAndWorkAuthorizations(t *testing.T) {
 			Phone:            "+49 30 123456",
 			LocationCity:     "Berlin",
 			LocationCountry:  "Germany",
+			TimeZone:         "Europe/Berlin",
 			NoticePeriodDays: &notice,
 			Links: []domain.CandidateLink{
 				{Kind: domain.LinkKindLinkedIn, URL: "https://linkedin.com/in/ada"},
@@ -122,6 +123,7 @@ func TestCandidateRepository_LinksAndWorkAuthorizations(t *testing.T) {
 
 		assert.Equal(t, "ada@example.com", got.Email)
 		assert.Equal(t, "+49 30 123456", got.Phone, "email and phone must not be the same field again")
+		assert.Equal(t, "Europe/Berlin", got.TimeZone)
 		require.NotNil(t, got.NoticePeriodDays)
 		assert.Equal(t, 30, *got.NoticePeriodDays)
 

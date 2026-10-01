@@ -40,7 +40,10 @@ type Job struct {
 	Workable        Workable `json:"workable"`
 	Relocation      Offer    `json:"relocation"`
 	VisaSponsorship Offer    `json:"visa_sponsorship"`
-	SignalsVersion  int      `json:"-"`
+	// Hours is the time zones the job asks the candidate to work in
+	// (ADR-0025), read by ReadSignals with the rest.
+	Hours          WorkingHours `json:"hours"`
+	SignalsVersion int          `json:"-"`
 }
 
 // SearchCriteria defines the parameters for finding jobs.
@@ -64,9 +67,34 @@ type SearchCriteria struct {
 	// IncludeRelocation also keeps jobs elsewhere that offer or mention
 	// relocation or visa sponsorship. It matters only with WorkFrom set.
 	IncludeRelocation bool `json:"include_relocation"`
+	// FitHours leaves out jobs that require hours the candidate cannot work
+	// from their time zone, moving their day by up to HoursShift hours
+	// (ADR-0025 §3). It narrows nothing for a candidate with no time zone.
+	FitHours   bool `json:"fit_hours"`
+	HoursShift int  `json:"hours_shift"`
+}
+
+// MaxHoursShift is the most a candidate can say they would move their day:
+// twelve hours reaches every zone.
+const MaxHoursShift = 12
+
+// Seeker is what a search needs to know about the candidate it runs for,
+// beyond the criteria: where they may work without sponsorship, and their
+// time zone.
+type Seeker struct {
+	// AuthorizedCountries is the ISO codes of the countries the candidate
+	// may work in without sponsorship (Candidate.AuthorizedCountries).
+	AuthorizedCountries []string
+	// UTCOffset is the candidate's time zone's standard offset, when
+	// HasTimeZone.
+	UTCOffset   float64
+	HasTimeZone bool
 }
 
 // IsEmpty reports whether the criteria would match every job in existence.
+//
+// FitHours does not count: most jobs say nothing about their hours and are
+// kept by it, so on its own it would import nearly every posting.
 //
 // Discovery refuses to run on empty criteria. Both public sources ignore
 // their own query parameters, so an unfiltered search means importing every
@@ -84,18 +112,19 @@ func (c SearchCriteria) IsEmpty() bool {
 }
 
 // Matches reports whether job satisfies every criterion that is set, for a
-// candidate with no work authorization recorded. See MatchesFor.
+// candidate with no work authorization or time zone recorded. See
+// MatchesFor.
 func (c SearchCriteria) Matches(job Job) bool {
-	return c.MatchesFor(job, nil)
+	return c.MatchesFor(job, Seeker{})
 }
 
 // MatchesFor reports whether job satisfies every criterion that is set.
 //
-// authorized is the countries the candidate may work in without
-// sponsorship, as ISO codes (Candidate.AuthorizedCountries). It is read
-// only for a job elsewhere that a search including relocation would bring
-// in, and a nil list is the stricter answer: such a job that declines visa
-// sponsorship is left out.
+// seeker is the candidate the search runs for. Their authorized countries
+// are read only for a job elsewhere that a search including relocation
+// would bring in, and none is the stricter answer: such a job that declines
+// visa sponsorship is left out. Their time zone is read only with FitHours,
+// and none keeps every job.
 //
 // This is the one definition of what a search means. It is applied by
 // JobDiscoveryService to results from any source that cannot filter
@@ -106,7 +135,7 @@ func (c SearchCriteria) Matches(job Job) bool {
 // the job: a salary bound skips postings whose salary is unknown rather than
 // discarding them, since most boards publish no salary at all and treating
 // absence as a mismatch would hide nearly everything.
-func (c SearchCriteria) MatchesFor(job Job, authorized []string) bool {
+func (c SearchCriteria) MatchesFor(job Job, seeker Seeker) bool {
 	if !matchesAllTerms(c.Keywords, job.Title+" "+job.DescriptionMarkdown) {
 		return false
 	}
@@ -125,7 +154,10 @@ func (c SearchCriteria) MatchesFor(job Job, authorized []string) bool {
 	if !withinSalary(c, job) {
 		return false
 	}
-	if !c.workableFor(job, authorized) {
+	if !c.workableFor(job, seeker.AuthorizedCountries) {
+		return false
+	}
+	if !c.hoursFor(job, seeker) {
 		return false
 	}
 
@@ -165,6 +197,16 @@ func (c SearchCriteria) workableFor(job Job, authorized []string) bool {
 		return false
 	}
 	return true
+}
+
+// hoursFor applies FitHours (ADR-0025 §3). Only a requirement can leave a
+// job out: a job that says nothing about its hours, or only prefers some,
+// is kept (spec 18 D4).
+func (c SearchCriteria) hoursFor(job Job, seeker Seeker) bool {
+	if !c.FitHours || !seeker.HasTimeZone || job.Hours.Status != HoursRequired {
+		return true
+	}
+	return job.Hours.ShiftFor(seeker.UTCOffset) <= float64(c.HoursShift)
 }
 
 // SearchTerms splits a criteria field into the individual words a job must

@@ -133,7 +133,7 @@ func TestSearchCriteria_Matches_WorkFrom(t *testing.T) {
 	assert.False(t, moving.Matches(berlinPlain), "a job abroad that offers no help is left out")
 	assert.False(t, moving.Matches(berlinNoVisa),
 		"a job that refuses sponsorship is for someone already allowed to work there")
-	assert.True(t, moving.MatchesFor(berlinNoVisa, []string{"DE"}))
+	assert.True(t, moving.MatchesFor(berlinNoVisa, Seeker{AuthorizedCountries: []string{"DE"}}))
 	assert.False(t, moving.Matches(usOnly))
 
 	assert.True(t, SearchCriteria{}.Matches(usOnly), "without WorkFrom, nothing changes")
@@ -174,4 +174,42 @@ func TestSavedSearch_Stale(t *testing.T) {
 	assert.False(t, (&SavedSearch{LastRunAt: ranAgo(SearchRefreshInterval - time.Second)}).Stale(now))
 	assert.True(t, (&SavedSearch{LastRunAt: ranAgo(SearchRefreshInterval)}).Stale(now), "six hours is due, not a second past it")
 	assert.True(t, (&SavedSearch{LastRunAt: ranAgo(3 * 24 * time.Hour)}).Stale(now))
+}
+
+func TestSearchCriteria_FitHours(t *testing.T) {
+	t.Parallel()
+
+	lagos := Seeker{UTCOffset: 1, HasTimeZone: true}
+	eastern := Job{Title: "Engineer", Hours: WorkingHours{Status: HoursRequired, From: -9, To: -1}}
+	cet := Job{Title: "Engineer", Hours: WorkingHours{Status: HoursRequired, From: -2, To: 4}}
+	preferred := Job{Title: "Engineer", Hours: WorkingHours{Status: HoursPreferred, From: -8, To: -8}}
+	silent := Job{Title: "Engineer"}
+
+	strict := SearchCriteria{Title: "engineer", FitHours: true}
+	assert.True(t, strict.MatchesFor(cet, lagos), "Lagos is inside CET ± 3")
+	assert.False(t, strict.MatchesFor(eastern, lagos), "two hours from US Eastern overlap, and no shift")
+	assert.True(t, strict.MatchesFor(preferred, lagos), "a preference never leaves a job out (spec D4)")
+	assert.True(t, strict.MatchesFor(silent, lagos), "a job that says nothing is kept")
+	assert.True(t, strict.MatchesFor(eastern, Seeker{}), "a candidate with no time zone is not filtered")
+
+	shifting := SearchCriteria{Title: "engineer", FitHours: true, HoursShift: 2}
+	assert.True(t, shifting.MatchesFor(eastern, lagos), "shifting two hours reaches US Eastern overlap")
+
+	off := SearchCriteria{Title: "engineer"}
+	assert.True(t, off.MatchesFor(eastern, lagos), "off until the candidate turns it on")
+	assert.True(t, SearchCriteria{FitHours: true}.IsEmpty(), "fitting hours alone narrows almost nothing")
+}
+
+func TestCandidate_Seeker(t *testing.T) {
+	t.Parallel()
+
+	seeker := Candidate{TimeZone: "Africa/Lagos"}.Seeker()
+	assert.True(t, seeker.HasTimeZone)
+	assert.Equal(t, 1.0, seeker.UTCOffset)
+
+	india, _ := Candidate{TimeZone: "asia/kolkata"}.UTCOffset()
+	assert.Equal(t, 5.5, india)
+
+	_, ok := Candidate{TimeZone: "Mars/Olympus"}.UTCOffset()
+	assert.False(t, ok)
 }

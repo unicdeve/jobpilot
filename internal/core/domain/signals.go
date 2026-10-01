@@ -10,11 +10,11 @@ import (
 // stored with an older version is read again when the daemon starts
 // (ADR-0023 §3), so raising it whenever the vocabulary, the tables or the
 // phrases change reaches every stored job, not only new ones.
-const SignalsVersion = 2
+const SignalsVersion = 3
 
 // ReadSignals derives what a job says about itself beyond its fields: where
-// it can be done from, and whether it offers relocation and visa
-// sponsorship (ADR-0023). It reads only what the job already holds, and no
+// it can be done from, whether it offers relocation and visa sponsorship
+// (ADR-0023), and the working hours it asks for (ADR-0025). It reads only what the job already holds, and no
 // model: the discovery path reads several hundred jobs per search, from
 // text nobody at JobPilot wrote.
 func ReadSignals(job *Job) {
@@ -22,6 +22,7 @@ func ReadSignals(job *Job) {
 	job.Workable = readWorkable(*job, sentences)
 	job.Relocation = readOffer(sentences, relocationTopic)
 	job.VisaSponsorship = readOffer(sentences, visaTopic)
+	job.Hours = readHours(sentences)
 	job.SignalsVersion = SignalsVersion
 }
 

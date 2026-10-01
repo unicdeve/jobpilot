@@ -395,7 +395,7 @@ func signalJobs() []domain.Job {
 		read("unstated", domain.RemoteTypeRemote, []string{"Remote"}, ""),
 		read("berlin-relocation", domain.RemoteTypeOnsite, []string{"Berlin"}, "We offer an attractive relocation package."),
 		read("berlin-no-visa", domain.RemoteTypeOnsite, []string{"Berlin"},
-			"We offer relocation support. We are unable to offer visa sponsorship for this role."),
+			"We offer relocation support. We are unable to offer visa sponsorship for this role. Located in CET timezone (+/- 3 hours)."),
 		read("berlin-plain", domain.RemoteTypeOnsite, []string{"Berlin"}, "Join our team."),
 	}
 }
@@ -417,6 +417,8 @@ func TestJobRepository_StoresSignals(t *testing.T) {
 	assert.Equal(t, domain.OfferOffered, got.Relocation.Status)
 	assert.Equal(t, domain.OfferDeclined, got.VisaSponsorship.Status)
 	assert.NotEmpty(t, got.VisaSponsorship.Evidence)
+	assert.Equal(t, domain.WorkingHours{Status: domain.HoursRequired, From: -2, To: 4,
+		Evidence: "Located in CET timezone (+/- 3 hours)"}, got.Hours)
 	assert.Equal(t, domain.SignalsVersion, got.SignalsVersion)
 }
 
@@ -483,7 +485,7 @@ func TestJobRepository_WorkFromAgreesWithMatches(t *testing.T) {
 			criteria := domain.SearchCriteria{WorkFrom: tc.workFrom, IncludeRelocation: tc.relocation}
 			var want []string
 			for _, job := range jobs {
-				if criteria.MatchesFor(job, tc.authorized) {
+				if criteria.MatchesFor(job, domain.Seeker{AuthorizedCountries: tc.authorized}) {
 					want = append(want, job.CanonicalURL)
 				}
 			}

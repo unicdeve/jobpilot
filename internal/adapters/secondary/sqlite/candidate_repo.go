@@ -28,7 +28,7 @@ func NewCandidateRepository(db *sql.DB) *CandidateRepository {
 // candidateColumns is the candidates row, in the order scanCandidate reads
 // it. One list so the three read paths cannot drift apart.
 const candidateColumns = `id, first_name, last_name, email, phone,
-	location_city, location_region, location_country,
+	location_city, location_region, location_country, time_zone,
 	notice_period_days, earliest_start_date,
 	summary, remote_preference, created_at, updated_at`
 
@@ -62,7 +62,7 @@ func (r *CandidateRepository) Save(ctx context.Context, candidate *domain.Candid
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, query,
 			candidate.ID, candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
-			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
+			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry, candidate.TimeZone,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
 			candidate.Summary, candidate.RemotePreference,
 			candidate.CreatedAt, candidate.UpdatedAt,
@@ -99,7 +99,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 
 	query := `UPDATE candidates SET
 		first_name = ?, last_name = ?, email = ?, phone = ?,
-		location_city = ?, location_region = ?, location_country = ?,
+		location_city = ?, location_region = ?, location_country = ?, time_zone = ?,
 		notice_period_days = ?, earliest_start_date = ?,
 		summary = ?, remote_preference = ?, updated_at = ?
 	WHERE id = ?`
@@ -107,7 +107,7 @@ func (r *CandidateRepository) Update(ctx context.Context, candidate *domain.Cand
 	return r.inTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, query,
 			candidate.FirstName, candidate.LastName, candidate.Email, candidate.Phone,
-			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry,
+			candidate.LocationCity, candidate.LocationRegion, candidate.LocationCountry, candidate.TimeZone,
 			candidate.NoticePeriodDays, candidate.EarliestStartDate,
 			candidate.Summary, candidate.RemotePreference,
 			candidate.UpdatedAt, candidate.ID,
@@ -143,7 +143,7 @@ func scanCandidate(row *sql.Row) (*domain.Candidate, error) {
 	var c domain.Candidate
 	err := row.Scan(
 		&c.ID, &c.FirstName, &c.LastName, &c.Email, &c.Phone,
-		&c.LocationCity, &c.LocationRegion, &c.LocationCountry,
+		&c.LocationCity, &c.LocationRegion, &c.LocationCountry, &c.TimeZone,
 		&c.NoticePeriodDays, &c.EarliestStartDate,
 		&c.Summary, &c.RemotePreference,
 		&c.CreatedAt, &c.UpdatedAt,

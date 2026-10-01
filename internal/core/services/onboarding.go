@@ -62,6 +62,11 @@ func (s *OnboardingService) ConfigureLLM(ctx context.Context) error {
 // InitializeProfile creates the initial candidate profile. It mutates
 // profile in place so callers observe the generated ID after save.
 func (s *OnboardingService) InitializeProfile(ctx context.Context, profile *domain.Candidate) error {
+	zone, err := normalizeTimeZone(profile.TimeZone)
+	if err != nil {
+		return err
+	}
+	profile.TimeZone = zone
 	if err := s.candidateRepo.Save(ctx, profile); err != nil {
 		return fmt.Errorf("failed to save initial profile: %w", err)
 	}

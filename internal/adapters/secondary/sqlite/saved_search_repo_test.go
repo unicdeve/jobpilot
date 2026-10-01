@@ -27,6 +27,8 @@ func goSearch(name string) *domain.SavedSearch {
 			ExcludedCompanies: []string{"Acme", "Globex"},
 			WorkFrom:          "NG",
 			IncludeRelocation: true,
+			FitHours:          true,
+			HoursShift:        4,
 		},
 	}
 }
