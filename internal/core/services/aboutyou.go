@@ -451,6 +451,34 @@ func (m *PersonalMaterial) Empty() bool {
 	return m.about.WritingSample == "" && m.about.WritingPreferences == ""
 }
 
+// OwnWords is what the candidate said that a draft's claims may rest on
+// (docs/02_features/19_draft_checks.md D1): their answers for every
+// application, for this one, and the ones they kept. It leaves out the
+// writing sample, which is style and not fact, what they asked never to
+// have mentioned, and a question the model proposed from the posting.
+func (m *PersonalMaterial) OwnWords() []string {
+	var words []string
+	for _, question := range m.about.Questions {
+		if question.Answer != "" && question.Key != domain.AnswerNeverMention {
+			words = append(words, question.Answer)
+		}
+	}
+	for _, answer := range m.application {
+		if answer.Answer != "" {
+			words = append(words, answer.Answer)
+		}
+	}
+	for _, answer := range m.about.Kept {
+		words = append(words, answer.Answer)
+	}
+	return words
+}
+
+// WritingPreferences is the tone and length the candidate asked for.
+func (m *PersonalMaterial) WritingPreferences() string {
+	return m.about.WritingPreferences
+}
+
 // Render writes the material into a prompt (ADR-0022 §5), the same for a
 // letter and a written answer. forQuestion is the form's label when
 // writing an answer, which chooses the kept answers given with it; a

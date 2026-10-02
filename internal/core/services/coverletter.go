@@ -111,6 +111,9 @@ func (s *CoverLetterService) Generate(ctx context.Context, applicationID string)
 		return nil, fmt.Errorf("failed to update application's current cover letter: %w", err)
 	}
 
+	if err := s.check(ctx, application, coverLetter); err != nil {
+		return nil, err
+	}
 	return coverLetter, nil
 }
 
@@ -197,6 +200,13 @@ func (s *CoverLetterService) Edit(ctx context.Context, coverLetterID, content st
 		return nil, fmt.Errorf("failed to update cover letter: %w", err)
 	}
 
+	application, err := s.appRepo.GetByID(ctx, coverLetter.ApplicationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch application: %w", err)
+	}
+	if err := s.check(ctx, application, coverLetter); err != nil {
+		return nil, err
+	}
 	return coverLetter, nil
 }
 
@@ -207,5 +217,29 @@ func (s *CoverLetterService) ListVersions(ctx context.Context, applicationID str
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cover letter versions: %w", err)
 	}
+	if len(versions) == 0 {
+		return versions, nil
+	}
+
+	application, err := s.appRepo.GetByID(ctx, applicationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch application: %w", err)
+	}
+	if err := s.check(ctx, application, versions...); err != nil {
+		return nil, err
+	}
 	return versions, nil
+}
+
+// check sets each letter's flags from its text as it is now
+// (docs/02_features/19_draft_checks.md).
+func (s *CoverLetterService) check(ctx context.Context, application *domain.Application, letters ...*domain.CoverLetter) error {
+	basis, err := draftBasis(ctx, application, s.candRepo, s.resumeRepo, s.about, true)
+	if err != nil {
+		return fmt.Errorf("failed to check the cover letter: %w", err)
+	}
+	for _, letter := range letters {
+		letter.Flags = domain.CheckDraft(letter.Content, basis)
+	}
+	return nil
 }

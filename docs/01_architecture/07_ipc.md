@@ -84,6 +84,12 @@ browsing history impossible without a network round trip, which
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
 
+## Letters and answers carry their flags
+
+Every cover letter the API returns — generated, listed or edited — and every question with a generated answer carries `flags`: what the reviewer should look at, each `{"kind", "excerpt", "reason"}` (`docs/02_features/19_draft_checks.md`).
+They are worked out from the text on every read and never stored, so a client shows what it is given and an edit comes back re-checked.
+`flags` is left out when there is nothing to look at.
+
 ## A missing record is 404
 
 Every error is `{"error": "..."}` with a status that says whose it is.

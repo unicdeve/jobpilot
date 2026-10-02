@@ -442,6 +442,16 @@ export interface ApplicationStateTransition {
   created_at: string;
 }
 
+/// DraftFlag is something in a letter or written answer the reviewer
+/// should look at, worked out from its text each time it is read
+/// (docs/02_features/19_draft_checks.md).
+export interface DraftFlag {
+  kind: "stock_phrase" | "length" | "unsupported_claim";
+  /// The flagged words as the text has them; a length flag has none.
+  excerpt?: string;
+  reason: string;
+}
+
 export interface CoverLetter {
   id: string;
   application_id: string;
@@ -450,6 +460,7 @@ export interface CoverLetter {
   model_name: string;
   user_edited: boolean;
   created_at: string;
+  flags?: DraftFlag[];
 }
 
 export type QuestionType = "factual" | "narrative";
@@ -529,6 +540,7 @@ export interface ApplicationQuestion {
   status: QuestionStatus;
   source: QuestionSource;
   field_ref?: string;
+  flags?: DraftFlag[];
 }
 
 export type AgentRunStatus = "running" | "completed" | "blocked" | "failed";

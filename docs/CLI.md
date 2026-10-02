@@ -17,6 +17,7 @@ This document lists the currently implemented CLI commands for the JobPilot.
 ## Cover Letters and Answers
 - `jobpilot-cli application cover-letter generate [application-id]`: Asks a few questions about this job first — what draws you to it, and up to two the model proposes from the posting — then writes the letter from your answers, your About you and your profile. Enter skips a question; `--no-questions` skips them all. Rewriting offers the same questions, prefilled.
 - `jobpilot-cli application question keep [question-id]`: Keeps a written answer you wrote yourself, so written answers to similar questions draw on it.
+- Every letter and written answer the CLI prints is followed by "To review" when there is something to look at: a stock phrase, a letter longer than you asked for, or a number of years you never gave (`docs/02_features/19_draft_checks.md`). Nothing is changed or blocked; you decide.
 
 ## Resume Management
 - `jobpilot-cli resume import [path]`: Imports a resume file from the specified path, converts it to Markdown, and associates it with the current candidate profile. Afterward, the LLM proposes a draft of First Name, Last Name, Contact, Location, Summary, and Skills from the resume; you can review and edit each field (defaulting to your current profile value if the draft left it blank) before it's applied to your profile. This same review step also runs during `onboard` when a resume is imported there. If suggestion generation fails, the resume import itself still succeeds.

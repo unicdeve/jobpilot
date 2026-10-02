@@ -66,7 +66,9 @@ func TestOllamaProvider_Generate(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/generate", r.URL.Path)
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
-			_ = json.NewEncoder(w).Encode(generateResponse{Model: "llama3", Response: "hello"})
+			_ = json.NewEncoder(w).Encode(generateResponse{Model: "llama3", Response: "hel"})
+			_ = json.NewEncoder(w).Encode(generateResponse{Model: "llama3", Response: "lo"})
+			_ = json.NewEncoder(w).Encode(generateResponse{Model: "llama3", Done: true})
 		}))
 		defer server.Close()
 
@@ -81,7 +83,7 @@ func TestOllamaProvider_Generate(t *testing.T) {
 		assert.Equal(t, "llama3", captured.Model)
 		assert.Equal(t, "user", captured.Prompt)
 		assert.Equal(t, "system", captured.System)
-		assert.False(t, captured.Stream)
+		assert.True(t, captured.Stream)
 		require.NotNil(t, captured.Options)
 		assert.InDelta(t, 0.5, captured.Options.Temperature, 0.0001)
 		assert.Equal(t, 100, captured.Options.NumPredict)

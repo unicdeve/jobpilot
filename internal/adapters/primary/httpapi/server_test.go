@@ -1156,6 +1156,15 @@ func TestClient_CoverLetterLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "manually edited content", edited.Content)
 	require.True(t, edited.UserEdited)
+	require.Empty(t, edited.Flags)
+
+	// The flags travel with the letter, worked out from its text as it is
+	// now (docs/02_features/19_draft_checks.md D3).
+	flagged, err := client.EditCoverLetter(ctx, second.ID, "Thank you for your consideration.")
+	require.NoError(t, err)
+	require.Len(t, flagged.Flags, 1)
+	require.Equal(t, domain.FlagStockPhrase, flagged.Flags[0].Kind)
+	require.Equal(t, "Thank you for your consideration", flagged.Flags[0].Excerpt)
 }
 
 func TestClient_QuestionResolution(t *testing.T) {

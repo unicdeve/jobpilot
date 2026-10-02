@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -169,4 +170,41 @@ func TestAnswerService_AddQuestionAndListByApplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, questions, 1)
 	assert.Equal(t, "Why do you want to work here?", questions[0].Label)
+}
+
+// A generated answer carries the flags of its text whenever it is read,
+// and is never held to a letter's length; an answer the profile gave is a
+// fact and carries none (docs/02_features/19_draft_checks.md).
+func TestAnswerService_Flags(t *testing.T) {
+	t.Parallel()
+
+	svc, questionRepo, appRepo, jobRepo, candRepo, llm := newTestAnswerService(t)
+	ctx := context.Background()
+	require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", Email: "ada@example.com"}))
+	require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
+	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-why", ApplicationID: "app-1", Label: "Why do you want to work here?", Type: domain.QuestionTypeNarrative}))
+	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-email", ApplicationID: "app-1", Label: "Email", Type: domain.QuestionTypeFactual}))
+
+	long := strings.Repeat("word ", 400)
+	llm.response = ports.Response{Content: "I am excited to apply. " + long}
+	generated, err := svc.Resolve(ctx, "q-why")
+	require.NoError(t, err)
+	require.Len(t, generated.Flags, 1, "a stock phrase, and no length flag")
+	assert.Equal(t, domain.FlagStockPhrase, generated.Flags[0].Kind)
+
+	fact, err := svc.Resolve(ctx, "q-email")
+	require.NoError(t, err)
+	require.Equal(t, domain.AnswerCategoryProfileFact, fact.Category)
+	assert.Empty(t, fact.Flags)
+
+	edited, err := svc.SetUserAnswer(ctx, "q-why", "Your post on idempotent retries is why.")
+	require.NoError(t, err)
+	assert.Empty(t, edited.Flags, "an edit is checked as it now reads")
+
+	listed, err := svc.ListByApplication(ctx, "app-1")
+	require.NoError(t, err)
+	for _, question := range listed {
+		assert.Empty(t, question.Flags, question.Label)
+	}
 }

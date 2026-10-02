@@ -43,11 +43,23 @@ A schema states shape; meaning is checked after decoding, by code.
 Validation is therefore not optional or conditional.
 It runs on every structured reply whether or not a schema was applied, because three of the four supported backends will not have applied one.
 
+## Time to write
+
+Generation is streamed, from Ollama as lines of JSON and from OpenAI-compatible servers as Server-Sent Events, and a request is bounded by silence rather than by its total length (`docs/02_features/19_draft_checks.md` D4).
+It is given up on after 60 seconds without a byte once the server has started answering, and after five minutes before it has, since a large model loading from disk sends nothing until it is ready.
+The error says which, so a stalled server is not mistaken for the caller cancelling.
+A connectivity check, which writes nothing, keeps a 10-second limit of its own.
+
+A stream must end the way the backend ends a finished answer — Ollama's `done`, OpenAI's `[DONE]` — or the request fails: part of a letter is not a letter.
+An OpenAI-compatible server that answers in one piece, ignoring `stream`, is read that way, by its `Content-Type`.
+
 ## Grounding
 
 Candidate facts should come from structured profile/resume data.
 
 The LLM may generate prose but must not invent factual candidate information.
+
+The prompts say so, and a small model follows them only partly, so what it writes is checked afterwards, by code: every letter and generated answer carries flags for the stock phrases, length and numbers of years it was told not to write (`docs/02_features/19_draft_checks.md`).
 
 ## Prompt customization
 

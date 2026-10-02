@@ -3,12 +3,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
@@ -22,6 +24,7 @@ type OllamaProvider struct {
 	baseURL    string
 	model      string
 	httpClient *http.Client
+	patience   patience
 }
 
 type generateOptions struct {
@@ -44,9 +47,14 @@ type generateRequest struct {
 	Options *generateOptions `json:"options,omitempty"`
 }
 
+// generateResponse is one line of a streamed generation: a piece of the
+// text, until the last, which says it is done. A failure part-way through
+// arrives as a line with an error.
 type generateResponse struct {
 	Model    string `json:"model"`
 	Response string `json:"response"`
+	Done     bool   `json:"done"`
+	Error    string `json:"error,omitempty"`
 }
 
 // NewOllamaProvider constructs an OllamaProvider targeting baseURL. If model
@@ -56,16 +64,17 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 		model = DefaultModel
 	}
 	return &OllamaProvider{
-		baseURL: baseURL,
-		model:   model,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:    baseURL,
+		model:      model,
+		httpClient: newHTTPClient(),
+		patience:   defaultPatience,
 	}
 }
 
 // TestConnectivity checks that the configured Ollama instance is reachable.
 func (p *OllamaProvider) TestConnectivity(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/tags", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -85,7 +94,8 @@ func (p *OllamaProvider) TestConnectivity(ctx context.Context) error {
 }
 
 // Generate sends req to Ollama's /api/generate endpoint and returns the
-// generated content.
+// generated content. It reads the text as the model writes it, for as long
+// as the model keeps writing (docs/02_features/19_draft_checks.md D4).
 func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports.Response, error) {
 	var options *generateOptions
 	if req.Temperature != 0 || req.MaxTokens != 0 {
@@ -99,7 +109,7 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		Model:   p.model,
 		Prompt:  req.UserPrompt,
 		System:  req.SystemPrompt,
-		Stream:  false,
+		Stream:  true,
 		Format:  req.ResponseSchema,
 		Options: options,
 	}
@@ -109,7 +119,10 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		return ports.Response{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/generate", bytes.NewBuffer(body))
+	watch, stop := watchStall(ctx, p.patience)
+	defer stop()
+
+	httpReq, err := http.NewRequestWithContext(watch.ctx, http.MethodPost, p.baseURL+"/api/generate", bytes.NewBuffer(body))
 	if err != nil {
 		return ports.Response{}, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -117,7 +130,7 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
-		return ports.Response{}, fmt.Errorf("failed to call Ollama: %w", err)
+		return ports.Response{}, watch.explain("Ollama", fmt.Errorf("failed to call Ollama: %w", err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -125,12 +138,45 @@ func (p *OllamaProvider) Generate(ctx context.Context, req ports.Request) (ports
 		return ports.Response{}, fmt.Errorf("ollama returned non-OK status: %d", resp.StatusCode)
 	}
 
-	var genResp generateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&genResp); err != nil {
-		return ports.Response{}, fmt.Errorf("failed to decode response: %w", err)
+	response, err := readGenerateStream(watch.body(resp.Body))
+	if err != nil {
+		return ports.Response{}, watch.explain("Ollama", err)
 	}
+	return response, nil
+}
 
-	return ports.Response{Content: genResp.Response, Model: genResp.Model}, nil
+// readGenerateStream joins the lines of a streamed generation. It needs the
+// line that says the model is done: a stream that ends without it was cut
+// off, and part of a letter is not a letter.
+func readGenerateStream(body io.Reader) (ports.Response, error) {
+	var text bytes.Buffer
+	var model string
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var part generateResponse
+		if err := json.Unmarshal(line, &part); err != nil {
+			return ports.Response{}, fmt.Errorf("failed to decode response: %w", err)
+		}
+		if part.Error != "" {
+			return ports.Response{}, fmt.Errorf("ollama failed while writing: %s", part.Error)
+		}
+		text.WriteString(part.Response)
+		if part.Model != "" {
+			model = part.Model
+		}
+		if part.Done {
+			return ports.Response{Content: text.String(), Model: model}, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return ports.Response{}, fmt.Errorf("failed to read response: %w", err)
+	}
+	return ports.Response{}, errors.New("ollama's response ended before the model finished")
 }
 
 // Provider identifies this backend as "ollama".

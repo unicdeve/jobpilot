@@ -89,7 +89,39 @@ func (s *AnswerService) ListByApplication(ctx context.Context, applicationID str
 	if err != nil {
 		return nil, fmt.Errorf("failed to list application questions: %w", err)
 	}
+	if err := s.check(ctx, questions...); err != nil {
+		return nil, err
+	}
 	return questions, nil
+}
+
+// check sets the flags of each generated answer from its text as it is
+// now (docs/02_features/19_draft_checks.md). An answer the profile gave is
+// a fact, not the model's writing, and is not checked. The questions are
+// all one application's.
+func (s *AnswerService) check(ctx context.Context, questions ...*domain.ApplicationQuestion) error {
+	var generated []*domain.ApplicationQuestion
+	for _, question := range questions {
+		if question.Category == domain.AnswerCategoryGenerated && question.Answer != "" {
+			generated = append(generated, question)
+		}
+	}
+	if len(generated) == 0 {
+		return nil
+	}
+
+	application, err := s.appRepo.GetByID(ctx, generated[0].ApplicationID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch application: %w", err)
+	}
+	basis, err := draftBasis(ctx, application, s.candRepo, s.resumeRepo, s.about, false)
+	if err != nil {
+		return fmt.Errorf("failed to check the answer: %w", err)
+	}
+	for _, question := range generated {
+		question.Flags = domain.CheckDraft(question.Answer, basis)
+	}
+	return nil
 }
 
 // Resolve attempts to answer a question via the resolver chain: an exact
@@ -145,6 +177,9 @@ func (s *AnswerService) Resolve(ctx context.Context, questionID string) (*domain
 		return nil, fmt.Errorf("failed to save resolved question: %w", err)
 	}
 
+	if err := s.check(ctx, question); err != nil {
+		return nil, err
+	}
 	return question, nil
 }
 
@@ -164,6 +199,9 @@ func (s *AnswerService) SetUserAnswer(ctx context.Context, questionID, answer st
 		return nil, fmt.Errorf("failed to save user answer: %w", err)
 	}
 
+	if err := s.check(ctx, question); err != nil {
+		return nil, err
+	}
 	return question, nil
 }
 

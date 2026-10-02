@@ -14,4 +14,8 @@ type CoverLetter struct {
 	ModelName     string    `json:"model_name"`
 	UserEdited    bool      `json:"user_edited"`
 	CreatedAt     time.Time `json:"created_at"`
+	// Flags are what the reviewer should look at in Content. They are
+	// worked out each time the letter is read and never stored
+	// (docs/02_features/19_draft_checks.md D3).
+	Flags []DraftFlag `json:"flags,omitempty"`
 }
