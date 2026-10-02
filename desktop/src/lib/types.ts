@@ -676,7 +676,7 @@ export interface DeletionResult {
 
 /// BoardProvider is an applicant-tracking system whose hiring pages
 /// JobPilot reads (docs/02_features/17_company_watchlists.md).
-export type BoardProvider = "greenhouse" | "lever" | "ashby";
+export type BoardProvider = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters";
 
 /// Board mirrors domain.Board: one company's hiring page on a provider.
 export interface Board {

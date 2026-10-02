@@ -81,13 +81,27 @@ func (p *PartialAnswer) Unwrap() error { return p.Err }
 // exist: the company moved provider, or closed its page.
 var ErrBoardGone = errors.New("no hiring page at this address")
 
+// ErrBoardBusy is returned for a hiring page whose provider asked JobPilot
+// to wait before asking again: Workable's 429. The page is there, and is
+// asked again at the next read (ADR-0026 §5).
+var ErrBoardBusy = errors.New("the hiring page asked JobPilot to wait before asking again")
+
 // BoardReader reads companies' hiring pages (ADR-0024 §4).
 type BoardReader interface {
 	// ReadBoard returns every open posting on the board. A board the
 	// provider does not know is ErrBoardGone, and no answer at all wraps
 	// ErrSourceUnreachable.
 	ReadBoard(ctx context.Context, board domain.Board) (*domain.BoardContents, error)
+	// DescribeJobs returns jobs, read from the board with ReadBoard, with
+	// their descriptions. It is for a board whose contents are Undescribed
+	// (ADR-0026 §2), and is asked only for the postings a search may keep.
+	// A posting the provider no longer has is left out.
+	DescribeJobs(ctx context.Context, board domain.Board, jobs []domain.Job) ([]domain.Job, error)
 	// BoardName returns the company's name as its board gives it, or ""
 	// when it gives none.
 	BoardName(ctx context.Context, board domain.Board) (string, error)
+	// ResolveAddress returns the address a provider's short address leads
+	// to, which names the board: a Workable posting's apply.workable.com/j/…
+	// (ADR-0026 §3). It follows one redirect and reads nothing else.
+	ResolveAddress(ctx context.Context, address string) (string, error)
 }

@@ -161,12 +161,36 @@ func (c SearchCriteria) MatchesFor(job Job, seeker Seeker) bool {
 		return false
 	}
 
+	return !c.excludes(job)
+}
+
+// MayMatch reports whether job could satisfy the criteria once its
+// description is read. It applies every criterion that reading a description
+// cannot change — title, locations, remote type, employment type, salary and
+// excluded companies — and none that it can: keywords, which are matched
+// against the description, and where the job can be done from and its
+// hours, which domain.ReadSignals reads from it.
+//
+// It is for a board whose postings are listed without their descriptions
+// (ADR-0026 §2): a posting it rules out would be ruled out by MatchesFor
+// too, so only the others need describing.
+func (c SearchCriteria) MayMatch(job Job) bool {
+	return matchesAllTerms(c.Title, job.Title) &&
+		matchesAllTerms(c.Location, strings.Join(job.Locations, " ")) &&
+		equalsFold(c.RemotePreference, job.RemoteType) &&
+		equalsFold(c.EmploymentType, job.EmploymentType) &&
+		withinSalary(c, job) &&
+		!c.excludes(job)
+}
+
+// excludes reports whether job is at a company the criteria exclude.
+func (c SearchCriteria) excludes(job Job) bool {
 	for _, excluded := range c.ExcludedCompanies {
 		if strings.EqualFold(strings.TrimSpace(excluded), strings.TrimSpace(job.CompanyName)) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // workableFor applies WorkFrom and IncludeRelocation (ADR-0023 §4).

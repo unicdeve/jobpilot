@@ -30,44 +30,61 @@ const companyBoardTTL = time.Hour
 const maxBoardBody = 64 << 20
 
 // BoardEndpoints are where CompanyBoards reads each provider: the public
-// APIs, and the hosted pages that name a Lever or Ashby company.
+// APIs, and the hosted pages that name a Lever or Ashby company or say
+// whether a SmartRecruiters company exists.
 type BoardEndpoints struct {
-	GreenhouseAPI   string
-	GreenhouseEUAPI string
-	LeverAPI        string
-	LeverEUAPI      string
-	LeverPages      string
-	LeverEUPages    string
-	AshbyAPI        string
-	AshbyPages      string
+	GreenhouseAPI        string
+	GreenhouseEUAPI      string
+	LeverAPI             string
+	LeverEUAPI           string
+	LeverPages           string
+	LeverEUPages         string
+	AshbyAPI             string
+	AshbyPages           string
+	WorkableAPI          string
+	SmartRecruitersAPI   string
+	SmartRecruitersPages string
 }
 
 // DefaultBoardEndpoints are the providers' own. See
 // docs/02_features/17_company_watchlists.md for what each documents.
 var DefaultBoardEndpoints = BoardEndpoints{
-	GreenhouseAPI:   "https://boards-api.greenhouse.io",
-	GreenhouseEUAPI: "https://boards-api.eu.greenhouse.io",
-	LeverAPI:        "https://api.lever.co",
-	LeverEUAPI:      "https://api.eu.lever.co",
-	LeverPages:      "https://jobs.lever.co",
-	LeverEUPages:    "https://jobs.eu.lever.co",
-	AshbyAPI:        "https://api.ashbyhq.com",
-	AshbyPages:      "https://jobs.ashbyhq.com",
+	GreenhouseAPI:        "https://boards-api.greenhouse.io",
+	GreenhouseEUAPI:      "https://boards-api.eu.greenhouse.io",
+	LeverAPI:             "https://api.lever.co",
+	LeverEUAPI:           "https://api.eu.lever.co",
+	LeverPages:           "https://jobs.lever.co",
+	LeverEUPages:         "https://jobs.eu.lever.co",
+	AshbyAPI:             "https://api.ashbyhq.com",
+	AshbyPages:           "https://jobs.ashbyhq.com",
+	WorkableAPI:          "https://apply.workable.com",
+	SmartRecruitersAPI:   "https://api.smartrecruiters.com",
+	SmartRecruitersPages: "https://careers.smartrecruiters.com",
 }
 
 // companyPagesSourceID is the source a job read from a company's own page
 // is stored under. It is the ID of the source that asks for it, in core.
 const companyPagesSourceID = "company-pages"
 
-// CompanyBoards is a ports.BoardReader for Greenhouse, Lever and Ashby
-// (ADR-0024 §4). It knows boards, not who watches them.
+// CompanyBoards is a ports.BoardReader for Greenhouse, Lever, Ashby,
+// Workable and SmartRecruiters (ADR-0024 §4, ADR-0026). It knows boards,
+// not who watches them.
 type CompanyBoards struct {
 	endpoints  BoardEndpoints
 	httpClient *http.Client
+	// oneHop is httpClient without following redirects, for the answers
+	// whose redirect is what they say.
+	oneHop *http.Client
 
 	flight singleflight.Group
 	mu     sync.Mutex
 	cache  map[string]*domain.BoardContents
+	// names are the companies' names as the last read of a Workable or
+	// SmartRecruiters board gave them, which is where those boards name
+	// their company.
+	names map[string]string
+
+	descriptions descriptions
 }
 
 // NewCompanyBoards constructs a CompanyBoards reading endpoints.
@@ -75,7 +92,13 @@ func NewCompanyBoards(endpoints BoardEndpoints) *CompanyBoards {
 	return &CompanyBoards{
 		endpoints:  endpoints,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
-		cache:      make(map[string]*domain.BoardContents),
+		oneHop: &http.Client{
+			Timeout:       30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		cache:        make(map[string]*domain.BoardContents),
+		names:        make(map[string]string),
+		descriptions: descriptions{byBoard: make(map[string]map[string]describedPosting)},
 	}
 }
 
@@ -98,13 +121,21 @@ func (b *CompanyBoards) ReadBoard(ctx context.Context, board domain.Board) (*dom
 	// waiting on it; each caller still stops waiting when it is cancelled.
 	shared := context.WithoutCancel(ctx)
 	answer := b.flight.DoChan(key, func() (any, error) {
-		jobs, err := b.fetch(shared, board)
+		jobs, name, err := b.fetch(shared, board)
 		if err != nil {
 			return nil, err
 		}
-		contents := &domain.BoardContents{Jobs: jobs, FetchedAt: time.Now().UTC()}
+		contents := &domain.BoardContents{
+			Jobs:        jobs,
+			FetchedAt:   time.Now().UTC(),
+			Undescribed: board.Provider == domain.ProviderSmartRecruiters,
+		}
+		if contents.Undescribed {
+			b.descriptions.keepOnly(key, jobs)
+		}
 		b.mu.Lock()
 		b.cache[key] = contents
+		b.names[key] = name
 		b.mu.Unlock()
 		return contents, nil
 	})
@@ -119,15 +150,17 @@ func (b *CompanyBoards) ReadBoard(ctx context.Context, board domain.Board) (*dom
 	}
 }
 
-func (b *CompanyBoards) fetch(ctx context.Context, board domain.Board) ([]domain.Job, error) {
+// fetch reads a board's postings, and the company's name where the same
+// answer gives it.
+func (b *CompanyBoards) fetch(ctx context.Context, board domain.Board) ([]domain.Job, string, error) {
 	escaped := url.PathEscape(board.Name)
 	switch board.Provider {
 	case domain.ProviderGreenhouse:
 		var answer greenhouseBoard
 		if err := b.getJSON(ctx, b.greenhouseAPI(board)+"/v1/boards/"+escaped+"/jobs?content=true", &answer); err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return mapJobs(answer.Jobs, func(job greenhouseJob) (domain.Job, bool) { return greenhouseToJob(board, job) }), nil
+		return mapJobs(answer.Jobs, func(job greenhouseJob) (domain.Job, bool) { return greenhouseToJob(board, job) }), "", nil
 	case domain.ProviderLever:
 		api := b.endpoints.LeverAPI
 		if board.Region == domain.RegionEU {
@@ -135,17 +168,21 @@ func (b *CompanyBoards) fetch(ctx context.Context, board domain.Board) ([]domain
 		}
 		var answer []leverJob
 		if err := b.getJSON(ctx, api+"/v0/postings/"+escaped+"?mode=json", &answer); err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return mapJobs(answer, func(job leverJob) (domain.Job, bool) { return leverToJob(board, job) }), nil
+		return mapJobs(answer, func(job leverJob) (domain.Job, bool) { return leverToJob(board, job) }), "", nil
 	case domain.ProviderAshby:
 		var answer ashbyBoard
 		if err := b.getJSON(ctx, b.endpoints.AshbyAPI+"/posting-api/job-board/"+escaped+"?includeCompensation=true", &answer); err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return mapJobs(answer.Jobs, func(job ashbyJob) (domain.Job, bool) { return ashbyToJob(board, job) }), nil
+		return mapJobs(answer.Jobs, func(job ashbyJob) (domain.Job, bool) { return ashbyToJob(board, job) }), "", nil
+	case domain.ProviderWorkable:
+		return b.readWorkable(ctx, board)
+	case domain.ProviderSmartRecruiters:
+		return b.readSmartRecruiters(ctx, board)
 	}
-	return nil, fmt.Errorf("unknown provider %q", board.Provider)
+	return nil, "", fmt.Errorf("unknown provider %q", board.Provider)
 }
 
 func (b *CompanyBoards) greenhouseAPI(board domain.Board) string {
@@ -166,11 +203,21 @@ func mapJobs[T any](items []T, toJob func(T) (domain.Job, bool)) []domain.Job {
 }
 
 // BoardName returns the company's name as its board gives it: Greenhouse's
-// board endpoint, or the hosted page Lever and Ashby name the company on.
-// It is "" when the page gives none.
+// board endpoint, the hosted page Lever and Ashby name the company on, or
+// the board's own answer for Workable and SmartRecruiters, which is read
+// once for both. It is "" when none gives one.
 func (b *CompanyBoards) BoardName(ctx context.Context, board domain.Board) (string, error) {
 	escaped := url.PathEscape(board.Name)
 	switch board.Provider {
+	case domain.ProviderWorkable, domain.ProviderSmartRecruiters:
+		// Workable limits how often it is asked, so the name comes from the
+		// read a watch makes anyway (ADR-0026 §5).
+		if _, err := b.ReadBoard(ctx, board); err != nil {
+			return "", err
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return b.names[boardKey(board)], nil
 	case domain.ProviderGreenhouse:
 		var answer struct {
 			Name string `json:"name"`
@@ -259,6 +306,9 @@ func (b *CompanyBoards) get(ctx context.Context, address string) ([]byte, error)
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, ports.ErrBoardGone
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// Workable's answer when asked too often (ADR-0026 §5).
+		return nil, ports.ErrBoardBusy
 	case resp.StatusCode != http.StatusOK:
 		return nil, fmt.Errorf("the hiring page answered with status %d", resp.StatusCode)
 	}
@@ -270,6 +320,70 @@ func (b *CompanyBoards) get(ctx context.Context, address string) ([]byte, error)
 		return nil, errors.New("the hiring page's answer is larger than JobPilot reads")
 	}
 	return body, nil
+}
+
+// getOnce reads address without following a redirect, and returns the
+// page, or where a redirect leads. A 404 is ports.ErrBoardGone.
+func (b *CompanyBoards) getOnce(ctx context.Context, address string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "JobPilot (local job search assistant)")
+
+	resp, err := b.oneHop.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to reach the hiring page: %w: %w", ports.ErrSourceUnreachable, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		location, err := resp.Location()
+		if err != nil {
+			return nil, "", fmt.Errorf("the hiring page redirected without saying where: %w", err)
+		}
+		return nil, location.String(), nil
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, "", ports.ErrBoardGone
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, "", ports.ErrBoardBusy
+	case resp.StatusCode != http.StatusOK:
+		return nil, "", fmt.Errorf("the hiring page answered with status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBoardBody+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read the hiring page: %w", err)
+	}
+	if len(body) > maxBoardBody {
+		return nil, "", errors.New("the hiring page's answer is larger than JobPilot reads")
+	}
+	return body, "", nil
+}
+
+// ResolveAddress follows one redirect from address: a Workable posting's
+// short address leads to the one naming its account. A posting Workable
+// does not have is ports.ErrBoardGone.
+func (b *CompanyBoards) ResolveAddress(ctx context.Context, address string) (string, error) {
+	if !strings.Contains(address, "://") {
+		address = "https://" + strings.TrimSpace(address)
+	}
+	_, location, err := b.getOnce(ctx, address)
+	if err != nil {
+		return "", err
+	}
+	if location == "" {
+		return "", errors.New("the address did not lead to a company's page")
+	}
+	base, err := url.Parse(address)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the address: %w", err)
+	}
+	target, err := base.Parse(location)
+	if err != nil {
+		return "", fmt.Errorf("failed to read where the address leads: %w", err)
+	}
+	return target.String(), nil
 }
 
 // --- Greenhouse ---
@@ -524,11 +638,15 @@ func trimAll(values []string) []string {
 	return trimmed
 }
 
-// parseTime is the first of values that is an RFC 3339 time, or zero.
+// parseTime is the first of values that is an RFC 3339 time, or a date,
+// which Workable gives: "2026-07-30". It is zero when none is.
 func parseTime(values ...string) time.Time {
 	for _, value := range values {
 		if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
 			return parsed.UTC()
+		}
+		if parsed, err := time.Parse(time.DateOnly, value); err == nil {
+			return parsed
 		}
 	}
 	return time.Time{}

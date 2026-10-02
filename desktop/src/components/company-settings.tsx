@@ -23,6 +23,8 @@ const PROVIDER_NAMES: Record<BoardProvider, string> = {
   greenhouse: "Greenhouse",
   lever: "Lever",
   ashby: "Ashby",
+  workable: "Workable",
+  smartrecruiters: "SmartRecruiters",
 };
 
 /// SUGGESTIONS_SHOWN is how many suggestions show before the rest are
@@ -58,7 +60,7 @@ export function CompanySettings() {
     <section className="mt-10">
       <SettingsHeading
         title="Companies you watch"
-        description="JobPilot reads each company’s own hiring page on Greenhouse, Lever or Ashby. Your searches find its openings as they do a job board’s; watching a company imports nothing by itself."
+        description="JobPilot reads each company’s own hiring page on Greenhouse, Lever, Ashby, Workable or SmartRecruiters. Your searches find its openings as they do a job board’s; watching a company imports nothing by itself."
         actions={
           !adding && (
             <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
@@ -81,8 +83,8 @@ export function CompanySettings() {
             Hiring page address
           </label>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            The company’s page, or any job on it: boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co or
-            jobs.ashbyhq.com.
+            The company’s page, or any job on it: boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co,
+            jobs.ashbyhq.com, apply.workable.com or careers.smartrecruiters.com.
           </p>
           <div className="mt-2.5 flex items-center gap-2">
             <Input

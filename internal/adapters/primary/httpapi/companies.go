@@ -24,7 +24,8 @@ func registerCompanies(mux *http.ServeMux, svc *services.CompanyWatchService) {
 
 // companyStatus is the HTTP status for a watch-list error: an address the
 // caller should fix is 400, a board its provider says is not there 422, a
-// provider that did not answer 503, and an unknown company 404.
+// provider that did not answer or asked to be asked later 503, and an
+// unknown company 404.
 func companyStatus(err error) int {
 	switch {
 	case errors.Is(err, domain.ErrUnsupportedAddress), errors.Is(err, services.ErrEmptyCompanyName),
@@ -32,7 +33,7 @@ func companyStatus(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, ports.ErrBoardGone):
 		return http.StatusUnprocessableEntity
-	case errors.Is(err, ports.ErrSourceUnreachable):
+	case errors.Is(err, ports.ErrSourceUnreachable), errors.Is(err, ports.ErrBoardBusy):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrWatchedCompanyNotFound):
 		return http.StatusNotFound

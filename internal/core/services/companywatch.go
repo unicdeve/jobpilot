@@ -44,8 +44,18 @@ func NewCompanyWatchService(repo ports.WatchedCompanyRepository, boards ports.Bo
 // Watch adds the company whose hiring page address is on, once its board
 // has answered (AC-001). It reports whether the company is new: a board
 // already watched returns the company watching it.
+//
+// A Workable posting's short address names no company, so it is followed
+// to the one that does (ADR-0026 §3).
 func (s *CompanyWatchService) Watch(ctx context.Context, address string) (*domain.WatchedCompany, bool, error) {
 	board, err := domain.ParseBoard(address)
+	if errors.Is(err, domain.ErrWorkablePostingAddress) {
+		resolved, resolveErr := s.boards.ResolveAddress(ctx, address)
+		if resolveErr != nil {
+			return nil, false, fmt.Errorf("could not find whose posting %s is: %w", address, resolveErr)
+		}
+		board, err = domain.ParseBoard(resolved)
+	}
 	if err != nil {
 		return nil, false, err
 	}
@@ -201,13 +211,48 @@ func (companyPagesSource) GetJob(context.Context, string) (*domain.Job, error) {
 // boardRead is what reading one company's page found.
 type boardRead struct {
 	contents *domain.BoardContents
-	err      error
+	// openRoles is how many postings the board listed, before criteria.
+	openRoles int
+	err       error
+}
+
+// read reads one company's board, names the company on each posting that
+// does not, and describes the postings criteria may match when the board
+// lists them without descriptions.
+func (s *CompanyWatchService) read(ctx context.Context, company *domain.WatchedCompany, criteria domain.SearchCriteria) boardRead {
+	contents, err := s.boards.ReadBoard(ctx, company.Board)
+	if err != nil {
+		return boardRead{err: err}
+	}
+	jobs := make([]domain.Job, 0, len(contents.Jobs))
+	for _, job := range contents.Jobs {
+		if job.CompanyName == "" {
+			job.CompanyName = company.Name
+		}
+		if contents.Undescribed && !criteria.MayMatch(job) {
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+	if contents.Undescribed && len(jobs) > 0 {
+		jobs, err = s.boards.DescribeJobs(ctx, company.Board, jobs)
+		if err != nil {
+			return boardRead{err: err}
+		}
+	}
+	read := *contents
+	read.Jobs = jobs
+	return boardRead{contents: &read, openRoles: len(contents.Jobs)}
 }
 
 // Search reads every watched company's page, at most four at a time, and
 // records how each went. A company whose page did not answer is named, and
 // the others' postings are kept (AC-005).
-func (source companyPagesSource) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Job, error) {
+//
+// A board listed without descriptions has only the postings criteria may
+// match described (ADR-0026 §2); discovery applies the criteria in full
+// afterwards, as it does to every source.
+func (source companyPagesSource) Search(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Job, error) {
 	s := source.svc
 	companies, err := s.repo.List(ctx)
 	if err != nil {
@@ -226,8 +271,7 @@ func (source companyPagesSource) Search(ctx context.Context, _ domain.SearchCrit
 				return
 			}
 			defer func() { <-slots }()
-			contents, err := s.boards.ReadBoard(ctx, company.Board)
-			reads[i] = boardRead{contents: contents, err: err}
+			reads[i] = s.read(ctx, company, criteria)
 		})
 	}
 	wg.Wait()
@@ -254,13 +298,8 @@ func (source companyPagesSource) Search(ctx context.Context, _ domain.SearchCrit
 			s.record(ctx, company, time.Now().UTC(), check, openRoles)
 			continue
 		}
-		s.record(ctx, company, read.contents.FetchedAt, domain.BoardCheckOK, len(read.contents.Jobs))
-		for _, job := range read.contents.Jobs {
-			if job.CompanyName == "" {
-				job.CompanyName = company.Name
-			}
-			jobs = append(jobs, job)
-		}
+		s.record(ctx, company, read.contents.FetchedAt, domain.BoardCheckOK, read.openRoles)
+		jobs = append(jobs, read.contents.Jobs...)
 	}
 
 	switch {
