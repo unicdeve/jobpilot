@@ -1,5 +1,6 @@
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight, History } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { RecordGone } from "../components/list-pane";
 import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
@@ -13,6 +14,7 @@ import {
   stepOutput,
   taskLabel,
 } from "../lib/activity";
+import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
 import { useActivityRun } from "../lib/queries";
 import type { AgentEvent, AgentRunSummary } from "../lib/types";
@@ -28,6 +30,28 @@ export function ActivityRun() {
   const { search } = useLocation();
   const { data, error } = useActivityRun(id);
 
+  const back = (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      className={splitBackClass}
+      aria-label="Back to activity"
+      render={<Link to={{ pathname: "/activity", search }} />}
+    >
+      <ArrowLeft />
+    </Button>
+  );
+
+  if (isNotFound(error)) {
+    return (
+      <RecordGone
+        back={back}
+        icon={<History />}
+        title="This run no longer exists"
+        description="Activity may have been cleared. Choose another run from the list."
+      />
+    );
+  }
   if (error) return <ErrorLine error={error} />;
   if (!data) return <Loading />;
 
@@ -38,17 +62,7 @@ export function ActivityRun() {
     <div className="min-h-full">
       <Toolbar
         className="px-5"
-        leading={
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className={splitBackClass}
-            aria-label="Back to activity"
-            render={<Link to={{ pathname: "/activity", search }} />}
-          >
-            <ArrowLeft />
-          </Button>
-        }
+        leading={back}
         actions={<SubjectLink run={run} />}
       />
 

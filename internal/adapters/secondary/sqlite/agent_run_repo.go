@@ -99,7 +99,7 @@ func (r *AgentRunRepository) GetByID(ctx context.Context, id string) (*domain.Ag
 	run, err := scanAgentRun(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("agent run not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "agent run", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get agent run: %w", err)
 	}

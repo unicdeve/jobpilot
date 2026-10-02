@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func TestAgentRunRepository_SaveAndGetByID(t *testing.T) {
@@ -44,6 +45,7 @@ func TestAgentRunRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "agent run not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestAgentRunRepository_Update(t *testing.T) {

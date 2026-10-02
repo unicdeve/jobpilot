@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func saveTestJob(t *testing.T, db *DB, canonicalURL string) *domain.Job {
@@ -54,6 +55,7 @@ func TestMatchRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "match not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestMatchRepository_GetByJobID(t *testing.T) {

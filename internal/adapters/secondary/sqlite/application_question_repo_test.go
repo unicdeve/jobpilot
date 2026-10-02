@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func TestApplicationQuestionRepository_SaveAndGetByID(t *testing.T) {
@@ -49,6 +50,7 @@ func TestApplicationQuestionRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "application question not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestApplicationQuestionRepository_Update(t *testing.T) {

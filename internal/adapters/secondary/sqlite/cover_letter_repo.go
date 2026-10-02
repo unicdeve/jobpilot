@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // CoverLetterRepository is a ports.CoverLetterRepository backed by SQLite.
@@ -65,7 +66,7 @@ func (r *CoverLetterRepository) GetByID(ctx context.Context, id string) (*domain
 	c, err := scanCoverLetter(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("cover letter not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "cover letter", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get cover letter: %w", err)
 	}

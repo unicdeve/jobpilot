@@ -1,6 +1,8 @@
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { Toolbar } from "./page";
+import { splitBackClass } from "./split-view";
 
 /// ListPane is the list side of a split view: a toolbar with the screen's
 /// title and actions, optional controls beneath it, and the list, which
@@ -69,6 +71,31 @@ export function NoSelection({ icon, title, description }: { icon?: ReactNode; ti
       {icon && <div className="text-muted-foreground/60 [&_svg]:size-10 [&_svg]:stroke-[1.25]">{icon}</div>}
       <p className="text-sm font-medium text-subtle-foreground">{title}</p>
       {description && <p className="max-w-xs text-sm text-muted-foreground">{description}</p>}
+    </div>
+  );
+}
+
+/// RecordGone is the detail side of a split view when the record it names
+/// does not exist: deleted since its page was last open, or a stale link.
+/// It reads as the empty selection does, since that is what is left, with
+/// the way back the detail offers when it is shown on its own.
+export function RecordGone({
+  back,
+  icon,
+  title,
+  description,
+}: {
+  back: ReactNode;
+  icon?: ReactNode;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <Toolbar className={cn("px-5", splitBackClass)} leading={back} />
+      <div className="min-h-0 flex-1">
+        <NoSelection icon={icon} title={title} description={description} />
+      </div>
     </div>
   );
 }

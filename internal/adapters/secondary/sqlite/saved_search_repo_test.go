@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func goSearch(name string) *domain.SavedSearch {
@@ -55,6 +56,7 @@ func TestSavedSearchRepository_GetByID_NotFound(t *testing.T) {
 	_, err := NewSavedSearchRepository(newTestDB(t).Conn()).GetByID(context.Background(), "nope")
 
 	assert.ErrorContains(t, err, "saved search not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestSavedSearchRepository_GetByName(t *testing.T) {
@@ -172,6 +174,7 @@ func TestSavedSearchRepository_Delete(t *testing.T) {
 
 	_, err := repo.GetByID(ctx, search.ID)
 	assert.ErrorContains(t, err, "not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestSavedSearchRepository_List_Empty(t *testing.T) {
@@ -263,6 +266,7 @@ func TestSavedSearchRepository_SetDefaultMissingTarget(t *testing.T) {
 
 	_, err := repo.SetDefault(ctx, "missing")
 	require.ErrorContains(t, err, "not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 	got, err := repo.GetByID(ctx, first.ID)
 	require.NoError(t, err)
 	assert.True(t, got.IsDefault)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func TestCoverLetterRepository_SaveAndGetByID(t *testing.T) {
@@ -40,6 +41,7 @@ func TestCoverLetterRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "cover letter not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestCoverLetterRepository_Update(t *testing.T) {

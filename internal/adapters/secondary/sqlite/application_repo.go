@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // ApplicationRepository is a ports.ApplicationRepository backed by SQLite.
@@ -81,7 +82,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 	app, err := scanApplication(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("application not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "application", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get application: %w", err)
 	}

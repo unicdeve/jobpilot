@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // SavedSearchRepository is a ports.SavedSearchRepository backed by SQLite.
@@ -100,7 +101,7 @@ func (r *SavedSearchRepository) GetByID(ctx context.Context, id string) (*domain
 	search, err := r.scan(r.db.QueryRowContext(ctx, query, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("saved search not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "saved search", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get saved search %s: %w", id, err)
 	}
@@ -163,7 +164,7 @@ func (r *SavedSearchRepository) Delete(ctx context.Context, id string) error {
 	var wasDefault bool
 	err = tx.QueryRowContext(ctx, `DELETE FROM saved_searches WHERE id = ? RETURNING is_default`, id).Scan(&wasDefault)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("saved search not found: %s", id)
+		return &ports.NotFoundError{Kind: "saved search", ID: id}
 	}
 	if err != nil {
 		return fmt.Errorf("failed to delete saved search %s: %w", id, err)
@@ -201,7 +202,7 @@ func (r *SavedSearchRepository) SetDefault(ctx context.Context, id string) (*dom
 	search, err := r.scan(tx.QueryRowContext(ctx, `UPDATE saved_searches
 		SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING `+savedSearchSelect, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("saved search not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "saved search", ID: id}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to promote saved search %s: %w", id, err)

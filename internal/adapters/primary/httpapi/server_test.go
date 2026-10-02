@@ -45,7 +45,7 @@ func (f *fakeCandidateRepository) Save(_ context.Context, c *domain.Candidate) e
 func (f *fakeCandidateRepository) GetByID(_ context.Context, id string) (*domain.Candidate, error) {
 	c, ok := f.candidates[id]
 	if !ok {
-		return nil, fmt.Errorf("candidate not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "candidate", ID: id}
 	}
 	return c, nil
 }
@@ -81,7 +81,7 @@ func (f *fakeResumeRepository) Save(_ context.Context, r *domain.Resume) error {
 func (f *fakeResumeRepository) GetByID(_ context.Context, id string) (*domain.Resume, error) {
 	r, ok := f.resumes[id]
 	if !ok {
-		return nil, fmt.Errorf("resume not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "resume", ID: id}
 	}
 	return r, nil
 }
@@ -126,7 +126,7 @@ func (f *fakeJobRepository) Save(_ context.Context, job *domain.Job) error {
 func (f *fakeJobRepository) GetByID(_ context.Context, id string) (*domain.Job, error) {
 	j, ok := f.jobs[id]
 	if !ok {
-		return nil, fmt.Errorf("job not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "job", ID: id}
 	}
 	return j, nil
 }
@@ -201,13 +201,13 @@ func (f *fakeJobRepository) SaveSignals(_ context.Context, job *domain.Job) erro
 			return nil
 		}
 	}
-	return fmt.Errorf("job not found: %s", job.ID)
+	return &ports.NotFoundError{Kind: "job", ID: job.ID}
 }
 
 func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
 	j, ok := f.jobs[id]
 	if !ok {
-		return fmt.Errorf("job not found: %s", id)
+		return &ports.NotFoundError{Kind: "job", ID: id}
 	}
 	j.NotInterestedAt = at
 	return nil
@@ -240,7 +240,7 @@ func (f *fakeSavedSearchRepository) Save(_ context.Context, search *domain.Saved
 func (f *fakeSavedSearchRepository) GetByID(_ context.Context, id string) (*domain.SavedSearch, error) {
 	search, ok := f.searches[id]
 	if !ok {
-		return nil, fmt.Errorf("saved search not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "saved search", ID: id}
 	}
 	return search, nil
 }
@@ -328,7 +328,7 @@ func (f *fakeMatchRepository) Save(_ context.Context, m *domain.JobMatch) error 
 func (f *fakeMatchRepository) GetByID(_ context.Context, id string) (*domain.JobMatch, error) {
 	m, ok := f.matches[id]
 	if !ok {
-		return nil, fmt.Errorf("match not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "match", ID: id}
 	}
 	return m, nil
 }
@@ -441,7 +441,7 @@ func (f *fakeApplicationRepository) Save(_ context.Context, a *domain.Applicatio
 func (f *fakeApplicationRepository) GetByID(_ context.Context, id string) (*domain.Application, error) {
 	a, ok := f.applications[id]
 	if !ok {
-		return nil, fmt.Errorf("application not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "application", ID: id}
 	}
 	return a, nil
 }
@@ -464,7 +464,7 @@ func (f *fakeApplicationRepository) ListByCandidate(_ context.Context, candidate
 func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicationID string, from, to domain.ApplicationState, reason string) error {
 	a, ok := f.applications[applicationID]
 	if !ok {
-		return fmt.Errorf("application not found: %s", applicationID)
+		return &ports.NotFoundError{Kind: "application", ID: applicationID}
 	}
 	if a.State != from {
 		return fmt.Errorf("application %s is not currently in state %s", applicationID, from)
@@ -499,7 +499,7 @@ func (f *fakeCoverLetterRepository) Save(_ context.Context, c *domain.CoverLette
 func (f *fakeCoverLetterRepository) GetByID(_ context.Context, id string) (*domain.CoverLetter, error) {
 	c, ok := f.letters[id]
 	if !ok {
-		return nil, fmt.Errorf("cover letter not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "cover letter", ID: id}
 	}
 	return c, nil
 }
@@ -538,7 +538,7 @@ func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.Ap
 func (f *fakeApplicationQuestionRepository) GetByID(_ context.Context, id string) (*domain.ApplicationQuestion, error) {
 	q, ok := f.questions[id]
 	if !ok {
-		return nil, fmt.Errorf("application question not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "application question", ID: id}
 	}
 	return q, nil
 }
@@ -584,7 +584,7 @@ func (f *fakeAgentRunRepository) Update(_ context.Context, run *domain.AgentRun)
 func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.AgentRun, error) {
 	run, ok := f.runs[id]
 	if !ok {
-		return nil, fmt.Errorf("agent run not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "agent run", ID: id}
 	}
 	return run, nil
 }
@@ -1041,6 +1041,56 @@ func TestServer_GetProfile_NoProfileIsNotFound(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, status)
+}
+
+// A record an ID names that does not exist is a 404 wherever the API looks
+// it up, not a 500: going back to a deleted application's page is the
+// client's mistake, not the daemon failing. The message is the
+// repository's, so the CLI still says what was missing.
+func TestServer_MissingRecordIsNotFound(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	tests := []struct {
+		method string
+		path   string
+		body   any
+		want   string
+	}{
+		{http.MethodGet, "/v1/jobs/no-such-job", nil, "job not found: no-such-job"},
+		{http.MethodPut, "/v1/jobs/no-such-job/interest", map[string]bool{"not_interested": true}, "job not found"},
+		{http.MethodGet, "/v1/applications/no-such-app", nil, "application not found: no-such-app"},
+		{http.MethodGet, "/v1/applications/no-such-app/transitions", nil, "application not found"},
+		{http.MethodPost, "/v1/applications/no-such-app/transition", map[string]string{"to_state": "READY_FOR_REVIEW"}, "application not found"},
+		{http.MethodPost, "/v1/applications/no-such-app/cover-letter", nil, "application not found"},
+		{http.MethodPut, "/v1/cover-letters/no-such-letter", map[string]string{"content": "x"}, "cover letter not found"},
+		{http.MethodPost, "/v1/questions/no-such-question/resolve", nil, "application question not found"},
+		{http.MethodGet, "/v1/searches/no-such-search", nil, "saved search not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			var reader io.Reader
+			if tt.body != nil {
+				encoded, err := json.Marshal(tt.body)
+				require.NoError(t, err)
+				reader = strings.NewReader(string(encoded))
+			}
+			req, err := http.NewRequestWithContext(context.Background(), tt.method, client.baseURL+tt.path, reader)
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+
+			res, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = res.Body.Close() })
+
+			assert.Equal(t, http.StatusNotFound, res.StatusCode)
+			var body struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+			assert.Contains(t, body.Error, tt.want)
+		})
+	}
 }
 
 func TestClient_ApplicationLifecycle(t *testing.T) {
@@ -2283,7 +2333,7 @@ func (f *fakePersonalAnswerRepository) ListByApplication(_ context.Context, id s
 func (f *fakePersonalAnswerRepository) GetByID(_ context.Context, id string) (*domain.PersonalAnswer, error) {
 	row, ok := f.rows[id]
 	if !ok {
-		return nil, fmt.Errorf("personal answer not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "personal answer", ID: id}
 	}
 	copied := *row
 	return &copied, nil

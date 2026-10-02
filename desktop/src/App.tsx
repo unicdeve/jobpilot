@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout";
 import { DiscoveryActivity, LaunchRefresh } from "./components/discovery-activity";
 import { RequireDaemon } from "./components/require-daemon";
+import { isNotFound } from "./lib/api";
 import { DaemonProvider } from "./lib/daemon";
 import "./lib/platform";
 import { ThemeProvider } from "./lib/theme";
@@ -24,7 +25,8 @@ const queryClient = new QueryClient({
     queries: {
       networkMode: "always",
       staleTime: 30_000,
-      retry: 1,
+      // A record that does not exist will not appear on a second try.
+      retry: (failureCount, error) => !isNotFound(error) && failureCount < 1,
       refetchOnWindowFocus: false,
       // A section the user has left stays rendered but hidden, and a hidden
       // section's queries have no observers. Collecting them after the

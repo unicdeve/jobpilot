@@ -84,6 +84,16 @@ browsing history impossible without a network round trip, which
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
 
+## A missing record is 404
+
+Every error is `{"error": "..."}` with a status that says whose it is.
+A record an ID names that does not exist is 404 on every endpoint that looks it up, with the repository's message (`application not found: <id>`), so the CLI can say what was missing and the desktop can show that the record is gone rather than that the daemon failed.
+Repositories return `ports.NotFoundError`, which matches `ports.ErrNotFound`, and the HTTP layer maps it in one place: whatever an endpoint does not give a meaning of its own falls back to 404 for a missing record and 500 for anything else.
+A 500 is the daemon failing, never the client naming something that is not there.
+
+An ID inside a request body is not yet held to this.
+`POST /v1/applications` with a job that does not exist fails at the database's foreign key, as a 500.
+
 ## Deletion is previewed, then confirmed
 
 A deletion is two requests (ADR-0021 §4).
