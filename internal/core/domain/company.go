@@ -20,9 +20,11 @@ type BoardProvider string
 
 // The providers JobPilot reads.
 const (
-	ProviderGreenhouse BoardProvider = "greenhouse"
-	ProviderLever      BoardProvider = "lever"
-	ProviderAshby      BoardProvider = "ashby"
+	ProviderGreenhouse      BoardProvider = "greenhouse"
+	ProviderLever           BoardProvider = "lever"
+	ProviderAshby           BoardProvider = "ashby"
+	ProviderWorkable        BoardProvider = "workable"
+	ProviderSmartRecruiters BoardProvider = "smartrecruiters"
 )
 
 // ProviderName is the provider as the product writes it.
@@ -34,6 +36,10 @@ func (p BoardProvider) ProviderName() string {
 		return "Lever"
 	case ProviderAshby:
 		return "Ashby"
+	case ProviderWorkable:
+		return "Workable"
+	case ProviderSmartRecruiters:
+		return "SmartRecruiters"
 	}
 	return string(p)
 }
@@ -47,8 +53,9 @@ type Board struct {
 	// Region is empty, or RegionEU for a board on the provider's EU
 	// servers, which is a different account from one of the same name.
 	Region string `json:"region,omitempty"`
-	// Name is Greenhouse's board token, Lever's site or Ashby's job board
-	// name: the first segment of the page's path.
+	// Name is Greenhouse's board token, Lever's site, Ashby's job board
+	// name, Workable's account or SmartRecruiters' company identifier: the
+	// first segment of the page's path, or Workable's subdomain.
 	Name string `json:"name"`
 }
 
@@ -72,6 +79,10 @@ func (b Board) URL() string {
 		return "https://jobs." + eu + "lever.co/" + name
 	case ProviderAshby:
 		return "https://jobs.ashbyhq.com/" + name
+	case ProviderWorkable:
+		return "https://apply.workable.com/" + name + "/"
+	case ProviderSmartRecruiters:
+		return "https://careers.smartrecruiters.com/" + name
 	}
 	return ""
 }
@@ -91,7 +102,14 @@ func (b Board) DefaultName() string {
 // JobPilot reads. It lists what is.
 var ErrUnsupportedAddress = errors.New("not a hiring page JobPilot can read; " +
 	"use a Greenhouse (boards.greenhouse.io/…, job-boards.greenhouse.io/…), " +
-	"Lever (jobs.lever.co/…) or Ashby (jobs.ashbyhq.com/…) address")
+	"Lever (jobs.lever.co/…), Ashby (jobs.ashbyhq.com/…), Workable (apply.workable.com/…) " +
+	"or SmartRecruiters (careers.smartrecruiters.com/…, jobs.smartrecruiters.com/…) address")
+
+// ErrWorkablePostingAddress is returned for a Workable posting's short
+// address, apply.workable.com/j/{code}, which does not name the account the
+// posting is on. Workable redirects it to the account's own address, so it
+// is named by following that redirect (ADR-0026 §3).
+var ErrWorkablePostingAddress = errors.New("a Workable posting's short address does not name its company")
 
 // boardName is what a board's name may hold. A name is one path segment, so
 // this refuses nothing a provider issues and anything that is not one.
@@ -111,6 +129,9 @@ func ParseBoard(address string) (Board, error) {
 	host := strings.TrimPrefix(strings.ToLower(parsed.Hostname()), "www.")
 	segments := strings.FieldsFunc(parsed.Path, func(r rune) bool { return r == '/' })
 
+	if host == "apply.workable.com" && len(segments) > 0 && segments[0] == "j" {
+		return Board{}, fmt.Errorf("%q: %w", address, ErrWorkablePostingAddress)
+	}
 	board, ok := boardAt(host, segments, parsed.Query())
 	if !ok || !boardName.MatchString(board.Name) {
 		return Board{}, fmt.Errorf("%q is %w", address, ErrUnsupportedAddress)
@@ -135,8 +156,33 @@ func boardAt(host string, segments []string, query url.Values) (Board, bool) {
 		return Board{Provider: ProviderLever, Region: RegionEU, Name: first}, first != ""
 	case "jobs.ashbyhq.com":
 		return Board{Provider: ProviderAshby, Name: first}, first != ""
+	case "apply.workable.com":
+		return Board{Provider: ProviderWorkable, Name: first}, first != ""
+	case "careers.smartrecruiters.com", "jobs.smartrecruiters.com":
+		return Board{Provider: ProviderSmartRecruiters, Name: first}, first != "" && !smartRecruitersPaths[strings.ToLower(first)]
+	}
+	// A Workable account's older address is its own subdomain:
+	// sumble-inc.workable.com, which Workable redirects to
+	// apply.workable.com/sumble-inc/.
+	if account, ok := strings.CutSuffix(host, ".workable.com"); ok && !strings.Contains(account, ".") && !workableHosts[account] {
+		return Board{Provider: ProviderWorkable, Name: account}, true
 	}
 	return Board{}, false
+}
+
+// workableHosts are Workable's own subdomains, which are not accounts:
+// jobs.workable.com is Workable's search across every account.
+var workableHosts = map[string]bool{
+	"apply": true, "jobs": true, "www": true, "help": true, "resources": true,
+	"api": true, "app": true, "careers": true, "status": true, "developers": true,
+}
+
+// smartRecruitersPaths are the first segments of SmartRecruiters' own pages
+// on its job hosts, which are not companies: a posting's referral link is
+// jobs.smartrecruiters.com/external-referrals/company/{Company}/….
+var smartRecruitersPaths = map[string]bool{
+	"external-referrals": true, "oneclick-ui": true, "sr-jobs": true, "ni": true,
+	"search": true, "public": true, "embed": true,
 }
 
 // greenhouseBoard reads a Greenhouse path, whose embedded forms name the
@@ -151,7 +197,7 @@ func greenhouseBoard(region, first string, query url.Values) (Board, bool) {
 
 // addressInText finds the addresses in a description that could be a
 // supported board's.
-var addressInText = regexp.MustCompile(`(?i)https?://(?:www\.)?(?:(?:job-)?boards(?:\.eu)?\.greenhouse\.io|jobs(?:\.eu)?\.lever\.co|jobs\.ashbyhq\.com)/[^\s)\]>"'<]+`)
+var addressInText = regexp.MustCompile(`(?i)https?://(?:www\.)?(?:(?:job-)?boards(?:\.eu)?\.greenhouse\.io|jobs(?:\.eu)?\.lever\.co|jobs\.ashbyhq\.com|[a-z0-9-]+\.workable\.com|(?:careers|jobs)\.smartrecruiters\.com)/[^\s)\]>"'<]+`)
 
 // BoardOf is the board a job's posting is on: its own address's, or else
 // the first supported address in its description, which is where a Hacker
@@ -220,6 +266,10 @@ type BoardContents struct {
 	// FetchedAt is when the provider answered: earlier than now for an
 	// answer kept from an earlier read.
 	FetchedAt time.Time
+	// Undescribed is a board whose provider lists its postings without
+	// their descriptions, which ports.BoardReader.DescribeJobs reads one
+	// posting at a time: SmartRecruiters' (ADR-0026 §2).
+	Undescribed bool
 }
 
 // StarterCompany is a suggestion from the starter list, with what was

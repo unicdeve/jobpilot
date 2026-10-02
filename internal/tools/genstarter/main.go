@@ -150,8 +150,25 @@ func measure(ctx context.Context, reader *discovery.CompanyBoards, board domain.
 		return measurement{err: errors.New("its board gives no company name, so a suggestion could not say whose it is")}
 	}
 
+	jobs := contents.Jobs
+	if contents.Undescribed {
+		// A description can make where a posting can be done from less
+		// certain, never wider (ADR-0023 §1), so only the postings that
+		// qualify without one need describing (ADR-0026 §2).
+		var candidates []domain.Job
+		for _, job := range jobs {
+			domain.ReadSignals(&job)
+			if domain.OpenAcrossContinents(job.Workable) {
+				candidates = append(candidates, job)
+			}
+		}
+		if jobs, err = reader.DescribeJobs(ctx, board, candidates); err != nil {
+			return measurement{err: fmt.Errorf("describing its postings: %w", err)}
+		}
+	}
+
 	company := domain.StarterCompany{Board: board, Name: name, MeasuredOn: today, OpenRoles: len(contents.Jobs)}
-	for _, job := range contents.Jobs {
+	for _, job := range jobs {
 		domain.ReadSignals(&job)
 		if domain.OpenAcrossContinents(job.Workable) {
 			company.Qualifying++

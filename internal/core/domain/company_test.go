@@ -24,6 +24,15 @@ func TestParseBoard(t *testing.T) {
 		"https://jobs.ashbyhq.com/clickup/1e8c7f3d-3cd6-4393-b17f-6a858f480ba9":    {Provider: ProviderAshby, Name: "clickup"},
 		"HTTPS://JOBS.ASHBYHQ.COM/ClickUp":                                         {Provider: ProviderAshby, Name: "ClickUp"},
 		"https://jobs.ashbyhq.com/The%20Browser%20Company":                         {Provider: ProviderAshby, Name: "The Browser Company"},
+		// Measured on 2026-10-02: Hacker News links, and what Workable's
+		// and SmartRecruiters' own answers give as a posting's address.
+		"https://apply.workable.com/seeq/j/CDBF1AE73C":                                     {Provider: ProviderWorkable, Name: "seeq"},
+		"apply.workable.com/longshot-systems-ltd":                                          {Provider: ProviderWorkable, Name: "longshot-systems-ltd"},
+		"https://apply.workable.com/huggingface/j/F4C096B22E/apply":                        {Provider: ProviderWorkable, Name: "huggingface"},
+		"https://sumble-inc.workable.com/":                                                 {Provider: ProviderWorkable, Name: "sumble-inc"},
+		"https://careers.smartrecruiters.com/Sectigo":                                      {Provider: ProviderSmartRecruiters, Name: "Sectigo"},
+		"https://jobs.smartrecruiters.com/Sectigo/3743990015862586-revenue-accountant-":    {Provider: ProviderSmartRecruiters, Name: "Sectigo"},
+		"https://jobs.smartrecruiters.com/BoschGroup/744000082736493-ai-engineer?oga=true": {Provider: ProviderSmartRecruiters, Name: "BoschGroup"},
 	} {
 		got, err := ParseBoard(address)
 		require.NoError(t, err, address)
@@ -35,10 +44,21 @@ func TestParseBoard(t *testing.T) {
 		"https://boards.greenhouse.io/", "https://boards.greenhouse.io/embed/job_board",
 		"https://jobs.lever.co", "https://jobs.ashbyhq.com/..", "https://greenhouse.io.evil.example/gitlab",
 		"https://jobs.ashbyhq.com/%3Cscript%3E",
+		// Workable's own subdomains, and SmartRecruiters' own pages, are not
+		// companies: jobs.workable.com searches every account.
+		"https://jobs.workable.com/view/abc", "https://www.workable.com/", "https://apply.workable.com/",
+		"https://jobs.smartrecruiters.com/external-referrals/company/Sectigo/publication/eede6bb6",
+		"https://jobs.smartrecruiters.com", "https://evil.workable.com.example/acme",
 	} {
 		_, err := ParseBoard(address)
 		assert.ErrorIs(t, err, ErrUnsupportedAddress, "%q", address)
 	}
+
+	// A Workable posting's short address names no account; read as one, it
+	// would be a company called "j".
+	_, err := ParseBoard("https://apply.workable.com/j/F4C096B22E")
+	assert.ErrorIs(t, err, ErrWorkablePostingAddress)
+	assert.NotErrorIs(t, err, ErrUnsupportedAddress)
 }
 
 func TestBoard_URL(t *testing.T) {
@@ -53,6 +73,8 @@ func TestBoard_URL(t *testing.T) {
 	for _, board := range []Board{
 		{Provider: ProviderGreenhouse, Region: RegionEU, Name: "n26"},
 		{Provider: ProviderAshby, Name: "The Browser Company"},
+		{Provider: ProviderWorkable, Name: "huggingface"},
+		{Provider: ProviderSmartRecruiters, Name: "BoschGroup"},
 	} {
 		parsed, err := ParseBoard(board.URL())
 		require.NoError(t, err)
@@ -82,6 +104,13 @@ func TestBoardOf(t *testing.T) {
 	})
 	require.True(t, ok, "a Hacker News posting links to the company's page")
 	assert.Equal(t, Board{Provider: ProviderAshby, Name: "acme"}, linked)
+
+	workable, ok := BoardOf(Job{
+		CanonicalURL:        "https://news.ycombinator.com/item?id=2",
+		DescriptionMarkdown: "Seeq | Remote\n\nApply: https://apply.workable.com/j/FD4C7FD4F3 or https://apply.workable.com/seeq/j/CDBF1AE73C",
+	})
+	require.True(t, ok, "a short address is passed over for one that names the account")
+	assert.Equal(t, Board{Provider: ProviderWorkable, Name: "seeq"}, workable)
 
 	_, ok = BoardOf(Job{CanonicalURL: "https://remoteok.com/remote-jobs/1", DescriptionMarkdown: "Apply by email."})
 	assert.False(t, ok)

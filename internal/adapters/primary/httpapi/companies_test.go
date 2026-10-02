@@ -102,8 +102,21 @@ func (fakeBoards) ReadBoard(_ context.Context, board domain.Board) (*domain.Boar
 		return nil, ports.ErrBoardGone
 	case "down":
 		return nil, fmt.Errorf("dial: %w", ports.ErrSourceUnreachable)
+	case "busy":
+		return nil, ports.ErrBoardBusy
 	}
 	return &domain.BoardContents{Jobs: []domain.Job{{Title: "Engineer"}}, FetchedAt: time.Now()}, nil
+}
+
+func (fakeBoards) DescribeJobs(_ context.Context, _ domain.Board, jobs []domain.Job) ([]domain.Job, error) {
+	return jobs, nil
+}
+
+func (fakeBoards) ResolveAddress(_ context.Context, address string) (string, error) {
+	if strings.HasSuffix(address, "/BUSY000000") {
+		return "", ports.ErrBoardBusy
+	}
+	return strings.Replace(address, "/j/", "/huggingface/j/", 1), nil
 }
 
 func (fakeBoards) BoardName(_ context.Context, board domain.Board) (string, error) {
@@ -164,6 +177,9 @@ func TestCompanies_Statuses(t *testing.T) {
 		"https://www.linkedin.com/company/gitlab": http.StatusBadRequest,
 		"https://jobs.ashbyhq.com/closed":         http.StatusUnprocessableEntity,
 		"https://jobs.ashbyhq.com/down":           http.StatusServiceUnavailable,
+		// Workable asked to be asked later: the page is there (ADR-0026 §5).
+		"https://apply.workable.com/busy":         http.StatusServiceUnavailable,
+		"https://apply.workable.com/j/BUSY000000": http.StatusServiceUnavailable,
 	} {
 		resp, err := client.do(ctx, http.MethodPost, "/v1/companies", watchCompanyRequest{Address: address}, nil)
 		require.Error(t, err, address)
@@ -177,6 +193,10 @@ func TestCompanies_Statuses(t *testing.T) {
 	resp, err = client.do(ctx, http.MethodPut, "/v1/companies/nope", renameCompanyRequest{Name: "x"}, nil)
 	require.Error(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	short, _, err := client.WatchCompany(ctx, "https://apply.workable.com/j/F4C096B22E")
+	require.NoError(t, err, "a Workable posting's short address is followed to its account")
+	assert.Equal(t, domain.Board{Provider: domain.ProviderWorkable, Name: "huggingface"}, short.Board)
 
 	company, _, err := client.WatchCompany(ctx, "jobs.ashbyhq.com/railway")
 	require.NoError(t, err)

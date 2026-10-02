@@ -119,6 +119,16 @@ type fakeBoardReader struct {
 	names   map[string]string
 	nameErr error
 
+	// undescribed boards list their postings without descriptions, which
+	// DescribeJobs adds from descriptions, by title.
+	undescribed  map[string]bool
+	descriptions map[string]string
+	describeErr  error
+	describedMu  sync.Mutex
+	described    []string
+	// resolved is where each short address leads.
+	resolved map[string]string
+
 	inFlight, most atomic.Int32
 	reads          atomic.Int32
 	delay          time.Duration
@@ -138,7 +148,32 @@ func (f *fakeBoardReader) ReadBoard(_ context.Context, board domain.Board) (*dom
 	if err := f.errs[board.Name]; err != nil {
 		return nil, err
 	}
-	return &domain.BoardContents{Jobs: f.jobs[board.Name], FetchedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)}, nil
+	return &domain.BoardContents{
+		Jobs: f.jobs[board.Name], FetchedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), Undescribed: f.undescribed[board.Name],
+	}, nil
+}
+
+func (f *fakeBoardReader) DescribeJobs(_ context.Context, _ domain.Board, jobs []domain.Job) ([]domain.Job, error) {
+	if f.describeErr != nil {
+		return nil, f.describeErr
+	}
+	described := make([]domain.Job, len(jobs))
+	for i, job := range jobs {
+		f.describedMu.Lock()
+		f.described = append(f.described, job.Title)
+		f.describedMu.Unlock()
+		job.DescriptionMarkdown = f.descriptions[job.Title]
+		described[i] = job
+	}
+	return described, nil
+}
+
+func (f *fakeBoardReader) ResolveAddress(_ context.Context, address string) (string, error) {
+	resolved, ok := f.resolved[address]
+	if !ok {
+		return "", ports.ErrBoardGone
+	}
+	return resolved, nil
 }
 
 func (f *fakeBoardReader) BoardName(_ context.Context, board domain.Board) (string, error) {
@@ -239,6 +274,28 @@ func TestCompanyWatchService_Watch_Names(t *testing.T) {
 		companies, _ := repo.List(ctx)
 		assert.Empty(t, companies)
 	})
+}
+
+// A Workable posting's short address names no account, and is followed to
+// the one that does (ADR-0026 §3).
+func TestCompanyWatchService_Watch_WorkableShortAddress(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	boards := &fakeBoardReader{
+		names:    map[string]string{"huggingface": "Hugging Face"},
+		resolved: map[string]string{"https://apply.workable.com/j/F4C096B22E": "https://apply.workable.com/huggingface/j/F4C096B22E"},
+	}
+	svc, _, _ := newCompanyWatch(boards)
+
+	company, created, err := svc.Watch(ctx, "https://apply.workable.com/j/F4C096B22E")
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Equal(t, domain.Board{Provider: domain.ProviderWorkable, Name: "huggingface"}, company.Board)
+	assert.Equal(t, "Hugging Face", company.Name)
+	assert.Equal(t, "https://apply.workable.com/j/F4C096B22E", company.AddedFrom, "it was added from what the candidate gave")
+
+	_, _, err = svc.Watch(ctx, "https://apply.workable.com/j/0000000000")
+	assert.ErrorIs(t, err, ports.ErrBoardGone, "a posting Workable does not have names no company")
 }
 
 func TestCompanyWatchService_WatchJob(t *testing.T) {
@@ -348,6 +405,69 @@ func TestCompanyPagesSource_ReadsEveryCompany(t *testing.T) {
 		require.NotNil(t, company.CheckedAt)
 		assert.Equal(t, time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), *company.CheckedAt, "checked when the board answered")
 	}
+}
+
+// SmartRecruiters lists postings without descriptions and describes each
+// with a request of its own, so only the postings a search may keep are
+// described; the board's open roles still count every posting (ADR-0026 §2).
+func TestCompanyPagesSource_DescribesOnlyWhatMayMatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	newBoards := func() *fakeBoardReader {
+		return &fakeBoardReader{
+			jobs:         map[string][]domain.Job{"Sectigo": boardJobs("Sectigo", "Revenue Accountant", "Backend Engineer", "Platform Engineer")},
+			names:        map[string]string{"Sectigo": "Sectigo"},
+			undescribed:  map[string]bool{"Sectigo": true},
+			descriptions: map[string]string{"Backend Engineer": "Go and Postgres.", "Platform Engineer": "Kubernetes."},
+		}
+	}
+
+	t.Run("described after the criteria that need no description", func(t *testing.T) {
+		t.Parallel()
+		boards := newBoards()
+		svc, repo, _ := newCompanyWatch(boards)
+		_, _, err := svc.Watch(ctx, "careers.smartrecruiters.com/Sectigo")
+		require.NoError(t, err)
+
+		jobs, err := svc.Source().Search(ctx, domain.SearchCriteria{Title: "engineer", Keywords: "postgres"})
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"Backend Engineer", "Platform Engineer"}, boards.described,
+			"the accountant cannot match a title of engineer, so it is not described")
+		require.Len(t, jobs, 2, "keywords are discovery's to apply, once described")
+		assert.Equal(t, "Go and Postgres.", jobs[0].DescriptionMarkdown)
+
+		companies, _ := repo.List(ctx)
+		assert.Equal(t, 3, companies[0].OpenRoles, "open roles are the board's, before any search")
+	})
+
+	t.Run("a board whose postings could not be described is named as failing", func(t *testing.T) {
+		t.Parallel()
+		boards := newBoards()
+		svc, repo, _ := newCompanyWatch(boards)
+		_, _, err := svc.Watch(ctx, "careers.smartrecruiters.com/Sectigo")
+		require.NoError(t, err)
+		boards.describeErr = fmt.Errorf("dial: %w", ports.ErrSourceUnreachable)
+
+		_, err = svc.Source().Search(ctx, domain.SearchCriteria{Title: "engineer"})
+		var partial *ports.PartialAnswer
+		require.ErrorAs(t, err, &partial)
+		assert.Equal(t, []string{"Sectigo"}, partial.Failing)
+		companies, _ := repo.List(ctx)
+		assert.Equal(t, domain.BoardCheckUnreachable, companies[0].Check)
+	})
+
+	t.Run("nothing is described when nothing may match", func(t *testing.T) {
+		t.Parallel()
+		boards := newBoards()
+		svc, _, _ := newCompanyWatch(boards)
+		_, _, err := svc.Watch(ctx, "careers.smartrecruiters.com/Sectigo")
+		require.NoError(t, err)
+
+		jobs, err := svc.Source().Search(ctx, domain.SearchCriteria{Title: "designer"})
+		require.NoError(t, err)
+		assert.Empty(t, jobs)
+		assert.Empty(t, boards.described)
+	})
 }
 
 func TestCompanyPagesSource_NoneWatched(t *testing.T) {

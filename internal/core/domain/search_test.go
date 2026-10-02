@@ -213,3 +213,61 @@ func TestCandidate_Seeker(t *testing.T) {
 	_, ok := Candidate{TimeZone: "Mars/Olympus"}.UTCOffset()
 	assert.False(t, ok)
 }
+
+// MayMatch is only safe if it never rules out a posting MatchesFor would
+// keep once the posting is described: a board listed without descriptions is
+// described only where MayMatch passes (ADR-0026 §2).
+func TestSearchCriteria_MayMatch_NeverRulesOutAMatch(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		{Title: "Senior Backend Engineer (Go)", CompanyName: "Acme", Locations: []string{"Remote, Europe"}, RemoteType: RemoteTypeRemote,
+			EmploymentType: "full_time", DescriptionMarkdown: "We use Go and Postgres. You can work from anywhere in Europe."},
+		{Title: "Product Designer", CompanyName: "Globex", Locations: []string{"Berlin, Germany"}, RemoteType: RemoteTypeHybrid,
+			DescriptionMarkdown: "Figma, design systems, user research. Relocation support offered."},
+		{Title: "Data Engineer", CompanyName: "Initech", Locations: []string{"Lagos, Nigeria"}, SalaryMin: 50000, SalaryMax: 70000,
+			SalaryCurrency: "USD", SalaryPeriod: "year", DescriptionMarkdown: "Python, Spark and Airflow. Overlap 4 hours with CET."},
+		{Title: "Full Stack Developer", CompanyName: "Umbrella", Locations: []string{"Remote"}, RemoteType: RemoteTypeRemote,
+			DescriptionMarkdown: "TypeScript and React on the front end, Node on the back. Work from anywhere."},
+	}
+	var criteria []SearchCriteria
+	for _, group := range SearchTemplateGroups() {
+		for _, template := range group.Templates {
+			criteria = append(criteria, template.Criteria)
+		}
+	}
+	criteria = append(criteria,
+		SearchCriteria{Keywords: "postgres"},
+		SearchCriteria{Title: "engineer", WorkFrom: "DE", IncludeRelocation: true},
+		SearchCriteria{Title: "designer", RemotePreference: RemoteTypeHybrid, ExcludedCompanies: []string{"Acme"}},
+		SearchCriteria{SalaryMin: 60000, Location: "nigeria"},
+	)
+
+	checked := 0
+	for _, c := range criteria {
+		for _, described := range jobs {
+			ReadSignals(&described)
+			if !c.MatchesFor(described, Seeker{}) {
+				continue
+			}
+			listed := described
+			listed.DescriptionMarkdown = ""
+			assert.True(t, c.MayMatch(listed), "%+v matches %q, so it may match before it is described", c, described.Title)
+			checked++
+		}
+	}
+	assert.Positive(t, checked, "some of the criteria should match some of the jobs")
+}
+
+func TestSearchCriteria_MayMatch(t *testing.T) {
+	t.Parallel()
+
+	listed := Job{Title: "Accountant", CompanyName: "Bosch Group", Locations: []string{"Verl, NRW, Germany"}, RemoteType: RemoteTypeOnsite}
+
+	assert.True(t, SearchCriteria{Keywords: "golang"}.MayMatch(listed), "keywords are matched against the description, which is not read yet")
+	assert.True(t, SearchCriteria{WorkFrom: "NG"}.MayMatch(listed), "where a job can be done from is read from its description")
+	assert.False(t, SearchCriteria{Title: "engineer"}.MayMatch(listed))
+	assert.False(t, SearchCriteria{Location: "berlin"}.MayMatch(listed))
+	assert.False(t, SearchCriteria{RemotePreference: RemoteTypeRemote}.MayMatch(listed))
+	assert.False(t, SearchCriteria{Keywords: "golang", ExcludedCompanies: []string{"bosch group"}}.MayMatch(listed))
+}
