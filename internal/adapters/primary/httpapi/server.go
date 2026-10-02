@@ -517,7 +517,7 @@ func searchStatus(err error) int {
 	case errors.Is(err, services.ErrAllSourcesFailed):
 		return http.StatusBadGateway
 	default:
-		return http.StatusInternalServerError
+		return fallbackStatus(err)
 	}
 }
 
@@ -904,14 +904,27 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-// writeErrIfAny writes a 500 response and returns true if err is non-nil, so
-// handlers can do `if writeErrIfAny(w, err) { return }`.
+// writeErrIfAny writes an error response and returns true if err is non-nil,
+// so handlers can do `if writeErrIfAny(w, err) { return }`. The status is
+// fallbackStatus's.
 func writeErrIfAny(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false
 	}
-	writeError(w, http.StatusInternalServerError, err)
+	writeError(w, fallbackStatus(err), err)
 	return true
+}
+
+// fallbackStatus is the status for an error no handler gave a meaning of its
+// own: 404 for a record an ID names that does not exist, and 500 for
+// anything else. Every handler's error ends here when nothing more specific
+// applies, so a missing job or application is never reported as the daemon
+// failing.
+func fallbackStatus(err error) int {
+	if errors.Is(err, ports.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }
 
 func readJSON(r *http.Request, dest any) error {

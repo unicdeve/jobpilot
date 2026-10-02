@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // ScoutRepository persists Scouts in SQLite.
@@ -67,7 +68,7 @@ func (r *ScoutRepository) Update(ctx context.Context, scout *domain.Scout) error
 		return fmt.Errorf("failed to update scout: %w", err)
 	}
 	if affected == 0 {
-		return fmt.Errorf("scout not found: %s", scout.ID)
+		return &ports.NotFoundError{Kind: "scout", ID: scout.ID}
 	}
 	return nil
 }
@@ -90,7 +91,7 @@ func (r *ScoutRepository) GetByID(ctx context.Context, id string) (*domain.Scout
 
 	scout, err := scanScout(row)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("scout not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "scout", ID: id}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get scout: %w", err)

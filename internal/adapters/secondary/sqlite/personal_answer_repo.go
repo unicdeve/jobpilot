@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // PersonalAnswerRepository is a ports.PersonalAnswerRepository backed by
@@ -73,7 +74,7 @@ func (r *PersonalAnswerRepository) GetByID(ctx context.Context, id string) (*dom
 		`SELECT `+personalAnswerColumns+` FROM personal_answers WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("personal answer not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "personal answer", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get personal answer %s: %w", id, err)
 	}
@@ -108,7 +109,7 @@ func (r *PersonalAnswerRepository) Save(ctx context.Context, answer *domain.Pers
 	if n, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("failed to update personal answer: %w", err)
 	} else if n == 0 {
-		return fmt.Errorf("personal answer not found: %s", answer.ID)
+		return &ports.NotFoundError{Kind: "personal answer", ID: answer.ID}
 	}
 	return nil
 }

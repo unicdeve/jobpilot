@@ -75,7 +75,7 @@ func writeDeletionError(w http.ResponseWriter, err error) {
 	case errors.Is(err, services.ErrDeletionRefused):
 		writeError(w, http.StatusConflict, err)
 	default:
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, fallbackStatus(err), err)
 	}
 }
 

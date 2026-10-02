@@ -78,6 +78,13 @@ export class ApiError extends Error {
   }
 }
 
+/// isNotFound reports whether err is the daemon saying the record a request
+/// named does not exist, such as an application deleted since its page was
+/// last open.
+export function isNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
+
 export interface ApiClient {
   health(): Promise<void>;
 

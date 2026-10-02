@@ -272,6 +272,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   An errored query with no data reads as pending while it refetches, the setup gate unmounted every screen while the profile was pending, and each screen remounting refetched it — thousands of requests a minute against a fresh install.
   The gate now waits only for the first answer, which also stops a slower form of the loop while the daemon is down.
   An error from the daemon now reads as a sentence, without the "Error: " that had been in front of every one.
+- A record an ID names that does not exist is a 404 across the API, not a 500 (`docs/01_architecture/07_ipc.md`, "A missing record is 404").
+  Every SQLite repository answers a missing row with `ports.NotFoundError`, which matches `ports.ErrNotFound`, and the HTTP layer's one fallback maps it.
+  The desktop's job, application and activity-run pages show that the record is gone, with the way back to the list, instead of the daemon's message in red, and do not retry a 404.
 
 - Desktop first-run setup (`/welcome`, `docs/02_features/01_onboarding.md`):
   the four things an installation needs — LLM provider, candidate profile,
@@ -632,7 +635,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 2. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
 3. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
    Beside it, the LLM clients' 30-second timeout (`llm/ollama.go`, `llm/openai_compat.go`): a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.
-4. Answer "not found" with 404 across the API. A job or application that does not exist is still a 500 with the repository's message, which the desktop shows as it is — seen when going back to a deleted application's page. Deletion and the profile already answer 404.
+4. An ID inside a request body that names nothing. A record named in the URL is a 404 everywhere now, but `POST /v1/applications` with a job that does not exist still fails at the database's foreign key, as a 500 with SQLite's message. Whether that is a 404 or a 422, and checking it in the service before saving, is still open.
 5. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 6. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
 
@@ -40,6 +41,7 @@ func TestCandidateRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "candidate not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestCandidateRepository_Update(t *testing.T) {

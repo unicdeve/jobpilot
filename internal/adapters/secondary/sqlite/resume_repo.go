@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // ResumeRepository is a ports.ResumeRepository backed by SQLite.
@@ -63,7 +64,7 @@ func (r *ResumeRepository) GetByID(ctx context.Context, id string) (*domain.Resu
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("resume not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "resume", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get resume: %w", err)
 	}

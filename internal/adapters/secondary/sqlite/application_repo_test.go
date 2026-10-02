@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func saveTestApplication(t *testing.T, db *DB, candidateID, jobID string) *domain.Application {
@@ -51,6 +52,7 @@ func TestApplicationRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "application not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestApplicationRepository_Update(t *testing.T) {

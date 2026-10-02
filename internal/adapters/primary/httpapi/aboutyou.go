@@ -30,7 +30,7 @@ func aboutYouStatus(err error) int {
 	case errors.Is(err, services.ErrUnknownPersonalAnswer), errors.Is(err, services.ErrNotKeepable):
 		return http.StatusBadRequest
 	default:
-		return http.StatusInternalServerError
+		return fallbackStatus(err)
 	}
 }
 

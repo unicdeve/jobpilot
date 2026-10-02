@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // MatchRepository is a ports.MatchRepository backed by SQLite.
@@ -70,7 +71,7 @@ func (r *MatchRepository) GetByID(ctx context.Context, id string) (*domain.JobMa
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("match not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "match", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get match: %w", err)
 	}

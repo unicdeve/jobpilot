@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func saveTestCandidate(t *testing.T, db *DB) *domain.Candidate {
@@ -61,6 +62,7 @@ func TestResumeRepository_GetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(context.Background(), "does-not-exist")
 
 	assert.ErrorContains(t, err, "resume not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 func TestResumeRepository_GetByCandidateID(t *testing.T) {

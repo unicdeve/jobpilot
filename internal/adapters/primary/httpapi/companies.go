@@ -37,7 +37,7 @@ func companyStatus(err error) int {
 	case errors.Is(err, ports.ErrWatchedCompanyNotFound):
 		return http.StatusNotFound
 	}
-	return http.StatusInternalServerError
+	return fallbackStatus(err)
 }
 
 // Companies is the body of GET /v1/companies.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 // JobRepository is a ports.JobRepository backed by SQLite.
@@ -146,7 +147,7 @@ func (r *JobRepository) GetByID(ctx context.Context, id string) (*domain.Job, er
 	j, err := scanJob(r.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("job not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "job", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
@@ -354,7 +355,7 @@ func (r *JobRepository) SetNotInterested(ctx context.Context, id string, at *tim
 	if n, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("failed to mark the job: %w", err)
 	} else if n == 0 {
-		return fmt.Errorf("job not found: %s", id)
+		return &ports.NotFoundError{Kind: "job", ID: id}
 	}
 	return nil
 }

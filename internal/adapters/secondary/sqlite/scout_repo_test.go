@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func seedSavedSearch(t *testing.T, db *DB) *domain.SavedSearch {
@@ -59,6 +60,7 @@ func TestScoutRepository_RoundTrip(t *testing.T) {
 	require.NoError(t, repo.Delete(ctx, scout.ID))
 	_, err = repo.GetByID(ctx, scout.ID)
 	assert.ErrorContains(t, err, "scout not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 // TestScoutRepository_DeletingTheSearchTakesTheScout covers the cascade
@@ -83,6 +85,7 @@ func TestScoutRepository_DeletingTheSearchTakesTheScout(t *testing.T) {
 
 	_, err := repo.GetByID(ctx, scout.ID)
 	assert.ErrorContains(t, err, "scout not found")
+	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
 // TestAgentRunRepository_ScoutRunHasNoApplication covers the fix ADR-0018

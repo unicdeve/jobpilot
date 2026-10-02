@@ -81,7 +81,7 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 	candidate, err := scanCandidate(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("candidate not found: %s", id)
+			return nil, &ports.NotFoundError{Kind: "candidate", ID: id}
 		}
 		return nil, fmt.Errorf("failed to get candidate: %w", err)
 	}

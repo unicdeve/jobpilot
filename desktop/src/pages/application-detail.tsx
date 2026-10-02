@@ -1,7 +1,8 @@
-import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, LoaderCircle, Plus, Send, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
+import { RecordGone } from "../components/list-pane";
 import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
 import { StatusBadge, statusLabel } from "../components/status-badge";
@@ -32,6 +33,7 @@ import {
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { runDuration } from "../lib/activity";
+import { isNotFound } from "../lib/api";
 import { dateTime, relativeTime } from "../lib/format";
 import {
   useAboutYou,
@@ -107,6 +109,28 @@ export function ApplicationDetail() {
   const { data: agentRuns } = useAgentRuns(id);
   const { data: job } = useJob(application?.job_id);
 
+  const back = (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      className={splitBackClass}
+      aria-label="Back to applications"
+      render={<Link to={{ pathname: "/applications", search }} />}
+    >
+      <ArrowLeft />
+    </Button>
+  );
+
+  if (isNotFound(error)) {
+    return (
+      <RecordGone
+        back={back}
+        icon={<Send />}
+        title="This application no longer exists"
+        description="It may have been deleted. Choose another application from the list."
+      />
+    );
+  }
   if (error) return <ErrorLine error={error} />;
   if (!application || !id) return <Loading />;
 
@@ -114,17 +138,7 @@ export function ApplicationDetail() {
     <div className="min-h-full">
       <Toolbar
         className="px-5"
-        leading={
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className={splitBackClass}
-            aria-label="Back to applications"
-            render={<Link to={{ pathname: "/applications", search }} />}
-          >
-            <ArrowLeft />
-          </Button>
-        }
+        leading={back}
         actions={
           <>
             <Button size="sm" variant="ghost" render={<Link to={`/jobs/${application.job_id}`} />}>

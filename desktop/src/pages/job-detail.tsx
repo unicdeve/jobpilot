@@ -1,8 +1,9 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Building2, Check, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, Briefcase, Building2, Check, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
+import { RecordGone } from "../components/list-pane";
 import { FormField } from "../components/form-field";
 import { Markdown } from "../components/markdown";
 import { DetailSection, Toolbar } from "../components/page";
@@ -31,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { isNotFound } from "../lib/api";
 import {
   dateTime,
   employmentLabel,
@@ -95,6 +97,16 @@ export function JobDetail() {
     </Button>
   );
 
+  if (isNotFound(error)) {
+    return (
+      <RecordGone
+        back={back}
+        icon={<Briefcase />}
+        title="This job no longer exists"
+        description="It may have been deleted. Choose another job from the list."
+      />
+    );
+  }
   if (error) return <ErrorLine error={error} />;
   if (isPending || !job) return <Loading />;
 
