@@ -312,6 +312,11 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   Stored in `watched_companies` (migration `00020`), deleted with "delete all data" and not with the profile.
   Desktop: Settings → Job searches → Companies you watch, with suggestions, and "Watch this company" beside a job's company. CLI: `company watch|list|rename|unwatch|suggestions`.
   Building it fixed ADR-0023's reading of "Georgia" beside the United States and of airport codes read as cities, and taught it "AMER"; stored jobs are read again for it.
+- Workable and SmartRecruiters company pages (ADR-0026, proposed): watched as the other three are, by `apply.workable.com/…`, `{account}.workable.com`, `careers.smartrecruiters.com/…` or `jobs.smartrecruiters.com/…`.
+  Workable's short posting address, `apply.workable.com/j/…`, names no company and is followed to the one that does when pasted.
+  SmartRecruiters lists postings without descriptions, so only the postings a search may keep are described, one request each, and kept in memory by posting.
+  A Workable refusal to answer (429) names the company as failing for that search, never as gone.
+  Both give one place per posting, so a regional remote role reads as one country, and neither reaches the starter list: none of 13 SmartRecruiters companies, or of the 18 Workable accounts that answered, qualified.
 - Working hours (ADR-0025, `docs/02_features/18_time_zones.md`): every job says the time zones it requires or prefers, as one window of UTC offsets read deterministically from its description — "CET (+/- 3 hours)", "UTC−6 to UTC+3", "overlap at least 4 hours with US Eastern", "9:00 AM – 12:00 PM PST", "home based in EMEA time zones" — with the sentence shown; sentences that only mention working across zones are not read.
   The profile gains a time zone (an IANA zone, from GeoNames' table of 418, compiled into `geo`), prefilled from the country when it has one zone and from the computer otherwise.
   A saved search can leave out jobs whose required hours the candidate cannot work, allowing them to move their day by up to 12 hours they choose; preferences never leave a job out.
@@ -634,11 +639,12 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 ## Next
 
-1. Workable and SmartRecruiters as company-page providers, once their public endpoints are measured (`docs/02_features/17_company_watchlists.md` D6).
-2. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
-3. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
+1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
+2. A deterministic check on generated letters and answers, flagging for the reviewer what the prompt asks against but a small model still does: stock phrases, length past what was asked, and claims — years of experience, above all — the candidate's material does not support (`docs/02_features/16_about_you.md`, "What the model makes of it").
    Beside it, the LLM clients' 30-second timeout (`llm/ollama.go`, `llm/openai_compat.go`): a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.
-4. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
+3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-5. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-6. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+6. A title naming a region wider than a job's one listed place: Hugging Face's "EMEA Remote" roles on Workable list Paris and read as France (ADR-0026 §4).
+   Whether such a title should make the reading less certain is a change to ADR-0023 for every source, left open.

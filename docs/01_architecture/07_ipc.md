@@ -62,7 +62,9 @@ different failure modes, so they are different endpoints.
   or 200 with the company already watched — `PUT /v1/companies/{id}`
   renames one (`{"name"}`), and `DELETE /v1/companies/{id}` stops watching
   it. An address that is not a supported hiring page is 400, a board its
-  provider says is not there 422, and one that did not answer 503.
+  provider says is not there 422, and one that did not answer, or asked to be
+  asked later, 503. A Workable posting's short address (`apply.workable.com/j/…`)
+  is followed to the company it is on (ADR-0026 §3).
   `GET /v1/companies/suggestions` is the starter list less what is watched,
   and `GET /v1/jobs/{id}/company` the hiring page a job is on and the
   watched company it is, if any (ADR-0024 §8).

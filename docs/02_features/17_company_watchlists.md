@@ -124,6 +124,7 @@ A cap was rejected as a rule the candidate would hit for no reason they could se
 
 They are the three measured.
 Workable and SmartRecruiters follow once their public endpoints have been measured and recorded here.
+They were measured on 2026-10-02 and are read too; see "Workable and SmartRecruiters" below and ADR-0026.
 
 ## The starter list
 
@@ -147,7 +148,7 @@ A company the candidate already watches is not suggested.
 ## Acceptance criteria
 
 ### AC-001
-Given the address of a Greenhouse, Lever or Ashby hiring page or posting, when the candidate watches it, then the company is added once its board has answered, named from the board, and an address from any other host is refused with what is supported.
+Given the address of a Greenhouse, Lever, Ashby, Workable or SmartRecruiters hiring page or posting, when the candidate watches it, then the company is added once its board has answered, named from the board, and an address from any other host is refused with what is supported.
 
 ### AC-002
 Given a job whose URL or application link is on a supported board, when its page is shown, then it offers "Watch this company", unless the company is already watched.
@@ -174,7 +175,7 @@ Given the seed file, when the starter list is regenerated, then it holds only th
 
 - Applying through a provider's API.
   Lever and Greenhouse both take applications by POST with the company's key; JobPilot never submits (ADR-0014), and has no such key.
-- Workable, SmartRecruiters and other providers, until measured (D6).
+- Providers other than these five, until measured (D6).
 - Refreshing the starter list from inside the product.
   It is regenerated in the repository, and a candidate's installation never measures boards it has not been asked to watch.
 - Merging a job found on a board with the same job found on the company's page.
@@ -201,3 +202,20 @@ Measuring also found two mistakes in ADR-0023's reading, fixed with it, so `Sign
 - A three-letter name is a city only when it is the city's own, like Ulm: GeoNames lists airport codes among cities' names, and Stripe's "Tor", for Toronto, had read as Slovyansk.
   "NYC" and "SF" are kept by hand.
 - "AMER" is the Americas.
+
+## Workable and SmartRecruiters
+
+Measured and built on 2026-10-02, from 20 Workable accounts linked from Hacker News and 13 SmartRecruiters companies; ADR-0026 records the numbers and the decisions.
+The decisions hold; measuring changed four things:
+
+- **SmartRecruiters lists postings without their descriptions.**
+  Each is a request of its own, and Bosch alone has 4,822 postings, so only the postings a search may keep are described: those its title, locations, workplace, employment type, salary and excluded companies do not rule out (ADR-0026 §2).
+  A search by keywords alone narrows nothing first, so it describes a whole board on its first read.
+- **SmartRecruiters answers a company that does not exist as one with no postings**, as Lever's API does.
+  Its careers page tells them apart, by where it redirects.
+- **Workable limits how often it is asked.**
+  A refused read names the company as failing for that search and is asked again at the next; it never marks the company gone.
+  A posting's short address, `apply.workable.com/j/{code}`, names no company, and watching by it follows Workable's redirect.
+- **Both give one place per posting, and neither reaches the starter list.**
+  A regional remote role listed in one city reads as that city's country: Hugging Face's "EMEA Remote" roles read as France.
+  With one place per posting no role can be open across continents, so no company on either provider qualified, and none is in the seed file.
