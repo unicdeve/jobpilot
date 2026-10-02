@@ -26,3 +26,39 @@ func (e *NotFoundError) Error() string {
 func (e *NotFoundError) Is(target error) bool {
 	return target == ErrNotFound
 }
+
+// ErrUnknownReference is matched, with errors.Is, by every error that says
+// a request named a record to act with, rather than the record it acts on,
+// and that record does not exist: an application's job, a resume's
+// candidate, a scout's saved search. The HTTP API answers it with 422, not
+// 404, because the record a request is addressed to is there; it is the
+// request that is wrong.
+var ErrUnknownReference = errors.New("unknown reference")
+
+// ReferenceError is a service's answer for an ID a request carried that
+// names no record. It keeps the repository's message, and it matches
+// ErrUnknownReference and deliberately not ErrNotFound, so it can never be
+// read as the requested record being gone.
+type ReferenceError struct {
+	NotFound *NotFoundError
+}
+
+func (e *ReferenceError) Error() string {
+	return e.NotFound.Error()
+}
+
+// Is reports whether target is ErrUnknownReference.
+func (e *ReferenceError) Is(target error) bool {
+	return target == ErrUnknownReference
+}
+
+// AsReference turns a repository's NotFoundError, wherever it is in err's
+// chain, into a ReferenceError, for a service looking up a record a request
+// named to act with. Any other error, or nil, is returned as it is.
+func AsReference(err error) error {
+	var notFound *NotFoundError
+	if errors.As(err, &notFound) {
+		return &ReferenceError{NotFound: notFound}
+	}
+	return err
+}

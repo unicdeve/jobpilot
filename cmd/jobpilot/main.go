@@ -231,7 +231,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	// PDFium for PDFs, whose engine starts on first use (ADR-0016).
 	docConverter := documents.NewConverter()
 
-	resumeSvc := services.NewResumeService(resRepo, llmProv, docConverter)
+	resumeSvc := services.NewResumeService(resRepo, candRepo, llmProv, docConverter)
 	savedSearchSvc := services.NewSavedSearchService(sqlite.NewSavedSearchRepository(db.Conn()))
 	onboardingSvc := services.NewOnboardingService(candRepo, resumeSvc, savedSearchSvc, llmProv, db)
 	profileSvc := services.NewProfileService(candRepo)
@@ -245,7 +245,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter).
 		WithCandidates(candRepo)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
-	applicationSvc := services.NewApplicationService(appRepo)
+	applicationSvc := services.NewApplicationService(appRepo, jobRepo, candRepo, resRepo)
 	aboutYouSvc := services.NewAboutYouService(
 		sqlite.NewPersonalAnswerRepository(db.Conn()), candRepo, appRepo, jobRepo, questionRepo, llmProv)
 	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)

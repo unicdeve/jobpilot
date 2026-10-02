@@ -916,12 +916,15 @@ func writeErrIfAny(w http.ResponseWriter, err error) bool {
 }
 
 // fallbackStatus is the status for an error no handler gave a meaning of its
-// own: 404 for a record an ID names that does not exist, and 500 for
-// anything else. Every handler's error ends here when nothing more specific
-// applies, so a missing job or application is never reported as the daemon
-// failing.
+// own: 404 for a record the URL names that does not exist, 422 for one the
+// request body names, and 500 for anything else. Every handler's error ends
+// here when nothing more specific applies, so a missing job or application
+// is never reported as the daemon failing.
 func fallbackStatus(err error) int {
-	if errors.Is(err, ports.ErrNotFound) {
+	switch {
+	case errors.Is(err, ports.ErrUnknownReference):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, ports.ErrNotFound):
 		return http.StatusNotFound
 	}
 	return http.StatusInternalServerError
@@ -961,6 +964,16 @@ func (r scoutRequest) toScout(id string) *domain.Scout {
 	}
 }
 
+// scoutStatus is the status for an error saving a scout: a saved search
+// that does not exist is 422, a scout that does not exist 404, and a bad
+// score, an impossible ceiling or a missing name 400, the caller's to fix.
+func scoutStatus(err error) int {
+	if errors.Is(err, ports.ErrUnknownReference) || errors.Is(err, ports.ErrNotFound) {
+		return fallbackStatus(err)
+	}
+	return http.StatusBadRequest
+}
+
 func handleListScouts(svc *services.ScoutService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		scouts, err := svc.ListScouts(r.Context())
@@ -981,9 +994,7 @@ func handleCreateScout(svc *services.ScoutService) http.HandlerFunc {
 
 		scout := req.toScout("")
 		if err := svc.CreateScout(r.Context(), scout); err != nil {
-			// A bad score, an impossible ceiling or a missing search is
-			// the caller's to fix.
-			writeError(w, http.StatusBadRequest, err)
+			writeError(w, scoutStatus(err), err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, scout)
@@ -1010,7 +1021,7 @@ func handleUpdateScout(svc *services.ScoutService) http.HandlerFunc {
 
 		scout := req.toScout(r.PathValue("id"))
 		if err := svc.UpdateScout(r.Context(), scout); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			writeError(w, scoutStatus(err), err)
 			return
 		}
 		writeJSON(w, http.StatusOK, scout)

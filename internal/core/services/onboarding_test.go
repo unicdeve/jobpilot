@@ -13,7 +13,7 @@ import (
 
 // newTestOnboardingService constructs an OnboardingService with fakes.
 func newTestOnboardingService(candRepo *fakeCandidateRepository, llm *fakeLLMProvider) *OnboardingService {
-	resumeSvc := NewResumeService(newFakeResumeRepository(), llm, &fakeDocumentConverter{})
+	resumeSvc := NewResumeService(newFakeResumeRepository(), newFakeCandidateRepository(), llm, &fakeDocumentConverter{})
 	return NewOnboardingService(candRepo, resumeSvc, NewSavedSearchService(newFakeSavedSearchRepository()), llm, &fakeLocalStorage{dir: "/data"})
 }
 

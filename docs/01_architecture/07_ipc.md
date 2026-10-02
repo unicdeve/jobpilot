@@ -84,15 +84,19 @@ browsing history impossible without a network round trip, which
 forbid. `total` describes the whole filtered result rather than the page, so
 a client can tell whether more pages remain without fetching them.
 
-## A missing record is 404
+## A missing record is 404, a missing reference 422
 
 Every error is `{"error": "..."}` with a status that says whose it is.
 A record an ID names that does not exist is 404 on every endpoint that looks it up, with the repository's message (`application not found: <id>`), so the CLI can say what was missing and the desktop can show that the record is gone rather than that the daemon failed.
 Repositories return `ports.NotFoundError`, which matches `ports.ErrNotFound`, and the HTTP layer maps it in one place: whatever an endpoint does not give a meaning of its own falls back to 404 for a missing record and 500 for anything else.
 A 500 is the daemon failing, never the client naming something that is not there.
 
-An ID inside a request body is not yet held to this.
-`POST /v1/applications` with a job that does not exist fails at the database's foreign key, as a 500.
+A record a request body names that does not exist is 422, with the same message (`job not found: <id>`).
+The record the request is addressed to is there, and it is the request that is wrong, so it is not a 404, which a client would read as its own page's record being gone.
+The service looks each one up before it saves anything, rather than leaving it to the database's foreign key, whose failure was a 500 that did not say which record was missing.
+It returns `ports.ReferenceError`, which matches `ports.ErrUnknownReference` and deliberately not `ports.ErrNotFound`, and the same fallback maps it.
+The references are an application's job, candidate and resume (`POST /v1/applications`), a resume's candidate (`POST /v1/resumes`), a match's job and candidate (`POST /v1/matches/analyze`), the job a company is watched from (`POST /v1/companies`), and a scout's saved search (`POST /v1/scouts`, `PUT /v1/scouts/{id}`).
+Saving a scout is 422 for its saved search, 404 for the scout itself, and 400 for a setting the caller must fix.
 
 ## Deletion is previewed, then confirmed
 

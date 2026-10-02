@@ -50,24 +50,44 @@ func AllowedTransitions(application *domain.Application) []domain.ApplicationSta
 // ApplicationService manages an application's lifecycle: creation and
 // validated state transitions.
 type ApplicationService struct {
-	repo ports.ApplicationRepository
+	repo       ports.ApplicationRepository
+	jobs       ports.JobRepository
+	candidates ports.CandidateRepository
+	resumes    ports.ResumeRepository
 }
 
 // NewApplicationService constructs an ApplicationService backed by the
-// given application repository.
-func NewApplicationService(repo ports.ApplicationRepository) *ApplicationService {
-	return &ApplicationService{repo: repo}
+// given application repository. The job, candidate and resume repositories
+// are read to check that a new application names records that exist.
+func NewApplicationService(repo ports.ApplicationRepository, jobs ports.JobRepository, candidates ports.CandidateRepository, resumes ports.ResumeRepository) *ApplicationService {
+	return &ApplicationService{repo: repo, jobs: jobs, candidates: candidates, resumes: resumes}
 }
 
 // CreateApplication starts tracking a candidate's application to a job, in
 // the initial DISCOVERED state. resumeID may be empty if no resume has been
 // chosen yet.
+//
+// A job, candidate or resume that does not exist is a ports.ReferenceError,
+// found before anything is saved rather than left to the database's foreign
+// key, whose failure says nothing about which of the three was missing.
 func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
 	if mode == "" {
 		mode = domain.ApplicationModeReview
 	}
 	if !mode.IsValid() {
 		return nil, fmt.Errorf("unknown application mode %q", mode)
+	}
+
+	if _, err := s.jobs.GetByID(ctx, jobID); err != nil {
+		return nil, fmt.Errorf("failed to create application: %w", ports.AsReference(err))
+	}
+	if _, err := s.candidates.GetByID(ctx, candidateID); err != nil {
+		return nil, fmt.Errorf("failed to create application: %w", ports.AsReference(err))
+	}
+	if resumeID != "" {
+		if _, err := s.resumes.GetByID(ctx, resumeID); err != nil {
+			return nil, fmt.Errorf("failed to create application: %w", ports.AsReference(err))
+		}
 	}
 
 	application := &domain.Application{

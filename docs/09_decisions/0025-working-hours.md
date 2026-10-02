@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed, and implemented with it.
+Accepted, and implemented.
+Accepted on 2026-10-02.
 It records `docs/02_features/18_time_zones.md` D1 to D5 (decided on 2026-10-01), and how they are built.
 It reads one more signal beside ADR-0023's, by the same rules: from the job's own text, deterministically, re-read when the reading changes.
 

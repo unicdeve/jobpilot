@@ -13,22 +13,32 @@ import (
 // ResumeService manages a candidate's imported resumes.
 type ResumeService struct {
 	resumeRepo  ports.ResumeRepository
+	candidates  ports.CandidateRepository
 	llmProvider ports.LLMProvider
 	converter   ports.DocumentConverter
 }
 
 // NewResumeService constructs a ResumeService backed by the given resume
-// repository, LLM provider and document converter.
-func NewResumeService(repo ports.ResumeRepository, llmProvider ports.LLMProvider, converter ports.DocumentConverter) *ResumeService {
+// repository, LLM provider and document converter. The candidate repository
+// is read to check that an imported resume names a candidate who exists.
+func NewResumeService(repo ports.ResumeRepository, candidates ports.CandidateRepository, llmProvider ports.LLMProvider, converter ports.DocumentConverter) *ResumeService {
 	return &ResumeService{
 		resumeRepo:  repo,
+		candidates:  candidates,
 		llmProvider: llmProvider,
 		converter:   converter,
 	}
 }
 
 // ImportResume converts a document to markdown and stores it.
+//
+// A candidate that does not exist is a ports.ReferenceError, found before
+// the document is read rather than left to the database's foreign key.
 func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, filePath string) (*domain.Resume, error) {
+	if _, err := s.candidates.GetByID(ctx, candidateID); err != nil {
+		return nil, fmt.Errorf("failed to import resume: %w", ports.AsReference(err))
+	}
+
 	content, err := s.converter.ConvertFile(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert resume to markdown: %w", err)
