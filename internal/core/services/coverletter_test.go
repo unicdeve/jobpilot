@@ -125,8 +125,10 @@ func TestCoverLetterService_Generate(t *testing.T) {
 func TestCoverLetterService_Edit(t *testing.T) {
 	t.Parallel()
 
-	svc, clRepo, _, _, _, _, _ := newTestCoverLetterService(t)
-	require.NoError(t, clRepo.Save(context.Background(), &domain.CoverLetter{ID: "cl-1", Content: "original"}))
+	svc, clRepo, appRepo, _, candRepo, _, _ := newTestCoverLetterService(t)
+	require.NoError(t, candRepo.Save(context.Background(), &domain.Candidate{ID: "cand-1"}))
+	require.NoError(t, appRepo.Save(context.Background(), &domain.Application{ID: "app-1", CandidateID: "cand-1"}))
+	require.NoError(t, clRepo.Save(context.Background(), &domain.CoverLetter{ID: "cl-1", ApplicationID: "app-1", Content: "original"}))
 
 	edited, err := svc.Edit(context.Background(), "cl-1", "edited by user")
 
@@ -139,7 +141,9 @@ func TestCoverLetterService_Edit(t *testing.T) {
 func TestCoverLetterService_ListVersions(t *testing.T) {
 	t.Parallel()
 
-	svc, clRepo, _, _, _, _, _ := newTestCoverLetterService(t)
+	svc, clRepo, appRepo, _, candRepo, _, _ := newTestCoverLetterService(t)
+	require.NoError(t, candRepo.Save(context.Background(), &domain.Candidate{ID: "cand-1"}))
+	require.NoError(t, appRepo.Save(context.Background(), &domain.Application{ID: "app-1", CandidateID: "cand-1"}))
 	require.NoError(t, clRepo.Save(context.Background(), &domain.CoverLetter{ApplicationID: "app-1"}))
 	require.NoError(t, clRepo.Save(context.Background(), &domain.CoverLetter{ApplicationID: "app-2"}))
 
@@ -147,4 +151,42 @@ func TestCoverLetterService_ListVersions(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, versions, 1)
+}
+
+// Every way a letter is read carries the flags of its text as it is then,
+// checked against the candidate's own material, the resume included
+// (docs/02_features/19_draft_checks.md AC-007).
+func TestCoverLetterService_Flags(t *testing.T) {
+	t.Parallel()
+
+	svc, _, appRepo, jobRepo, candRepo, resumeRepo, llm := newTestCoverLetterService(t)
+	ctx := context.Background()
+	require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", Skills: []domain.CandidateSkill{{Name: "Kubernetes"}}}))
+	require.NoError(t, resumeRepo.Save(ctx, &domain.Resume{ID: "resume-1", CandidateID: "cand-1", MarkdownContent: "- Ran Kubernetes for 3 years at Acme"}))
+	require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1", ResumeID: "resume-1"}))
+
+	llm.response = ports.Response{Content: "I am excited to apply. I have run Kubernetes for 3 years. I bring 8 years of experience."}
+	generated, err := svc.Generate(ctx, "app-1")
+	require.NoError(t, err)
+
+	kinds := func(flags []domain.DraftFlag) []string {
+		var out []string
+		for _, flag := range flags {
+			out = append(out, string(flag.Kind)+": "+flag.Excerpt)
+		}
+		return out
+	}
+	// The Kubernetes claim is the resume's; eight years is no one's.
+	want := []string{"stock_phrase: I am excited to apply", "unsupported_claim: 8 years"}
+	assert.Equal(t, want, kinds(generated.Flags))
+
+	versions, err := svc.ListVersions(ctx, "app-1")
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+	assert.Equal(t, want, kinds(versions[0].Flags))
+
+	edited, err := svc.Edit(ctx, generated.ID, "I have run Kubernetes for 3 years.")
+	require.NoError(t, err)
+	assert.Empty(t, edited.Flags, "an edit is checked as it now reads")
 }

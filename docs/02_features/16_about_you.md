@@ -134,6 +134,7 @@ Measured on `llama3.2:1b`, the smallest model a candidate might run locally, aga
 
 The rules are instructions, and hold as well as the model follows them.
 A deterministic check that flags stock phrases, length and claims the material does not support, for the candidate reviewing the letter, is the follow-up that would not depend on the model.
+It is built: `docs/02_features/19_draft_checks.md`.
 
 ## Prompt customization
 

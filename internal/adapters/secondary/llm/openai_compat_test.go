@@ -72,7 +72,7 @@ func TestOpenAICompatProvider_Generate(t *testing.T) {
 		assert.Equal(t, "system", captured.Messages[0].Content)
 		assert.Equal(t, "user", captured.Messages[1].Role)
 		assert.Equal(t, "user", captured.Messages[1].Content)
-		assert.False(t, captured.Stream)
+		assert.True(t, captured.Stream, "asked to stream; this server answers in one piece, which is read too")
 	})
 
 	t.Run("empty response model falls back to the requested model", func(t *testing.T) {

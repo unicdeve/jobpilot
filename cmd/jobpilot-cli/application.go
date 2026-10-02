@@ -291,6 +291,7 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("generating cover letter: %w", err)
 			}
 			fmt.Printf("✅ Cover letter generated (ID: %s):\n\n%s\n", coverLetter.ID, coverLetter.Content)
+			printFlags("", coverLetter.Flags)
 			return nil
 		},
 	}
@@ -316,7 +317,9 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 				if v.UserEdited {
 					edited = " (edited)"
 				}
-				fmt.Printf("%d. %s%s\n%s\n\n", i+1, v.ID, edited, v.Content)
+				fmt.Printf("%d. %s%s\n%s\n", i+1, v.ID, edited, v.Content)
+				printFlags("", v.Flags)
+				fmt.Println()
 			}
 			return nil
 		},
@@ -333,6 +336,7 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("editing cover letter: %w", err)
 			}
 			fmt.Printf("✅ Cover letter %s updated.\n", coverLetter.ID)
+			printFlags("", coverLetter.Flags)
 			return nil
 		},
 	})
@@ -378,6 +382,7 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 				return nil
 			}
 			fmt.Printf("✅ Resolved (%s): %s\n", question.Category, question.Answer)
+			printFlags("", question.Flags)
 			return nil
 		},
 	})
@@ -393,6 +398,7 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("setting answer: %w", err)
 			}
 			fmt.Printf("✅ Answer saved for question %s\n", question.ID)
+			printFlags("", question.Flags)
 			return nil
 		},
 	})
@@ -427,10 +433,28 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 			}
 			for i, q := range questions {
 				fmt.Printf("%d. [%s] %s -> %q (category: %s, status: %s)\n", i+1, q.ID, q.Label, q.Answer, q.Category, q.Status)
+				printFlags("   ", q.Flags)
 			}
 			return nil
 		},
 	})
 
 	return cmd
+}
+
+// printFlags lists what a reviewer should look at in a letter or written
+// answer (docs/02_features/19_draft_checks.md), or nothing when there is
+// nothing to look at.
+func printFlags(indent string, flags []domain.DraftFlag) {
+	if len(flags) == 0 {
+		return
+	}
+	fmt.Printf("%sTo review:\n", indent)
+	for _, flag := range flags {
+		if flag.Excerpt == "" {
+			fmt.Printf("%s- %s\n", indent, flag.Reason)
+			continue
+		}
+		fmt.Printf("%s- %q: %s\n", indent, flag.Excerpt, flag.Reason)
+	}
 }

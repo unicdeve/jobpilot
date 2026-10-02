@@ -2,6 +2,7 @@ import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, LoaderCircle, P
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
+import { DraftFlags, FlaggedText } from "../components/draft-flags";
 import { RecordGone } from "../components/list-pane";
 import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
@@ -384,13 +385,16 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
             )}
           </p>
           {question.answer ? (
-            <p className="mt-1 text-[13px] whitespace-pre-wrap text-subtle-foreground select-text">{question.answer}</p>
+            <p className="mt-1 text-[13px] whitespace-pre-wrap text-subtle-foreground select-text">
+              <FlaggedText text={question.answer} flags={question.flags} />
+            </p>
           ) : (
             <p className="mt-1 text-[13px] text-muted-foreground">No answer yet.</p>
           )}
         </div>
         <StatusBadge value={question.category || question.status} className="shrink-0" />
       </div>
+      {!answering && <DraftFlags flags={question.flags} />}
 
       {answering ? (
         <div className="mt-2.5 space-y-2">
@@ -578,7 +582,7 @@ function CoverLetterSection({
         <>
           <div className="rounded-lg border border-border bg-card px-5 py-4">
             <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-subtle-foreground select-text">
-              {current.content}
+              <FlaggedText text={current.content} flags={current.flags} />
             </p>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -594,6 +598,7 @@ function CoverLetterSection({
               </>
             )}
           </p>
+          <DraftFlags flags={current.flags} />
           {showEarlier && (
             <div className="mt-3 space-y-3">
               {earlier.map((v) => (

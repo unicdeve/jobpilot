@@ -58,4 +58,8 @@ type ApplicationQuestion struct {
 	Status        QuestionStatus `json:"status"`
 	Source        QuestionSource `json:"source"`
 	FieldRef      string         `json:"field_ref,omitempty"`
+	// Flags are what the reviewer should look at in a generated Answer,
+	// worked out each time it is read and never stored
+	// (docs/02_features/19_draft_checks.md D3).
+	Flags []DraftFlag `json:"flags,omitempty"`
 }
