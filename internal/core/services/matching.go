@@ -41,12 +41,12 @@ func NewMatchingService(
 func (s *MatchingService) AnalyzeJobForCandidate(ctx context.Context, candidateID, jobID string) (*domain.JobMatch, error) {
 	job, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch job: %w", err)
+		return nil, fmt.Errorf("failed to fetch job: %w", ports.AsReference(err))
 	}
 
 	candidate, err := s.candRepo.GetByID(ctx, candidateID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch candidate: %w", err)
+		return nil, fmt.Errorf("failed to fetch candidate: %w", ports.AsReference(err))
 	}
 
 	prompt, err := s.buildPrompt(candidate, job)

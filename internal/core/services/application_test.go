@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 func TestApplicationService_CreateApplication(t *testing.T) {
@@ -17,7 +18,7 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 	t.Run("defaults to review mode and DISCOVERED state", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
-		svc := NewApplicationService(repo)
+		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
 		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", "")
 
@@ -30,7 +31,7 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 	t.Run("a mode JobPilot does not have is refused rather than stored", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
-		svc := NewApplicationService(repo)
+		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
 		// The column is free TEXT, so without this check any string a
 		// caller sent became a mode — and "autopilot", removed in
@@ -43,11 +44,50 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 		assert.Empty(t, repo.applications, "nothing should have been written")
 	})
 
+	t.Run("a job, candidate or resume that does not exist is refused before anything is saved", func(t *testing.T) {
+		t.Parallel()
+
+		// Each of these reached the database's foreign key, which failed as
+		// a 500 that did not say which of the three was missing.
+		for _, tc := range []struct {
+			name                      string
+			jobID, candidateID, resID string
+			missing                   string
+		}{
+			{"job", "job-404", "cand-1", "", "job not found: job-404"},
+			{"candidate", "job-1", "cand-404", "", "candidate not found: cand-404"},
+			{"resume", "job-1", "cand-1", "res-404", "resume not found: res-404"},
+		} {
+			repo := newFakeApplicationRepository()
+			svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
+
+			_, err := svc.CreateApplication(context.Background(), tc.jobID, tc.candidateID, tc.resID, "")
+
+			require.ErrorIs(t, err, ports.ErrUnknownReference, tc.name)
+			assert.NotErrorIs(t, err, ports.ErrNotFound, "%s: the application being created is not what is missing", tc.name)
+			assert.ErrorContains(t, err, tc.missing, tc.name)
+			assert.Empty(t, repo.applications, "%s: nothing should have been written", tc.name)
+		}
+	})
+
+	t.Run("a resume that exists is accepted", func(t *testing.T) {
+		t.Parallel()
+		resumes := newFakeResumeRepository()
+		resume := &domain.Resume{CandidateID: "cand-1"}
+		require.NoError(t, resumes.Save(context.Background(), resume))
+		svc := NewApplicationService(newFakeApplicationRepository(), jobsWith("job-1"), candidatesWith("cand-1"), resumes)
+
+		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", resume.ID, "")
+
+		require.NoError(t, err)
+		assert.Equal(t, resume.ID, app.ResumeID)
+	})
+
 	t.Run("save error propagates", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
 		repo.saveErr = errors.New("disk full")
-		svc := NewApplicationService(repo)
+		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
 		_, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", domain.ApplicationModeAssist)
 
@@ -91,7 +131,7 @@ func TestApplicationService_TransitionState(t *testing.T) {
 		t.Run(string(tt.from)+"->"+string(tt.to)+" is allowed", func(t *testing.T) {
 			t.Parallel()
 			repo := newFakeApplicationRepository()
-			svc := NewApplicationService(repo)
+			svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 			app := &domain.Application{ID: "app-1", State: tt.from}
 			require.NoError(t, repo.Save(context.Background(), app))
 
@@ -126,7 +166,7 @@ func TestApplicationService_TransitionState(t *testing.T) {
 		t.Run(string(tt.from)+"->"+string(tt.to)+" is rejected", func(t *testing.T) {
 			t.Parallel()
 			repo := newFakeApplicationRepository()
-			svc := NewApplicationService(repo)
+			svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 			app := &domain.Application{ID: "app-1", State: tt.from}
 			require.NoError(t, repo.Save(context.Background(), app))
 
@@ -141,7 +181,7 @@ func TestApplicationService_TransitionState(t *testing.T) {
 	t.Run("application fetch error propagates", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
-		svc := NewApplicationService(repo)
+		svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 
 		_, err := svc.TransitionState(context.Background(), "missing-app", domain.ApplicationStateMatched, "")
 
@@ -152,7 +192,7 @@ func TestApplicationService_TransitionState(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
 		repo.transitionErr = errors.New("concurrent update")
-		svc := NewApplicationService(repo)
+		svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 		app := &domain.Application{ID: "app-1", State: domain.ApplicationStateDiscovered}
 		require.NoError(t, repo.Save(context.Background(), app))
 
@@ -166,7 +206,7 @@ func TestApplicationService_ListApplicationsAndHistory(t *testing.T) {
 	t.Parallel()
 
 	repo := newFakeApplicationRepository()
-	svc := NewApplicationService(repo)
+	svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 	app := &domain.Application{ID: "app-1", CandidateID: "cand-1", State: domain.ApplicationStateDiscovered}
 	require.NoError(t, repo.Save(context.Background(), app))
 	require.NoError(t, repo.Save(context.Background(), &domain.Application{ID: "app-2", CandidateID: "cand-2", State: domain.ApplicationStateDiscovered}))
@@ -217,7 +257,7 @@ func TestAllowedTransitions(t *testing.T) {
 		for state := range allowedTransitions {
 			for _, to := range AllowedTransitions(&domain.Application{State: state}) {
 				repo := newFakeApplicationRepository()
-				svc := NewApplicationService(repo)
+				svc := NewApplicationService(repo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 				require.NoError(t, repo.Save(context.Background(), &domain.Application{ID: "app-1", State: state}))
 
 				_, err := svc.TransitionState(context.Background(), "app-1", to, "")

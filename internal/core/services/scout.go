@@ -86,7 +86,7 @@ func (s *ScoutService) CreateScout(ctx context.Context, scout *domain.Scout) err
 		return err
 	}
 	if _, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID); err != nil {
-		return fmt.Errorf("the scout's saved search could not be found: %w", err)
+		return fmt.Errorf("the scout's saved search could not be found: %w", ports.AsReference(err))
 	}
 	return s.scouts.Save(ctx, scout)
 }
@@ -97,7 +97,7 @@ func (s *ScoutService) UpdateScout(ctx context.Context, scout *domain.Scout) err
 		return err
 	}
 	if _, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID); err != nil {
-		return fmt.Errorf("the scout's saved search could not be found: %w", err)
+		return fmt.Errorf("the scout's saved search could not be found: %w", ports.AsReference(err))
 	}
 	return s.scouts.Update(ctx, scout)
 }

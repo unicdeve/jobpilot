@@ -56,7 +56,7 @@ func (s *CompanyWatchService) Watch(ctx context.Context, address string) (*domai
 func (s *CompanyWatchService) WatchJob(ctx context.Context, jobID string) (*domain.WatchedCompany, bool, error) {
 	job, err := s.jobs.GetByID(ctx, jobID)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to get job %s: %w", jobID, err)
+		return nil, false, fmt.Errorf("failed to get job %s: %w", jobID, ports.AsReference(err))
 	}
 	board, ok := domain.BoardOf(*job)
 	if !ok {

@@ -29,7 +29,7 @@ func newTestBrowserWorkerService(t *testing.T) (
 	eventRepo := newFakeAgentEventRepository()
 	worker = &fakeBrowserWorker{}
 
-	appSvc := NewApplicationService(appRepo)
+	appSvc := NewApplicationService(appRepo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 	answers := NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), &fakeLLMProvider{providerName: "fake-llm"}, nil)
 
 	svc = NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answers,
@@ -216,7 +216,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		runRepo := newFakeAgentRunRepository()
 		eventRepo := newFakeAgentEventRepository()
 
-		appSvc := NewApplicationService(appRepo)
+		appSvc := NewApplicationService(appRepo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 		answers := NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), &fakeLLMProvider{providerName: "fake-llm"}, nil)
 		svc := NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answers, func() (ports.BrowserWorker, error) {
 			return nil, assert.AnError
@@ -399,7 +399,7 @@ func newBrowserWorkerServiceWithChooser(t *testing.T, llm *fakeLLMProvider) (
 	eventRepo := newFakeAgentEventRepository()
 	worker = &fakeBrowserWorker{}
 
-	appSvc := NewApplicationService(appRepo)
+	appSvc := NewApplicationService(appRepo, newFakeJobRepository(), newFakeCandidateRepository(), newFakeResumeRepository())
 	answers := NewAnswerService(newFakeApplicationQuestionRepository(), appRepo, jobRepo, candRepo,
 		newFakeResumeRepository(), &fakeLLMProvider{providerName: "fake-llm"}, nil)
 

@@ -228,3 +228,15 @@ func TestCompanies_Suggestions(t *testing.T) {
 		assert.NotEmpty(t, suggestion.MeasuredOn)
 	}
 }
+
+// Watching by a job that does not exist is the body's mistake, 422, not a
+// 404 that would read as the watch list itself being gone.
+func TestCompanies_WatchUnknownJobIsUnprocessable(t *testing.T) {
+	t.Parallel()
+	client, _ := companiesServer(t)
+
+	status, message := requestError(t, client, http.MethodPost, "/v1/companies", map[string]string{"job_id": "no-such-job"})
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.Contains(t, message, "job not found: no-such-job")
+}

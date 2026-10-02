@@ -771,9 +771,10 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	llmProv := &fakeLLMProvider{response: ports.Response{Content: `{"score":80,"confidence":0.9,"rationale":"good fit"}`, Model: "fake-model"}}
 	source := &fakeJobSource{}
 
-	savedSearchSvc := services.NewSavedSearchService(newFakeSavedSearchRepository())
+	savedSearchRepo := newFakeSavedSearchRepository()
+	savedSearchSvc := services.NewSavedSearchService(savedSearchRepo)
 	credentialStore := &fakeCredentialStore{secrets: map[string]string{}}
-	appSvc := services.NewApplicationService(appRepo)
+	appSvc := services.NewApplicationService(appRepo, jobRepo, candRepo, resRepo)
 	docConverter := &fakeDocumentConverter{}
 	aboutYouSvc := services.NewAboutYouService(newFakePersonalAnswerRepository(), candRepo, appRepo, jobRepo, questionRepo, llmProv)
 	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
@@ -781,14 +782,19 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	runRepo := newFakeAgentRunRepository()
 	eventRepo := newFakeAgentEventRepository()
 
+	discoverySvc := services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil, docConverter)
+	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
+
 	svc := Services{
-		Candidates:  candRepo,
-		Onboarding:  services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, llmProv, docConverter), savedSearchSvc, llmProv, nil),
-		Profile:     services.NewProfileService(candRepo),
-		Resume:      services.NewResumeService(resRepo, llmProv, docConverter),
-		Discovery:   services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil, docConverter),
-		Searches:    savedSearchSvc,
-		Matching:    services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv),
+		Candidates: candRepo,
+		Onboarding: services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, candRepo, llmProv, docConverter), savedSearchSvc, llmProv, nil),
+		Profile:    services.NewProfileService(candRepo),
+		Resume:     services.NewResumeService(resRepo, candRepo, llmProv, docConverter),
+		Discovery:  discoverySvc,
+		Searches:   savedSearchSvc,
+		Scouts: services.NewScoutService(&fakeScoutRepository{}, savedSearchRepo, candRepo, appRepo, runRepo, eventRepo,
+			discoverySvc, matchingSvc),
+		Matching:    matchingSvc,
 		Settings:    services.NewSettingsService(settingsRepo),
 		Application: appSvc,
 		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc),
@@ -932,8 +938,9 @@ func TestClient_ProfileRoundTripCarriesLinksAndAuthorizations(t *testing.T) {
 }
 
 func TestClient_ResumeLifecycle(t *testing.T) {
-	client, _, _ := testServer(t)
+	client, candRepo, _ := testServer(t)
 	ctx := context.Background()
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", FirstName: "Ada"}))
 
 	// Conversion is a port (ADR-0016), so the whole lifecycle goes over
 	// HTTP here without a real PDF or a PDF engine. Before that it could
@@ -1069,28 +1076,113 @@ func TestServer_MissingRecordIsNotFound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
-			var reader io.Reader
-			if tt.body != nil {
-				encoded, err := json.Marshal(tt.body)
-				require.NoError(t, err)
-				reader = strings.NewReader(string(encoded))
-			}
-			req, err := http.NewRequestWithContext(context.Background(), tt.method, client.baseURL+tt.path, reader)
-			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
+			status, message := requestError(t, client, tt.method, tt.path, tt.body)
 
-			res, err := http.DefaultClient.Do(req)
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = res.Body.Close() })
-
-			assert.Equal(t, http.StatusNotFound, res.StatusCode)
-			var body struct {
-				Error string `json:"error"`
-			}
-			require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
-			assert.Contains(t, body.Error, tt.want)
+			assert.Equal(t, http.StatusNotFound, status)
+			assert.Contains(t, message, tt.want)
 		})
 	}
+}
+
+// A record a request body names that does not exist is 422, not 404 and not
+// 500: the record the request is addressed to is there, and it is the
+// request that is wrong. POST /v1/applications had failed at the database's
+// foreign key as a 500, and a 404 would read to the desktop as the page's
+// own record being gone.
+func TestServer_UnknownReferenceIsUnprocessable(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := &domain.Candidate{FirstName: "Ada"}
+	require.NoError(t, candRepo.Save(ctx, candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Engineer"}
+	job, err := client.ImportJob(ctx, "https://acme.example/job-1")
+	require.NoError(t, err)
+	jobID := job.ID
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+		want   string
+	}{
+		{"application's job", http.MethodPost, "/v1/applications",
+			map[string]string{"job_id": "no-such-job", "candidate_id": candidate.ID}, "job not found: no-such-job"},
+		{"application's candidate", http.MethodPost, "/v1/applications",
+			map[string]string{"job_id": jobID, "candidate_id": "no-such-candidate"}, "candidate not found: no-such-candidate"},
+		{"application's resume", http.MethodPost, "/v1/applications",
+			map[string]string{"job_id": jobID, "candidate_id": candidate.ID, "resume_id": "no-such-resume"}, "resume not found: no-such-resume"},
+		{"resume's candidate", http.MethodPost, "/v1/resumes",
+			map[string]string{"candidate_id": "no-such-candidate", "file_path": "/tmp/cv.pdf"}, "candidate not found: no-such-candidate"},
+		{"match's job", http.MethodPost, "/v1/matches/analyze",
+			map[string]string{"job_id": "no-such-job", "candidate_id": candidate.ID}, "job not found: no-such-job"},
+		{"match's candidate", http.MethodPost, "/v1/matches/analyze",
+			map[string]string{"job_id": jobID, "candidate_id": "no-such-candidate"}, "candidate not found: no-such-candidate"},
+		{"scout's saved search", http.MethodPost, "/v1/scouts",
+			map[string]any{"name": "Go", "saved_search_id": "no-such-search", "min_match_score": 70}, "saved search not found: no-such-search"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, message := requestError(t, client, tt.method, tt.path, tt.body)
+
+			assert.Equal(t, http.StatusUnprocessableEntity, status)
+			assert.Contains(t, message, tt.want)
+		})
+	}
+
+	apps, err := client.ListApplications(ctx, candidate.ID)
+	require.NoError(t, err)
+	assert.Empty(t, apps, "no application should have been created")
+}
+
+// Saving a scout tells apart the three ways it can be wrong: a saved search
+// that does not exist is the body's (422), a scout that does not exist the
+// URL's (404), and an impossible setting the caller's to fix (400). All
+// three were 400.
+func TestServer_SaveScoutStatus(t *testing.T) {
+	client, _, _ := testServer(t)
+
+	status, _ := requestError(t, client, http.MethodPut, "/v1/scouts/no-such-scout",
+		map[string]any{"name": "Go", "saved_search_id": "no-such-search", "min_match_score": 70, "max_applications_per_run": 5, "source": "local"})
+	assert.Equal(t, http.StatusUnprocessableEntity, status, "the saved search is checked before the scout is looked up")
+
+	search, err := client.CreateSavedSearch(context.Background(), "Go", domain.SearchCriteria{Keywords: "golang"})
+	require.NoError(t, err)
+	status, message := requestError(t, client, http.MethodPut, "/v1/scouts/no-such-scout",
+		map[string]any{"name": "Go", "saved_search_id": search.ID, "min_match_score": 70, "max_applications_per_run": 5, "source": "local"})
+	assert.Equal(t, http.StatusNotFound, status)
+	assert.Contains(t, message, "scout not found: no-such-scout")
+
+	status, _ = requestError(t, client, http.MethodPost, "/v1/scouts",
+		map[string]any{"name": "Go", "saved_search_id": "any", "min_match_score": 101})
+	assert.Equal(t, http.StatusBadRequest, status)
+}
+
+// requestError sends method and path with body as JSON, and returns the
+// status and the error message the daemon answered with.
+func requestError(t *testing.T, client *Client, method, path string, body any) (int, string) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = strings.NewReader(string(encoded))
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, client.baseURL+path, reader)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = res.Body.Close() })
+
+	var answer struct {
+		Error string `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&answer))
+	return res.StatusCode, answer.Error
 }
 
 func TestClient_ApplicationLifecycle(t *testing.T) {
@@ -2407,4 +2499,52 @@ func TestServer_Countries(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "a time zone JobPilot does not know is the caller's to fix")
 	profile.TimeZone = "Europe/Berlin"
 	require.NoError(t, client.UpdateProfile(ctx, &profile))
+}
+
+// fakeScoutRepository holds scouts in memory.
+type fakeScoutRepository struct {
+	scouts map[string]*domain.Scout
+}
+
+func (f *fakeScoutRepository) Save(_ context.Context, scout *domain.Scout) error {
+	if f.scouts == nil {
+		f.scouts = map[string]*domain.Scout{}
+	}
+	if scout.ID == "" {
+		scout.ID = fmt.Sprintf("scout-%d", len(f.scouts)+1)
+	}
+	f.scouts[scout.ID] = scout
+	return nil
+}
+
+func (f *fakeScoutRepository) GetByID(_ context.Context, id string) (*domain.Scout, error) {
+	scout, ok := f.scouts[id]
+	if !ok {
+		return nil, &ports.NotFoundError{Kind: "scout", ID: id}
+	}
+	return scout, nil
+}
+
+func (f *fakeScoutRepository) Update(_ context.Context, scout *domain.Scout) error {
+	if _, ok := f.scouts[scout.ID]; !ok {
+		return &ports.NotFoundError{Kind: "scout", ID: scout.ID}
+	}
+	f.scouts[scout.ID] = scout
+	return nil
+}
+
+func (f *fakeScoutRepository) List(_ context.Context) ([]*domain.Scout, error) {
+	var scouts []*domain.Scout
+	for _, scout := range f.scouts {
+		scouts = append(scouts, scout)
+	}
+	return scouts, nil
+}
+
+func (f *fakeScoutRepository) Delete(_ context.Context, id string) error {
+	if _, ok := f.scouts[id]; !ok {
+		return &ports.NotFoundError{Kind: "scout", ID: id}
+	}
+	delete(f.scouts, id)
+	return nil
 }

@@ -42,7 +42,7 @@ func (f *fakeCandidateRepository) GetByID(_ context.Context, id string) (*domain
 	}
 	c, ok := f.candidates[id]
 	if !ok {
-		return nil, fmt.Errorf("candidate not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "candidate", ID: id}
 	}
 	return c, nil
 }
@@ -91,7 +91,7 @@ func (f *fakeResumeRepository) GetByID(_ context.Context, id string) (*domain.Re
 	}
 	r, ok := f.resumes[id]
 	if !ok {
-		return nil, fmt.Errorf("resume not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "resume", ID: id}
 	}
 	return r, nil
 }
@@ -144,7 +144,7 @@ func (f *fakeJobRepository) Save(_ context.Context, job *domain.Job) error {
 func (f *fakeJobRepository) GetByID(_ context.Context, id string) (*domain.Job, error) {
 	j, ok := f.jobs[id]
 	if !ok {
-		return nil, fmt.Errorf("job not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "job", ID: id}
 	}
 	return j, nil
 }
@@ -236,13 +236,13 @@ func (f *fakeJobRepository) SaveSignals(_ context.Context, job *domain.Job) erro
 			return nil
 		}
 	}
-	return fmt.Errorf("job not found: %s", job.ID)
+	return &ports.NotFoundError{Kind: "job", ID: job.ID}
 }
 
 func (f *fakeJobRepository) SetNotInterested(_ context.Context, id string, at *time.Time) error {
 	j, ok := f.jobs[id]
 	if !ok {
-		return fmt.Errorf("job not found: %s", id)
+		return &ports.NotFoundError{Kind: "job", ID: id}
 	}
 	j.NotInterestedAt = at
 	return nil
@@ -282,7 +282,7 @@ func (f *fakeSavedSearchRepository) Save(_ context.Context, search *domain.Saved
 func (f *fakeSavedSearchRepository) GetByID(_ context.Context, id string) (*domain.SavedSearch, error) {
 	search, ok := f.searches[id]
 	if !ok {
-		return nil, fmt.Errorf("saved search not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "saved search", ID: id}
 	}
 	return search, nil
 }
@@ -381,7 +381,7 @@ func (f *fakeMatchRepository) Save(_ context.Context, m *domain.JobMatch) error 
 func (f *fakeMatchRepository) GetByID(_ context.Context, id string) (*domain.JobMatch, error) {
 	m, ok := f.matches[id]
 	if !ok {
-		return nil, fmt.Errorf("match not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "match", ID: id}
 	}
 	return m, nil
 }
@@ -502,7 +502,7 @@ func (f *fakeApplicationRepository) Save(_ context.Context, a *domain.Applicatio
 func (f *fakeApplicationRepository) GetByID(_ context.Context, id string) (*domain.Application, error) {
 	a, ok := f.applications[id]
 	if !ok {
-		return nil, fmt.Errorf("application not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "application", ID: id}
 	}
 	return a, nil
 }
@@ -528,7 +528,7 @@ func (f *fakeApplicationRepository) TransitionState(_ context.Context, applicati
 	}
 	a, ok := f.applications[applicationID]
 	if !ok {
-		return fmt.Errorf("application not found: %s", applicationID)
+		return &ports.NotFoundError{Kind: "application", ID: applicationID}
 	}
 	if a.State != from {
 		return fmt.Errorf("application %s is not currently in state %s", applicationID, from)
@@ -569,7 +569,7 @@ func (f *fakeCoverLetterRepository) Save(_ context.Context, c *domain.CoverLette
 func (f *fakeCoverLetterRepository) GetByID(_ context.Context, id string) (*domain.CoverLetter, error) {
 	c, ok := f.letters[id]
 	if !ok {
-		return nil, fmt.Errorf("cover letter not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "cover letter", ID: id}
 	}
 	return c, nil
 }
@@ -610,7 +610,7 @@ func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.Ap
 func (f *fakeApplicationQuestionRepository) GetByID(_ context.Context, id string) (*domain.ApplicationQuestion, error) {
 	q, ok := f.questions[id]
 	if !ok {
-		return nil, fmt.Errorf("application question not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "application question", ID: id}
 	}
 	return q, nil
 }
@@ -691,7 +691,7 @@ func (f *fakeAgentRunRepository) Update(_ context.Context, run *domain.AgentRun)
 func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.AgentRun, error) {
 	run, ok := f.runs[id]
 	if !ok {
-		return nil, fmt.Errorf("agent run not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "agent run", ID: id}
 	}
 	return run, nil
 }
@@ -894,4 +894,22 @@ func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (por
 
 func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {
 	return f.convert(html)
+}
+
+// candidatesWith is a candidate repository holding a candidate for each ID.
+func candidatesWith(ids ...string) *fakeCandidateRepository {
+	repo := newFakeCandidateRepository()
+	for _, id := range ids {
+		repo.candidates[id] = &domain.Candidate{ID: id}
+	}
+	return repo
+}
+
+// jobsWith is a job repository holding a job for each ID.
+func jobsWith(ids ...string) *fakeJobRepository {
+	repo := newFakeJobRepository()
+	for _, id := range ids {
+		repo.jobs[id] = &domain.Job{ID: id}
+	}
+	return repo
 }
