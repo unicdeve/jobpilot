@@ -7,7 +7,7 @@ implemented — foundation, candidate profile, job discovery, matching,
 application generation, a desktop app, and a browser automation worker —
 with explicit gaps noted below.
 Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
-Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from the desktop or the CLI. Scheduling remains deferred by ADR-0009.
+Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 
 ## Implemented
 
@@ -30,6 +30,13 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 - Saved-search default changes and deletion with replacement promotion are transactional, preserving the previous state on failure.
   Criteria edits preserve a concurrently changed default.
+- Scout schedules (ADR-0027, `docs/02_features/10_scouts.md`): a scout runs every N hours or daily at a local time, started by launchd, a systemd user timer or Task Scheduler whether or not JobPilot is open.
+  An alarm runs `jobpilot scout wake <id>`, which finds or starts the daemon and asks `POST /v1/scouts/{id}/wake`; core decides whether the scout is due, and a due run belongs to the daemon.
+  Runs happen one at a time, which also stops two overlapping runs creating the same application twice.
+  The `scouts` table is the schedule: alarms are reconciled to it after every change, at start-up, and before "delete all data", by fingerprint, and a scout shows when it next runs and anything stopping its alarm.
+  The desktop's scout editor and list, `jobpilot-cli scout schedule`, and `trigger` on every run (`started_by`, migration `00022_scout_schedules.sql`) say which runs were the schedule's.
+  Measured on macOS with a real launchd agent; Linux and Windows are built and unit-tested, not yet run.
+  Building it fixed three faults: editing a scout erased its last run, a finishing run rewrote the whole scout row, and the CLI cut every request off at 60 seconds, cancelling a long scout run or letter in the daemon.
 - Scout cancellation preserves completed applications and finalizes the run with a separate five-second deadline, including cancellation during the final scoring call.
   Best-effort persistence failures are logged rather than silently discarded.
 - Onboarding flow: data directory + schema init, LLM connectivity check,
@@ -615,9 +622,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
   companies and location/work-arrangement live on the saved search and are
   applied by `SearchCriteria.Matches`. A scout adds only a match-score floor
   and a per-run ceiling.
-  A scout is still started by the user. Scheduling needs its own decision
-  under ADR-0009 and is deferred, as is unattended preparation in the
-  browser.
+  A scout is started by the user or by its schedule (ADR-0027). Unattended
+  preparation in the browser stays deferred.
   `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
   "Assist does not interact with external application forms" is enforced in core: `BrowserWorkerService.PrepareApplication` refuses an Assist application before a browser opens (`409` over HTTP). It had been stated and not checked.
 - The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
@@ -646,7 +652,8 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run manually from 
 
 ## Next
 
-1. Scout scheduling, which `docs/02_features/10_scouts.md` deferred and ADR-0009 constrains: a schedule is either the desktop starting work while it is open, or an OS-level scheduler starting the daemon. That needs its own decision.
+1. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
+   Beside it, settling the app's bundle identifier, still Tauri's placeholder `com.user.jobpilot`, which names the macOS agents: changing it after release means recognising both (ADR-0027 §7). An uninstalled JobPilot also leaves its alarms behind until packaging, when it exists, removes them.
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, notifications, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.

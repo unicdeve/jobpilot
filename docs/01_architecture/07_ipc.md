@@ -92,6 +92,17 @@ Every cover letter the API returns — generated, listed or edited — and every
 They are worked out from the text on every read and never stored, so a client shows what it is given and an edit comes back re-checked.
 `flags` is left out when there is nothing to look at.
 
+## Scouts and their schedules
+
+A scout carries `schedule`, `{"kind": "off" | "every" | "daily", "every_hours", "daily_at"}`, with `daily_at` in minutes after the computer's local midnight; left out, it is off (ADR-0027).
+Reading one adds what the daemon works out and never stores: `next_run_at`, `alarm` (`{"state": "scheduled" | "missing" | "switched_off" | "unavailable", "reason"}`) and `activity` (`running` or `waiting`).
+`POST /v1/scouts/{id}/wake` is what a scout's alarm asks, through `jobpilot scout wake`: it answers at once with `{"outcome", "next_run_at"}`, the outcome being `started`, `not_due`, `disabled`, `unscheduled` or `already_running`, and a run it starts belongs to the daemon rather than to the request.
+`POST /v1/scouts/{id}/run` still runs one in the request, and waits for a run already in progress, since runs happen one at a time.
+A run in `GET /v1/scout-runs` and the activity endpoints carries `trigger`, `manual` or `schedule`.
+
+The Go client bounds connecting to the daemon, not the whole request: a scout run or a letter from a local model can take minutes, and a request cut off by the client is cancelled in the daemon.
+A caller that wants a limit puts it on the context.
+
 ## A missing record is 404, a missing reference 422
 
 Every error is `{"error": "..."}` with a status that says whose it is.

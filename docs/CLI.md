@@ -42,6 +42,18 @@ This document lists the currently implemented CLI commands for the JobPilot.
 - `jobpilot-cli company suggestions`: Lists the starter list's companies you do not watch yet, each with how many of its open roles could be done from anywhere or from more than one continent when measured, and the address to watch it by.
 - `jobpilot-cli search import [url]`: Imports one job by its URL. When no source's API can fetch that URL, the page is opened in the browser worker and its content extracted (see `docs/02_features/04_job_discovery.md` AC-007). Requires internet access.
 
+## Scouts
+
+A scout runs a saved search, scores what it finds, and creates applications for you to review. It never contacts an employer and never submits (`docs/02_features/10_scouts.md`).
+
+- `jobpilot-cli scout list`: Lists your scouts with their rules and when each runs: its next run, whether it is running or waiting for another scout's run, and anything stopping its schedule, such as a schedule switched off in macOS's Login Items.
+- `jobpilot-cli scout add [name] --search <saved-search-id>`: Creates a scout. `--min-score` (default 70), `--max-per-run` (default 10) and `--source` (`local` to consider stored jobs, `sources` to fetch from the job boards first). `--every <hours>` (1 to 24) or `--daily <HH:MM>` schedules it; without either it runs only when you run it.
+- `jobpilot-cli scout schedule [scout-id]`: Sets when a scout runs on its own: `--every <hours>`, `--daily <HH:MM>` on this computer's clock, or `--off`. The operating system's scheduler starts it, whether or not JobPilot is open, while you are logged in and the computer is awake; a run missed while the computer was off or asleep runs once when it is next on (ADR-0027).
+- `jobpilot-cli scout run [scout-id]`: Runs a scout now and prints what it considered, rejected and created. Scout runs happen one at a time, so this waits for one already in progress.
+- `jobpilot-cli scout runs`: Lists recent scout runs, each marked as started by you or on schedule.
+- `jobpilot-cli scout trail [run-id]`: Shows each step one run took.
+- `jobpilot-cli scout delete [scout-id]`: Deletes a scout and its schedule. Applications it created stay.
+
 ## Deleting Data
 
 Every deletion first shows what it takes with it and asks. `--yes` skips the question but not the list. Without a terminal to ask on, nothing is deleted. If what it reaches changes before it is carried out — a scout created an application meanwhile — the new list is shown and asked about again.
