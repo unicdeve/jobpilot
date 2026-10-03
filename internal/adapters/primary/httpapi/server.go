@@ -26,24 +26,25 @@ import (
 // mirrors exactly what cmd/jobpilot-cli wired directly before this package
 // existed — this is a transport change, not a behavior change.
 type Services struct {
-	Candidates  ports.CandidateRepository
-	Onboarding  *services.OnboardingService
-	Profile     *services.ProfileService
-	Resume      *services.ResumeService
-	Discovery   *services.JobDiscoveryService
-	Searches    *services.SavedSearchService
-	Matching    *services.MatchingService
-	Settings    *services.SettingsService
-	Application *services.ApplicationService
-	CoverLetter *services.CoverLetterService
-	Answers     *services.AnswerService
-	Browser     *services.BrowserWorkerService
-	Scouts      *services.ScoutService
-	Credentials *services.CredentialService
-	Activity    *services.AgentActivityService
-	Deletion    *services.DeletionService
-	AboutYou    *services.AboutYouService
-	Companies   *services.CompanyWatchService
+	Candidates    ports.CandidateRepository
+	Onboarding    *services.OnboardingService
+	Profile       *services.ProfileService
+	Resume        *services.ResumeService
+	Discovery     *services.JobDiscoveryService
+	Searches      *services.SavedSearchService
+	Matching      *services.MatchingService
+	Settings      *services.SettingsService
+	Application   *services.ApplicationService
+	CoverLetter   *services.CoverLetterService
+	Answers       *services.AnswerService
+	Browser       *services.BrowserWorkerService
+	Scouts        *services.ScoutService
+	Credentials   *services.CredentialService
+	Activity      *services.AgentActivityService
+	Deletion      *services.DeletionService
+	AboutYou      *services.AboutYouService
+	Companies     *services.CompanyWatchService
+	Notifications *services.NotificationService
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -135,6 +136,7 @@ func NewHandler(svc Services) http.Handler {
 	registerDeletions(mux, svc.Deletion)
 	registerAboutYou(mux, svc.AboutYou)
 	registerCompanies(mux, svc.Companies)
+	registerNotifications(mux, svc.Notifications)
 
 	return withCORS(mux)
 }
