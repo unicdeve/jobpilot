@@ -550,3 +550,36 @@ func TestScoutRun_GivesUpWaitingWhenItsRequestEnds(t *testing.T) {
 	require.NoError(t, <-first)
 	assert.Empty(t, f.svc.activity(f.scout.ID))
 }
+
+// TestScoutWake_ARunThatCannotStartCountsAsARun is what a real launchd
+// alarm showed: with no profile, a scheduled run failed before it recorded
+// itself, so the scout stayed due, and the alarm's run-at-load and the
+// next wake each ran it and told the user twice.
+func TestScoutWake_ARunThatCannotStartCountsAsARun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f, _, c := scheduledFixture(t, func(s *domain.Scout) { s.Schedule = daily(8) })
+	f.svc.candidates = newFakeCandidateRepository()
+	notifier := &recordingNotifier{}
+	f.svc.WithNotifier(notifier)
+	c.Set(c.Now().Add(24 * time.Hour))
+
+	wake, err := f.svc.Wake(ctx, f.scout.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.WakeStarted, wake.Outcome)
+	f.svc.Wait()
+
+	require.Len(t, f.runs.runs, 1)
+	for _, run := range f.runs.runs {
+		assert.Equal(t, domain.AgentRunStatusFailed, run.Status)
+		assert.Contains(t, run.Error, "candidate profile")
+	}
+	require.Len(t, notifier.told(), 1)
+	assert.True(t, notifier.told()[0].Failed)
+
+	again, err := f.svc.Wake(ctx, f.scout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.WakeNotDue, again.Outcome, "it is retried at its next time, not at every alarm")
+	f.svc.Wait()
+	assert.Len(t, notifier.told(), 1)
+}

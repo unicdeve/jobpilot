@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path/filepath"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -103,6 +104,68 @@ func (s *SettingsService) SaveDiscoverySettings(ctx context.Context, settings *d
 	}
 	if err := s.repo.Set(ctx, discoverySettingsKey, string(value)); err != nil {
 		return fmt.Errorf("failed to save discovery settings: %w", err)
+	}
+	return nil
+}
+
+// notificationSettingsKey is the user_settings key for NotificationSettings.
+const notificationSettingsKey = "notification_settings"
+
+// desktopExecutableKey is the user_settings key for where the desktop
+// app's executable is, as the app last said (ADR-0028 §1).
+const desktopExecutableKey = "desktop_executable"
+
+// GetNotificationSettings returns the user's choices about notifications,
+// or the defaults when they have made none (ADR-0028 §6).
+func (s *SettingsService) GetNotificationSettings(ctx context.Context) (*domain.NotificationSettings, error) {
+	value, found, err := s.repo.Get(ctx, notificationSettingsKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get notification settings: %w", err)
+	}
+	settings := domain.DefaultNotificationSettings()
+	if !found {
+		return &settings, nil
+	}
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return nil, fmt.Errorf("failed to parse stored notification settings: %w", err)
+	}
+	return &settings, nil
+}
+
+// SaveNotificationSettings validates and persists the user's choices about
+// notifications.
+func (s *SettingsService) SaveNotificationSettings(ctx context.Context, settings *domain.NotificationSettings) error {
+	if err := settings.Validate(); err != nil {
+		return err
+	}
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to encode notification settings: %w", err)
+	}
+	if err := s.repo.Set(ctx, notificationSettingsKey, string(value)); err != nil {
+		return fmt.Errorf("failed to save notification settings: %w", err)
+	}
+	return nil
+}
+
+// GetDesktopExecutable returns where the desktop app's executable is, as
+// the app last said, or "" if it never has.
+func (s *SettingsService) GetDesktopExecutable(ctx context.Context) (string, error) {
+	value, _, err := s.repo.Get(ctx, desktopExecutableKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get the desktop app's location: %w", err)
+	}
+	return value, nil
+}
+
+// SaveDesktopExecutable records where the desktop app's executable is. The
+// app says so each time it starts, so a moved or rebuilt app is found.
+func (s *SettingsService) SaveDesktopExecutable(ctx context.Context, path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("the desktop app's executable must be an absolute path, got %q", path)
+	}
+	if err := s.repo.Set(ctx, desktopExecutableKey, path); err != nil {
+		return fmt.Errorf("failed to save the desktop app's location: %w", err)
 	}
 	return nil
 }

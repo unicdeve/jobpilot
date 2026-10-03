@@ -33,6 +33,8 @@ const (
 	// RecordWatchedCompany is a company whose hiring page the candidate
 	// watches (ADR-0024 §2). Only "delete all data" reaches it.
 	RecordWatchedCompany RecordKind = "watched_company"
+	// RecordNotification is something JobPilot told the user (ADR-0028).
+	RecordNotification RecordKind = "notification"
 )
 
 // DeletionEffect is what deleting a referenced record does to a record
@@ -87,6 +89,10 @@ var DeletionRules = []DeletionRule{
 	// profile, or the one application it was said for (ADR-0022 §1).
 	{RecordPersonalAnswer, RecordCandidate, DeletionCascade},
 	{RecordPersonalAnswer, RecordApplication, DeletionCascade},
+	// A notification is the record of what the user was told, and
+	// outlives the scout and the run it was about (ADR-0028 §4).
+	{RecordNotification, RecordScout, DeletionDetach},
+	{RecordNotification, RecordAgentRun, DeletionDetach},
 }
 
 // RulesReferencing returns the rules for records that reference kind: what
