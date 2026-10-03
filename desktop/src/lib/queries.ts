@@ -1097,11 +1097,16 @@ export function usePrepareInBrowser(opts?: MutationOpts<Application, string>) {
 
 /// useScouts loads the standing instructions that shortlist jobs for
 /// review. An empty list is where every installation starts.
-export function useScouts() {
+///
+/// While a scout is running or waiting its turn, or poll is set because a
+/// run was just asked for, the list is read every two seconds, so a run
+/// the schedule started shows, and so does its end.
+export function useScouts(poll = false) {
   const api = useApi();
   return useQuery<Scout[]>({
     queryKey: keys.scouts,
     queryFn: () => api.listScouts(),
+    refetchInterval: (query) => (poll || query.state.data?.some((scout) => scout.activity) ? 2000 : false),
   });
 }
 

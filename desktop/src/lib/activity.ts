@@ -12,6 +12,13 @@ export function taskLabel(taskType: string): string {
   return TASK_LABELS[taskType as AgentTaskType] ?? taskType;
 }
 
+/// runKind is what kind of run it was, and for a scout run whether its
+/// schedule started it rather than the user.
+export function runKind(run: Pick<AgentRunSummary, "task_type" | "trigger">): string {
+  const label = taskLabel(run.task_type);
+  return run.trigger === "schedule" ? `${label}, on schedule` : label;
+}
+
 /// runSubject names what a run served: its scout, or its application's job.
 /// Either can be deleted after the run, which keeps its record regardless.
 export function runSubject(run: AgentRunSummary): string {

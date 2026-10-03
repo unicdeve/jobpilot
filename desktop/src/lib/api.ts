@@ -49,10 +49,20 @@ import type {
 } from "./types";
 
 /**
- * ScoutInput is the part of a Scout a caller owns. Identity, timestamps
- * and the last-run time are the daemon's.
+ * ScoutInput is the part of a Scout a caller owns. Identity, timestamps,
+ * the last-run time and what the daemon works out on reading are its own.
  */
-export type ScoutInput = Omit<Scout, "id" | "last_run_at" | "created_at" | "updated_at">;
+export type ScoutInput = Omit<
+  Scout,
+  | "id"
+  | "last_run_at"
+  | "created_at"
+  | "updated_at"
+  | "schedule_set_at"
+  | "next_run_at"
+  | "alarm"
+  | "activity"
+>;
 
 /// ApiError is a failed daemon request. status is the HTTP status, absent
 /// when the daemon could not be reached at all.
