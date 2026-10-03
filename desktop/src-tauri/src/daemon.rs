@@ -45,6 +45,36 @@ fn health_check(port: u16) -> bool {
         .is_ok()
 }
 
+/// existing_daemon returns the port of a running daemon, and never starts
+/// one. Delivering notifications uses it: the daemon that asked is running.
+pub fn existing_daemon() -> Option<u16> {
+    try_existing_daemon()
+}
+
+/// register_desktop tells the daemon where this app's executable is, so it
+/// can start the app to post a notification when the app is not open
+/// (ADR-0028 §1). It says so on every start, so a moved or rebuilt app is
+/// found. A failure costs only notifications posted while the app is
+/// closed, so it is reported and not returned.
+fn register_desktop(port: u16) {
+    let executable = match std::env::current_exe().and_then(|path| path.canonicalize()) {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("could not tell the daemon where the app is: {err}");
+            return;
+        }
+    };
+    let url = format!("http://127.0.0.1:{port}/v1/desktop");
+    let result = ureq::put(&url)
+        .config()
+        .timeout_global(Some(DAEMON_HEALTH_TIMEOUT))
+        .build()
+        .send_json(serde_json::json!({ "executable": executable }));
+    if let Err(err) = result {
+        eprintln!("could not tell the daemon where the app is: {err}");
+    }
+}
+
 /// try_existing_daemon reads the discovery file left by a running daemon
 /// and confirms it is actually reachable — a stale file can be left behind
 /// by an unclean shutdown, so the file alone is never trusted.
@@ -133,6 +163,12 @@ fn spawn_daemon() -> Result<(), String> {
 /// ensure_daemon connects to a running jobpilot daemon, starting one if
 /// none is currently reachable, and returns the port it's listening on.
 pub fn ensure_daemon() -> Result<u16, String> {
+    let port = find_or_start_daemon()?;
+    register_desktop(port);
+    Ok(port)
+}
+
+fn find_or_start_daemon() -> Result<u16, String> {
     if let Some(port) = try_existing_daemon() {
         return Ok(port);
     }
