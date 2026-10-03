@@ -71,7 +71,7 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 - AgentRun
 - AgentEvent
 - Prompt
-- Notification
+- Notification (what the user was told about a scout run, or will be, with when it was posted and seen; ADR-0028)
 - UserSetting
 - Policy
 

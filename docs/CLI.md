@@ -53,6 +53,7 @@ A scout runs a saved search, scores what it finds, and creates applications for 
 - `jobpilot-cli scout runs`: Lists recent scout runs, each marked as started by you or on schedule.
 - `jobpilot-cli scout trail [run-id]`: Shows each step one run took.
 - `jobpilot-cli scout delete [scout-id]`: Deletes a scout and its schedule. Applications it created stay.
+- `jobpilot-cli notifications`: Shows what your scouts found while you were away, or that one could not run, and marks it seen. `--all` shows every notification and marks nothing (`docs/02_features/11_notifications.md`).
 
 ## Deleting Data
 
@@ -66,6 +67,7 @@ Every deletion first shows what it takes with it and asks. `--yes` skips the que
 
 ## Settings
 - `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured).
+- `jobpilot-cli settings notifications`: Shows whether JobPilot posts notifications about scout runs, and the score a strong match needs. `--on` / `--off` turn posting on or off; turned off, notifications still wait on the Dashboard and in `notifications`. `--strong-match <1-100>` sets the score.
 - `jobpilot-cli settings set-llm`: Interactively configure the LLM provider and model. Choose from known providers (Ollama, llama.cpp, LM Studio) or a custom OpenAI-compatible endpoint, confirm/edit the base URL, and enter the model name manually. Settings are saved even if the endpoint can't be reached at save time.
 
 ## Usage Example

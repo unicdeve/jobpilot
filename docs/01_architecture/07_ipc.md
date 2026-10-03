@@ -103,6 +103,13 @@ A run in `GET /v1/scout-runs` and the activity endpoints carries `trigger`, `man
 The Go client bounds connecting to the daemon, not the whole request: a scout run or a letter from a local model can take minutes, and a request cut off by the client is cancelled in the daemon.
 A caller that wants a limit puts it on the context.
 
+## Notifications
+
+`GET /v1/notifications` lists what JobPilot told the user, newest first (`{"notifications": [...]}`); `?unseen=true` only what they have not seen in the app.
+`POST /v1/notifications/{id}/seen` marks one seen and `POST /v1/notifications/seen` every one, each answering `{"marked": n}`.
+The desktop app's delivery mode asks `GET /v1/notifications/postable` for what to post, and claims each with `POST /v1/notifications/{id}/posted`, which answers `{"claimed": true}` to the first caller only, so a notification is never posted twice (ADR-0028 §1).
+`PUT /v1/desktop` (`{"executable"}`) is how the app tells the daemon where it is, on every start; `GET`/`PUT /v1/settings/notifications` hold `{"enabled", "strong_match_score"}`.
+
 ## A missing record is 404, a missing reference 422
 
 Every error is `{"error": "..."}` with a status that says whose it is.

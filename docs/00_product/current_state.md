@@ -30,6 +30,11 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run from the deskt
 
 - Saved-search default changes and deletion with replacement promotion are transactional, preserving the previous state on failure.
   Criteria edits preserve a concurrently changed default.
+- Notifications (ADR-0028, `docs/02_features/11_notifications.md`): a scheduled scout run that created applications or failed, and any run that created an application for a strong match (80 by default), is recorded in a `notifications` table (migration `00023_notifications.sql`) and posted by the desktop app, which the daemon starts in a windowless delivery mode so the notification is JobPilot's own on every platform.
+  The text is counts and the scout's name, written in core; a claim makes a notification post at most once; one never posted waits on the Dashboard under "While you were away".
+  Settings → Notifications and `jobpilot-cli settings notifications` turn posting off and set the strong-match score; `jobpilot-cli notifications` lists what is new.
+  A scout run is now recorded before it loads its saved search and the profile, so one that cannot start is a failed run in Activity, not an invisible one retried at every alarm.
+  Email is designed for and not built.
 - Scout schedules (ADR-0027, `docs/02_features/10_scouts.md`): a scout runs every N hours or daily at a local time, started by launchd, a systemd user timer or Task Scheduler whether or not JobPilot is open.
   An alarm runs `jobpilot scout wake <id>`, which finds or starts the daemon and asks `POST /v1/scouts/{id}/wake`; core decides whether the scout is due, and a due run belongs to the daemon.
   Runs happen one at a time, which also stops two overlapping runs creating the same application twice.
@@ -568,9 +573,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run from the deskt
 
 ## Known gaps within Phases 0–6
 
-- No settings/configuration system beyond LLM provider/model and job
-  searches (`docs/02_features/13_settings.md` — other categories like prompt
-  customization and notifications are unimplemented).
+- No settings/configuration system beyond LLM provider/model, job
+  searches and notifications (`docs/02_features/13_settings.md` — other
+  categories like prompt customization and data retention are unimplemented).
 - No job source that needs an API key is *built* yet, though credential
   storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
   USAJOBS and The Muse all refuse an unauthenticated request.
@@ -580,8 +585,7 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run from the deskt
   "Reading…" for as long as it takes.
 - Some core entities from `docs/01_architecture/04_database.md` are still
   not separate tables: `JobSource` (jobs reference their source only by
-  free-text ID), `Prompt` and `Notification` (no schema home yet for prompt
-  customization or notifications).
+  free-text ID) and `Prompt` (no schema home yet for prompt customization).
   The candidate half is done — `candidate_skills`, `candidate_experiences`,
   `candidate_links` and `candidate_work_authorizations` are real tables.
   `CandidateEducation` is deliberately not among them; see the education
@@ -653,8 +657,9 @@ Phase 8 (scouts and eligibility rules) is implemented: scouts run from the deskt
 ## Next
 
 1. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
-   Beside it, settling the app's bundle identifier, still Tauri's placeholder `com.user.jobpilot`, which names the macOS agents: changing it after release means recognising both (ADR-0027 §7). An uninstalled JobPilot also leaves its alarms behind until packaging, when it exists, removes them.
-2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, notifications, data retention).
+   Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
+   And settling the app's bundle identifier, still Tauri's placeholder `com.user.jobpilot`, which names the macOS agents: changing it after release means recognising both (ADR-0027 §7). An uninstalled JobPilot also leaves its alarms behind until packaging, when it exists, removes them.
+2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
 4. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.

@@ -44,6 +44,11 @@ settings are — discovery refuses to run without one.
 "Use a template" alongside them offers measured criteria to adopt and edit,
 rather than a blank form (`docs/02_features/14_search_templates.md`).
 
-All other categories (prompt customization, application mode, notification
-settings, data retention, storage location, browser settings, policies)
-remain unimplemented.
+Notification settings are implemented: whether to post notifications about
+scout runs, and the score a strong match needs, under Settings →
+Notifications and `jobpilot-cli settings notifications`
+(`docs/02_features/11_notifications.md`, ADR-0028).
+
+All other categories (prompt customization, application mode, data
+retention, storage location, browser settings, policies) remain
+unimplemented.
