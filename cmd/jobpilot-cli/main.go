@@ -55,6 +55,7 @@ func main() {
 	rootCmd.AddCommand(newJobCmd(client))
 	rootCmd.AddCommand(newDataCmd(client))
 	rootCmd.AddCommand(newCompanyCmd(client))
+	rootCmd.AddCommand(newNotificationsCmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
@@ -686,6 +687,7 @@ func newMatchCmd(client *httpapi.Client) *cobra.Command {
 
 func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "settings", Short: "Manage JobPilot settings"}
+	cmd.AddCommand(newNotificationSettingsCmd(client))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show",

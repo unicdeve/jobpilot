@@ -27,6 +27,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/alarms"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/credentials"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/desktopapp"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/documents"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
@@ -101,6 +102,9 @@ func run() error {
 	}
 	// Scheduled runs belong to the daemon's lifetime, and shutdown waits
 	// for them to record how they ended before the database closes.
+	// Deferred first so it runs last: a scout run the next line waits for
+	// can still record a notification and start a delivery.
+	defer svc.Notifications.Wait()
 	svc.Scouts.Start(ctx)
 	defer svc.Scouts.Wait()
 
@@ -285,6 +289,11 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		scoutSvc.WithAlarms(scoutAlarms, target)
 	}
 	savedSearchSvc.WithScoutsChanged(scoutSvc.ScoutsChanged)
+	// What a scout run found is told to the user through the desktop app,
+	// which posts it under JobPilot's own name (ADR-0028).
+	notificationSvc := services.NewNotificationService(sqlite.NewNotificationRepository(db.Conn()),
+		settingsSvc, desktopapp.Launcher{})
+	scoutSvc.WithNotifier(notificationSvc)
 	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
 	// "Delete all data" reaches past the database to the browser profile
 	// and the daemon's log (ADR-0021 §7).
@@ -292,23 +301,24 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		chrome.ProfileEraser(), system.NewDaemonLog(dataDir)).WithScoutAlarms(scoutSvc)
 
 	return httpapi.Services{
-		Candidates:  candRepo,
-		Onboarding:  onboardingSvc,
-		Profile:     profileSvc,
-		Resume:      resumeSvc,
-		Discovery:   discoverySvc,
-		Searches:    savedSearchSvc,
-		Matching:    matchingSvc,
-		Settings:    settingsSvc,
-		Application: applicationSvc,
-		CoverLetter: coverLetterSvc,
-		Answers:     answerSvc,
-		Browser:     browserSvc,
-		Scouts:      scoutSvc,
-		Credentials: credentialSvc,
-		Activity:    services.NewAgentActivityService(agentRunRepo, agentEventRepo),
-		Deletion:    deletionSvc,
-		AboutYou:    aboutYouSvc,
-		Companies:   companySvc,
+		Candidates:    candRepo,
+		Onboarding:    onboardingSvc,
+		Profile:       profileSvc,
+		Resume:        resumeSvc,
+		Discovery:     discoverySvc,
+		Searches:      savedSearchSvc,
+		Matching:      matchingSvc,
+		Settings:      settingsSvc,
+		Application:   applicationSvc,
+		CoverLetter:   coverLetterSvc,
+		Answers:       answerSvc,
+		Browser:       browserSvc,
+		Scouts:        scoutSvc,
+		Credentials:   credentialSvc,
+		Activity:      services.NewAgentActivityService(agentRunRepo, agentEventRepo),
+		Deletion:      deletionSvc,
+		AboutYou:      aboutYouSvc,
+		Companies:     companySvc,
+		Notifications: notificationSvc,
 	}, nil
 }

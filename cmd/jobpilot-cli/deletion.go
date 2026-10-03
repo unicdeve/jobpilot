@@ -34,6 +34,7 @@ var kindNames = map[domain.RecordKind][2]string{
 	domain.RecordSettings:        {"setting", "settings"},
 	domain.RecordPersonalAnswer:  {"thing you told JobPilot about yourself", "things you told JobPilot about yourself"},
 	domain.RecordWatchedCompany:  {"watched company", "watched companies"},
+	domain.RecordNotification:    {"notification", "notifications"},
 }
 
 // kindOrder lists kinds the way a person reads what they are deleting:
