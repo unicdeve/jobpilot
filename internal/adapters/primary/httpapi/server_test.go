@@ -1171,6 +1171,42 @@ func TestServer_SaveScoutStatus(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, status)
 }
 
+// A scout's schedule travels with it, and its alarm is answered at once:
+// whether it runs is the daemon's decision, made when the alarm asks.
+func TestServer_ScoutSchedule(t *testing.T) {
+	client, _, _ := testServer(t)
+	ctx := context.Background()
+	search, err := client.CreateSavedSearch(ctx, "Go", domain.SearchCriteria{Keywords: "golang"})
+	require.NoError(t, err)
+
+	scout, err := client.CreateScout(ctx, &domain.Scout{
+		Name: "Mornings", SavedSearchID: search.ID, MinMatchScore: 70, MaxApplicationsPerRun: 5,
+		Source: domain.ScoutSourceLocal, IsEnabled: true,
+		Schedule: domain.ScoutSchedule{Kind: domain.ScheduleDaily, DailyAt: 8 * 60},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScoutSchedule{Kind: domain.ScheduleDaily, DailyAt: 480}, scout.Schedule)
+	assert.NotNil(t, scout.ScheduleSetAt)
+	assert.NotNil(t, scout.NextRunAt)
+	require.NotNil(t, scout.Alarm)
+	assert.Equal(t, domain.AlarmUnavailable, scout.Alarm.State, "this daemon was given no scheduler")
+
+	wake, err := client.WakeScout(ctx, scout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.WakeNotDue, wake.Outcome, "scheduled just now for a daily time, so not yet")
+	assert.NotNil(t, wake.NextRunAt)
+
+	status, _ := requestError(t, client, http.MethodPost, "/v1/scouts/no-such-scout/wake", nil)
+	assert.Equal(t, http.StatusNotFound, status)
+
+	status, message := requestError(t, client, http.MethodPost, "/v1/scouts",
+		map[string]any{"name": "Often", "saved_search_id": search.ID, "min_match_score": 70,
+			"max_applications_per_run": 5, "source": "local", "is_enabled": true,
+			"schedule": map[string]any{"kind": "every", "every_hours": 30}})
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Contains(t, message, "every 1 to 24 hours")
+}
+
 // requestError sends method and path with body as JSON, and returns the
 // status and the error message the daemon answered with.
 func requestError(t *testing.T, client *Client, method, path string, body any) (int, string) {

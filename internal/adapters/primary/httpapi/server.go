@@ -88,6 +88,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("PUT /v1/scouts/{id}", handleUpdateScout(svc.Scouts))
 	mux.HandleFunc("DELETE /v1/scouts/{id}", handleDeleteScout(svc.Scouts))
 	mux.HandleFunc("POST /v1/scouts/{id}/run", handleRunScout(svc.Scouts))
+	mux.HandleFunc("POST /v1/scouts/{id}/wake", handleWakeScout(svc.Scouts))
 	mux.HandleFunc("GET /v1/scout-runs", handleListScoutRuns(svc.Scouts))
 	mux.HandleFunc("GET /v1/scout-runs/{id}/events", handleListScoutRunEvents(svc.Scouts))
 
@@ -950,6 +951,8 @@ type scoutRequest struct {
 	MaxApplicationsPerRun int                `json:"max_applications_per_run"`
 	Source                domain.ScoutSource `json:"source"`
 	IsEnabled             bool               `json:"is_enabled"`
+	// Schedule is when the scout runs on its own. Left out, it is off.
+	Schedule domain.ScoutSchedule `json:"schedule"`
 }
 
 func (r scoutRequest) toScout(id string) *domain.Scout {
@@ -961,6 +964,7 @@ func (r scoutRequest) toScout(id string) *domain.Scout {
 		MaxApplicationsPerRun: r.MaxApplicationsPerRun,
 		Source:                r.Source,
 		IsEnabled:             r.IsEnabled,
+		Schedule:              r.Schedule,
 	}
 }
 
@@ -1048,6 +1052,19 @@ func handleRunScout(svc *services.ScoutService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+// handleWakeScout is what a scout's alarm asks, through `jobpilot scout
+// wake`: run it if it is due (ADR-0027 §4). It answers at once; a run it
+// starts belongs to the daemon, not to this request.
+func handleWakeScout(svc *services.ScoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		wake, err := svc.Wake(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, wake)
 	}
 }
 

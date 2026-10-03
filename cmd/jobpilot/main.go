@@ -3,6 +3,10 @@
 // CLI, eventually the desktop app) over a loopback HTTP API. See
 // docs/01_architecture/01_daemon.md and
 // docs/09_decisions/0012-loopback-http-ipc.md.
+//
+// Run as `jobpilot scout wake <scout-id>`, it is instead what a scheduled
+// Scout's alarm starts: a client that asks the daemon, starting one if
+// none is running, to run that Scout if it is due (ADR-0027 §4).
 package main
 
 import (
@@ -20,6 +24,7 @@ import (
 	"path/filepath"
 
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/alarms"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/credentials"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/discovery"
@@ -45,8 +50,20 @@ const browserProfileDirName = "browser-profile"
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatalf("jobpilot daemon: %v", err)
+	args := os.Args[1:]
+	switch {
+	case len(args) == 0:
+		if err := run(); err != nil {
+			log.Fatalf("jobpilot daemon: %v", err)
+		}
+	case len(args) == 3 && args[0] == "scout" && args[1] == "wake":
+		if err := wake(args[2]); err != nil {
+			log.Fatalf("jobpilot scout wake: %v", err)
+		}
+	default:
+		fmt.Fprintln(os.Stderr, "usage: jobpilot                      run the daemon")
+		fmt.Fprintln(os.Stderr, "       jobpilot scout wake <id>      run a scheduled scout if it is due")
+		os.Exit(2)
 	}
 }
 
@@ -82,6 +99,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("wiring services: %w", err)
 	}
+	// Scheduled runs belong to the daemon's lifetime, and shutdown waits
+	// for them to record how they ended before the database closes.
+	svc.Scouts.Start(ctx)
+	defer svc.Scouts.Wait()
 
 	// Jobs stored before the reading last changed are read again, in the
 	// background: nothing waits on it, and a job not yet read is treated as
@@ -254,11 +275,21 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	scoutSvc := services.NewScoutService(
 		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),
 		candRepo, appRepo, agentRunRepo, agentEventRepo, discoverySvc, matchingSvc)
+	// A scheduled Scout is an alarm in the operating system's scheduler
+	// that runs this executable (ADR-0027).
+	if scoutAlarms, err := alarms.New(); err != nil {
+		log.Printf("scouts can be run by hand but not scheduled: %v", err)
+	} else if target, err := alarmTarget(); err != nil {
+		log.Printf("scouts can be run by hand but not scheduled: %v", err)
+	} else {
+		scoutSvc.WithAlarms(scoutAlarms, target)
+	}
+	savedSearchSvc.WithScoutsChanged(scoutSvc.ScoutsChanged)
 	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
 	// "Delete all data" reaches past the database to the browser profile
 	// and the daemon's log (ADR-0021 §7).
 	deletionSvc := services.NewDeletionService(sqlite.NewDeletionStore(db), credentialSvc,
-		chrome.ProfileEraser(), system.NewDaemonLog(dataDir))
+		chrome.ProfileEraser(), system.NewDaemonLog(dataDir)).WithScoutAlarms(scoutSvc)
 
 	return httpapi.Services{
 		Candidates:  candRepo,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,12 +26,24 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// clientDialTimeout bounds reaching the daemon. A daemon on the same
+// machine that has not accepted a connection by then is not there.
+const clientDialTimeout = 5 * time.Second
+
 // NewClient constructs a Client targeting a daemon listening on port on
 // localhost.
+//
+// Only connecting is bounded, not the whole request. Some answers take as
+// long as the work they report on: a scout run scores every job it
+// considers, and a local model can take minutes over one cover letter.
+// A caller that wants a limit puts it on the context, as Health's callers
+// do.
 func NewClient(port int) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: clientDialTimeout}).DialContext
 	return &Client{
 		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Transport: transport},
 	}
 }
 
@@ -627,6 +640,16 @@ func (c *Client) RunScout(ctx context.Context, id string) (*domain.ScoutRunRepor
 	return &report, err
 }
 
+// WakeScout asks the daemon to run a scout if it is due, which is all an
+// alarm does. It returns as soon as the daemon has decided.
+func (c *Client) WakeScout(ctx context.Context, id string) (*domain.ScoutWake, error) {
+	var wake domain.ScoutWake
+	if _, err := c.do(ctx, http.MethodPost, "/v1/scouts/"+url.PathEscape(id)+"/wake", nil, &wake); err != nil {
+		return nil, err
+	}
+	return &wake, nil
+}
+
 // ListScoutRuns returns recent scout runs, newest first.
 func (c *Client) ListScoutRuns(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
 	var runs []*domain.AgentRun
@@ -691,6 +714,7 @@ func scoutRequestFrom(scout *domain.Scout) scoutRequest {
 		MaxApplicationsPerRun: scout.MaxApplicationsPerRun,
 		Source:                scout.Source,
 		IsEnabled:             scout.IsEnabled,
+		Schedule:              scout.Schedule,
 	}
 }
 
