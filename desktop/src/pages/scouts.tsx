@@ -98,6 +98,7 @@ export function Scouts() {
       void queryClient.invalidateQueries({ queryKey: keys.scoutRuns });
       void queryClient.invalidateQueries({ queryKey: keys.applications.all });
       void queryClient.invalidateQueries({ queryKey: keys.activity.all });
+      void queryClient.invalidateQueries({ queryKey: keys.notifications });
     }
     wasBusy.current = busy;
   }, [busy, queryClient]);

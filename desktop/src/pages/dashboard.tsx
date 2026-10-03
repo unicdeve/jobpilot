@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Radar, TriangleAlert, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "../components/empty-state";
@@ -6,17 +6,19 @@ import { Page, Panel, Section } from "../components/page";
 import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
 import { runKind, runSubject } from "../lib/activity";
-import { relativeTime, scoreTone } from "../lib/format";
+import { dateTime, relativeTime, scoreTone } from "../lib/format";
 import {
   useApplications,
   useCandidateId,
   useInfiniteActivity,
   useJobCount,
   useJobsByID,
+  useMarkNotificationsSeen,
   useMatches,
   useProfile,
+  useUnseenNotifications,
 } from "../lib/queries";
-import type { Application, ApplicationState } from "../lib/types";
+import type { Application, ApplicationState, Notification } from "../lib/types";
 
 const WAITING: ApplicationState[] = ["READY_FOR_REVIEW", "APPROVED"];
 const CLOSED: ApplicationState[] = ["REJECTED", "WITHDRAWN", "NO_RESPONSE"];
@@ -76,6 +78,7 @@ export function Dashboard() {
           <BestMatches matches={matches.data.filter((m) => !appliedJobs.has(m.job_id))} />
         </div>
         <div>
+          <WhileYouWereAway />
           <RecentActivity />
         </div>
       </div>
@@ -145,6 +148,73 @@ function NeedsYou({ waiting, failed }: { waiting: Application[]; failed: Applica
         </Panel>
       )}
     </Section>
+  );
+}
+
+/// WhileYouWereAway is what JobPilot told the user that they have not seen
+/// here yet: what a scheduled scout found, or that it could not run. It is
+/// the same list the operating system was given, kept so one it never
+/// showed still reaches them (ADR-0028 §4), and it is absent when there is
+/// nothing to say.
+function WhileYouWereAway() {
+  const { data: notifications } = useUnseenNotifications();
+  const markSeen = useMarkNotificationsSeen();
+  if (!notifications || notifications.length === 0) return null;
+
+  return (
+    <Section
+      title="While you were away"
+      actions={
+        <button
+          type="button"
+          onClick={() => markSeen.mutate(undefined)}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Dismiss all
+        </button>
+      }
+    >
+      <Panel className="divide-y divide-border">
+        {notifications.slice(0, 5).map((notification) => (
+          <NotificationRow
+            key={notification.id}
+            notification={notification}
+            onSeen={() => markSeen.mutate(notification.id)}
+          />
+        ))}
+        {notifications.length > 5 && (
+          <p className="px-4 py-2 text-xs text-muted-foreground">{notifications.length - 5} more earlier</p>
+        )}
+      </Panel>
+    </Section>
+  );
+}
+
+function NotificationRow({ notification, onSeen }: { notification: Notification; onSeen: () => void }) {
+  const failed = notification.kind === "scout_failed";
+  const Icon = failed ? TriangleAlert : Radar;
+  // The run it is about, when there is one; the scouts otherwise.
+  const to = notification.run_id ? `/activity/${notification.run_id}` : "/scouts";
+
+  return (
+    <div className="flex items-start gap-3 py-2.5 pr-2 pl-4 hover:bg-accent/50">
+      <Icon className={`mt-0.5 size-4 shrink-0 ${failed ? "text-warning" : "text-primary"}`} />
+      <Link to={to} onClick={onSeen} className="min-w-0 flex-1 outline-none focus-visible:underline">
+        <p className="truncate text-[13px] font-medium">{notification.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {notification.body}{" "}
+          <span title={dateTime(notification.created_at)}>· {relativeTime(notification.created_at)}</span>
+        </p>
+      </Link>
+      <button
+        type="button"
+        onClick={onSeen}
+        aria-label={`Dismiss “${notification.title}”`}
+        className="rounded p-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
   );
 }
 

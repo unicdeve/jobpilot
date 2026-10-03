@@ -606,6 +606,28 @@ export interface AgentRunFilter {
   status: AgentRunStatus | "";
 }
 
+/// Something JobPilot told the user, or will (ADR-0028). Its text is
+/// counts and a scout's name, written by the daemon, because the same text
+/// shows on a lock screen.
+export interface Notification {
+  id: string;
+  kind: "scout_found" | "scout_failed";
+  title: string;
+  body: string;
+  scout_id?: string;
+  run_id?: string;
+  created_at: string;
+  posted_at?: string;
+  seen_at?: string;
+}
+
+/// The user's choices about notifications: whether to post them at all,
+/// and the score a strong match needs.
+export interface NotificationSettings {
+  enabled: boolean;
+  strong_match_score: number;
+}
+
 export type ScoutSource = "local" | "sources";
 
 export type RunTrigger = "manual" | "schedule";
