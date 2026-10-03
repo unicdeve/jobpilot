@@ -23,7 +23,12 @@ Supported lifecycle patterns:
    `cmd/jobpilot-cli` auto-starts `cmd/jobpilot` as a detached process if none
    is reachable (see `docs/09_decisions/0012-loopback-http-ipc.md`).
 2. Desktop application starts/communicates with a local daemon when needed.
-3. OS scheduler starts the daemon for scheduled discovery.
+3. OS scheduler starts the daemon for scheduled discovery. Implemented for
+   scheduled scouts (ADR-0027): each one's alarm in launchd, systemd or Task
+   Scheduler runs `jobpilot scout wake <id>`, a client of the daemon that
+   starts one if none is running, asks it to run the scout if it is due, and
+   exits. The daemon it starts is detached, in a session of its own, so it
+   outlives the alarm that started it.
 4. Optional user-configured startup integration can launch the daemon/UI on login.
 
 One daemon runs at a time.
@@ -45,7 +50,9 @@ Use Go concurrency primitives carefully. Work should be cancellable using `conte
 ## Shutdown
 
 Gracefully stop:
-- scheduled work
+- scheduled work: a scheduled scout run belongs to the daemon rather than to
+  the request that woke it, so shutdown cancels it and waits for it to
+  record itself as failed before the database closes
 - active network requests
 - LLM calls where possible
 - browser sessions

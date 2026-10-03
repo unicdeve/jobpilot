@@ -6,6 +6,8 @@ Implemented. Roadmap Phase 8.
 
 The data model is ADR-0018. A scout is a saved search plus a match-score floor and a per-run ceiling: the other rules below live on the saved search, which already expresses and applies them.
 
+A scout runs when the user asks, or on a schedule kept by the operating system's scheduler (ADR-0027).
+
 Replaces the Autopilot feature, per
 `docs/09_decisions/0014-scouts-and-no-unattended-submission.md`.
 
@@ -50,6 +52,26 @@ The second was declined — see "Why nothing submits" below.
 - Eligibility rules are deterministic and live in core. An LLM never decides
   whether a job clears them.
 - A Scout cannot invent candidate facts, because it writes no answers.
+
+## Schedule
+
+A scout runs only when the user runs it, every N hours (1 to 24), or once a day at a time on the computer's clock.
+There is no cron expression: two shapes cover a job search, check often or check each morning, and each is two typed columns.
+
+The operating system's scheduler starts it: launchd on macOS, a systemd user timer on Linux, Task Scheduler on Windows.
+So a scheduled scout runs whether or not JobPilot has been opened since the machine started, while the user is logged in and the machine is awake.
+
+- The alarm only asks. It runs `jobpilot scout wake <id>`, which asks the daemon, starting it if none is running, to run the scout if it is due, and exits.
+  Whether the scout is due is decided in core, so an alarm that fires twice, early, or after the scout changed does nothing wrong.
+- Due is measured from the later of the last run's start and when the schedule was set.
+  A manual run counts. A failed run counts too, and the next scheduled time is its retry.
+  A scout scheduled at 10:00 for "daily at 08:00" first runs tomorrow.
+- "Every N hours" is checked hourly, on the hour, so it runs within the hour of being due.
+- A time missed while the machine was off or asleep runs once when it is next on, never once per missed time.
+- Scout runs happen one at a time, whatever started them. A run that finds another in progress waits, and says so.
+- Pausing a scout keeps its schedule; turning the schedule off keeps the scout.
+- The database is the schedule. The alarms are rebuilt from it after every change and whenever the daemon starts; deleting a scout, its saved search, or all data removes its alarm.
+- An alarm that could not be written, one the user switched off outside JobPilot, and a system with no scheduler JobPilot can use are each shown on the scout, which still runs by hand.
 
 ## Eligibility rules
 
@@ -116,13 +138,29 @@ Cancellation stops further work, including when it arrives during the final job'
 Final status persistence has a separate five-second deadline so a cancelled request can still be recorded as failed.
 Failures to persist the run, last-run time, or activity events are logged without discarding completed applications or the partial report.
 
-## Deferred
+### AC-007
+A scheduled scout runs at its scheduled time without JobPilot having been
+opened since the machine started, and is recorded as started by its
+schedule.
 
-**How a Scout is triggered.**
-Manual "run now" is enough to build and prove the feature.
-Scheduling is constrained by ADR-0009 — there is no 24/7 daemon — so a
-schedule is either the desktop application starting work while it is open,
-or an OS-level scheduler starting the daemon. That needs its own decision.
+### AC-008
+A scheduled run happens only when the scout is enabled, still scheduled and
+due. An alarm that fires early, twice, or for a changed or deleted scout
+starts nothing.
+
+### AC-009
+A time missed while the machine was off or asleep runs once when it is next
+on.
+
+### AC-010
+Two scout runs never overlap, so no job gets two applications from them.
+
+### AC-011
+Deleting a scout, its saved search, or all data removes its alarm from the
+operating system. Saving a scout whose alarm cannot be written saves the
+scout and says why it is not scheduled.
+
+## Deferred
 
 **Unattended preparation in the browser.**
 Waking up to filled forms is the natural next step.
