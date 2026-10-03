@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -69,6 +70,21 @@ type ScoutService struct {
 	alarmMu     sync.Mutex
 	alarmStatus map[string]domain.ScoutAlarmStatus
 	alarmsRead  time.Time
+
+	// notifier is told how every run ended, and decides whether that is
+	// worth telling the user (ADR-0028). Nil tells no one.
+	notifier ScoutRunNotifier
+}
+
+// ScoutRunNotifier is told how a scout run ended.
+type ScoutRunNotifier interface {
+	ScoutRunFinished(ctx context.Context, run domain.ScoutRunOutcome)
+}
+
+// WithNotifier has the service tell notifier how every run ends.
+func (s *ScoutService) WithNotifier(notifier ScoutRunNotifier) *ScoutService {
+	s.notifier = notifier
+	return s
 }
 
 // NewScoutService constructs a ScoutService.
@@ -237,14 +253,34 @@ func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRu
 
 // execute runs a Scout, holding the run lock. It reads the Scout again,
 // because one that waited may have been changed or paused meanwhile.
-func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger domain.RunTrigger) (*domain.ScoutRunReport, error) {
+//
+// However the run ends, the notifier is told, once the Scout is known: a
+// scheduled run that could not even start is worth telling about too.
+func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger domain.RunTrigger) (report *domain.ScoutRunReport, runErr error) {
 	scout, err := s.scouts.GetByID(ctx, scoutID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the scout: %w", err)
 	}
 	if !scout.IsEnabled {
+		if trigger == domain.RunTriggerSchedule {
+			// Paused while it waited its turn.
+			return nil, errNoLongerDue
+		}
 		return nil, fmt.Errorf("scout %q is disabled", scout.Name)
 	}
+	defer func() {
+		if s.notifier == nil || errors.Is(runErr, errNoLongerDue) {
+			return
+		}
+		outcome := domain.ScoutRunOutcome{
+			ScoutID: scout.ID, ScoutName: scout.Name, Trigger: trigger,
+			Report: report, Failed: runErr != nil,
+		}
+		if report != nil {
+			outcome.RunID = report.RunID
+		}
+		s.notifier.ScoutRunFinished(ctx, outcome)
+	}()
 	if trigger == domain.RunTriggerSchedule {
 		// A manual run may have gone while this one waited its turn,
 		// which makes this one not due any more.
@@ -257,16 +293,10 @@ func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger doma
 		}
 	}
 
-	search, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load the scout's saved search: %w", err)
-	}
-
-	candidate, err := s.candidates.GetFirstCandidate(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load the candidate profile: %w", err)
-	}
-
+	// The run is recorded before anything that can fail, so a failure is
+	// a run like any other: it shows in Activity, and a scheduled scout
+	// that cannot start is not due again until its next time, rather than
+	// at every alarm (ADR-0027 §2).
 	run := &domain.AgentRun{
 		// No ApplicationID: a scout run creates several applications and
 		// belongs to none of them (ADR-0018 §4).
@@ -279,14 +309,9 @@ func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger doma
 	if err := s.runs.Save(ctx, run); err != nil {
 		return nil, fmt.Errorf("failed to record the scout run: %w", err)
 	}
+	report = &domain.ScoutRunReport{ScoutID: scout.ID, RunID: run.ID}
 
-	report := &domain.ScoutRunReport{ScoutID: scout.ID, RunID: run.ID}
-	s.record(ctx, run.ID, "scout_started", "ok",
-		fmt.Sprintf("scout %q, search %q", scout.Name, search.Name),
-		fmt.Sprintf("floor %d, ceiling %d, source %s",
-			scout.MinMatchScore, scout.MaxApplicationsPerRun, scout.Source))
-
-	runErr := s.considerJobs(ctx, scout, search, candidate, run.ID, report)
+	runErr = s.start(ctx, scout, run.ID, report)
 	if runErr == nil {
 		runErr = ctx.Err()
 	}
@@ -296,6 +321,23 @@ func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger doma
 		report.Error = runErr.Error()
 	}
 	return report, runErr
+}
+
+// start loads what a run needs and runs it.
+func (s *ScoutService) start(ctx context.Context, scout *domain.Scout, runID string, report *domain.ScoutRunReport) error {
+	search, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID)
+	if err != nil {
+		return fmt.Errorf("failed to load the scout's saved search: %w", err)
+	}
+	candidate, err := s.candidates.GetFirstCandidate(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load the candidate profile: %w", err)
+	}
+	s.record(ctx, runID, "scout_started", "ok",
+		fmt.Sprintf("scout %q, search %q", scout.Name, search.Name),
+		fmt.Sprintf("floor %d, ceiling %d, source %s",
+			scout.MinMatchScore, scout.MaxApplicationsPerRun, scout.Source))
+	return s.considerJobs(ctx, scout, search, candidate, runID, report)
 }
 
 // considerJobs is the body of a run, split out so that however it ends the
