@@ -20,6 +20,7 @@ const KIND_NAMES: Record<string, [string, string]> = {
   credential_name: ["API key name", "API key names"],
   personal_answer: ["thing you told JobPilot about yourself", "things you told JobPilot about yourself"],
   watched_company: ["watched company", "watched companies"],
+  notification: ["notification", "notifications"],
   settings: ["setting", "settings"],
 };
 
@@ -41,6 +42,7 @@ const KIND_ORDER = [
   "saved_search",
   "scout",
   "watched_company",
+  "notification",
   "credential_name",
   "settings",
 ];

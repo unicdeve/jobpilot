@@ -53,6 +53,8 @@ import type {
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
+  Notification,
+  NotificationSettings,
   Scout,
   ScoutRunReport,
   CredentialRef,
@@ -95,6 +97,8 @@ export const keys = {
   discovery: ["discovery"] as const,
   credentials: ["credentials"] as const,
   scouts: ["scouts"] as const,
+  notifications: ["notifications"] as const,
+  notificationSettings: ["notification-settings"] as const,
   scoutRuns: ["scout-runs"] as const,
   activity: {
     all: ["activity"] as const,
@@ -366,6 +370,54 @@ export function useAgentRuns(id: string | undefined) {
     queryKey: keys.applications.agentRuns(id ?? ""),
     queryFn: () => api.listAgentRuns(id!),
     enabled: !!id,
+  });
+}
+
+/// useUnseenNotifications loads what JobPilot told the user that they have
+/// not seen in the app yet. A scheduled scout can add one at any time, so
+/// it is read again every half minute: a local read of a small table.
+export function useUnseenNotifications() {
+  const api = useApi();
+  return useQuery<Notification[]>({
+    queryKey: keys.notifications,
+    queryFn: () => api.listNotifications(true),
+    refetchInterval: 30_000,
+  });
+}
+
+/// useMarkNotificationsSeen marks one notification seen, or every one when
+/// called without an id.
+export function useMarkNotificationsSeen(opts?: MutationOpts<void, string | undefined>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id?: string) => api.markNotificationsSeen(id),
+    ...opts,
+    onSettled: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.notifications });
+      opts?.onSettled?.(...args);
+    },
+  });
+}
+
+export function useNotificationSettings() {
+  const api = useApi();
+  return useQuery<NotificationSettings>({
+    queryKey: keys.notificationSettings,
+    queryFn: () => api.getNotificationSettings(),
+  });
+}
+
+export function useSaveNotificationSettings(opts?: MutationOpts<NotificationSettings, NotificationSettings>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: NotificationSettings) => api.saveNotificationSettings(settings),
+    ...opts,
+    onSuccess: (saved, ...rest) => {
+      queryClient.setQueryData(keys.notificationSettings, saved);
+      opts?.onSuccess?.(saved, ...rest);
+    },
   });
 }
 
@@ -1166,6 +1218,7 @@ export function useRunScout(opts?: MutationOpts<ScoutRunReport, string>) {
       void queryClient.invalidateQueries({ queryKey: keys.scoutRuns });
       void queryClient.invalidateQueries({ queryKey: ["applications"] });
       void queryClient.invalidateQueries({ queryKey: keys.activity.all });
+      void queryClient.invalidateQueries({ queryKey: keys.notifications });
       opts?.onSettled?.(data, error, variables, ...rest);
     },
   });

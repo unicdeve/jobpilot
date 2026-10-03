@@ -26,6 +26,8 @@ import type {
   DeletionTarget,
   DiscoveryResult,
   DiscoverySettings,
+  Notification,
+  NotificationSettings,
   Job,
   JobMatch,
   JobListFilter,
@@ -185,6 +187,14 @@ export interface ApiClient {
   listMatches(candidateId: string): Promise<JobMatch[]>;
 
   getLLMSettings(): Promise<LLMSettings>;
+  /// listNotifications returns what JobPilot told the user, newest first:
+  /// only what they have not seen in the app when unseen is set.
+  listNotifications(unseen: boolean): Promise<Notification[]>;
+  /// markNotificationsSeen marks one notification seen, or every one when
+  /// no id is given.
+  markNotificationsSeen(id?: string): Promise<void>;
+  getNotificationSettings(): Promise<NotificationSettings>;
+  saveNotificationSettings(settings: NotificationSettings): Promise<NotificationSettings>;
   getDiscoverySettings(): Promise<DiscoverySettings>;
   saveDiscoverySettings(settings: DiscoverySettings): Promise<DiscoverySettings>;
   checkLLMHealth(): Promise<LLMHealth>;
@@ -445,6 +455,20 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       request<JobMatch[]>(daemon, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
 
     getLLMSettings: () => request<LLMSettings>(daemon, "GET", "/v1/settings/llm"),
+    listNotifications: async (unseen) =>
+      (
+        await request<{ notifications: Notification[] }>(
+          daemon,
+          "GET",
+          unseen ? "/v1/notifications?unseen=true" : "/v1/notifications",
+        )
+      ).notifications,
+    markNotificationsSeen: async (id) => {
+      await request(daemon, "POST", id ? `/v1/notifications/${encodeURIComponent(id)}/seen` : "/v1/notifications/seen");
+    },
+    getNotificationSettings: () => request<NotificationSettings>(daemon, "GET", "/v1/settings/notifications"),
+    saveNotificationSettings: (settings) =>
+      request<NotificationSettings>(daemon, "PUT", "/v1/settings/notifications", settings),
     getDiscoverySettings: () => request<DiscoverySettings>(daemon, "GET", "/v1/settings/discovery"),
     saveDiscoverySettings: (settings) =>
       request<DiscoverySettings>(daemon, "PUT", "/v1/settings/discovery", settings),
