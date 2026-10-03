@@ -1425,11 +1425,23 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 				if !scout.IsEnabled {
 					state = "disabled"
 				}
-				fmt.Printf("  %s (%s)\n    score ≥ %d, up to %d per run, from %s\n    ID: %s\n",
+				fmt.Printf("  %s (%s)\n    score ≥ %d, up to %d per run, from %s\n    runs %s\n    ID: %s\n",
 					scout.Name, state, scout.MinMatchScore, scout.MaxApplicationsPerRun,
-					scout.Source, scout.ID)
+					scout.Source, describeSchedule(scout.Schedule), scout.ID)
+				switch scout.Activity {
+				case domain.ScoutRunning:
+					fmt.Println("    running now")
+				case domain.ScoutWaiting:
+					fmt.Println("    waiting for another scout's run to finish")
+				}
+				if scout.NextRunAt != nil {
+					fmt.Printf("    next run: %s\n", scout.NextRunAt.Local().Format(time.RFC1123))
+				}
+				if note := describeAlarm(scout.Alarm); note != "" {
+					fmt.Printf("    %s\n", note)
+				}
 				if scout.LastRunAt != nil {
-					fmt.Printf("    last run: %s\n", scout.LastRunAt.Format(time.RFC1123))
+					fmt.Printf("    last run: %s\n", scout.LastRunAt.Local().Format(time.RFC1123))
 				}
 			}
 			return nil
@@ -1445,6 +1457,10 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 			minScore, _ := cmd.Flags().GetInt("min-score")
 			perRun, _ := cmd.Flags().GetInt("max-per-run")
 			source, _ := cmd.Flags().GetString("source")
+			schedule, err := scheduleFromFlags(cmd)
+			if err != nil {
+				return err
+			}
 
 			scout, err := client.CreateScout(context.Background(), &domain.Scout{
 				Name:                  args[0],
@@ -1453,15 +1469,19 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 				MaxApplicationsPerRun: perRun,
 				Source:                domain.ScoutSource(source),
 				IsEnabled:             true,
+				Schedule:              schedule,
 			})
 			if err != nil {
 				return fmt.Errorf("creating scout: %w", err)
 			}
 
-			fmt.Printf("✅ Scout %q created.\n   Run it with 'scout run %s'.\n", scout.Name, scout.ID)
+			fmt.Printf("✅ Scout %q created.\n", scout.Name)
+			printScheduled(scout)
+			fmt.Printf("   Run it now with 'scout run %s'.\n", scout.ID)
 			return nil
 		},
 	}
+	addScheduleFlags(addCmd)
 	addCmd.Flags().String("search", "", "ID of the saved search this scout runs (required)")
 	addCmd.Flags().Int("min-score", 70, "lowest match score that earns an application")
 	addCmd.Flags().Int("max-per-run", 10, "most applications one run may create")
@@ -1469,6 +1489,42 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 		"'local' to consider stored jobs, 'sources' to fetch from the job boards first")
 	_ = addCmd.MarkFlagRequired("search")
 	cmd.AddCommand(addCmd)
+
+	scheduleCmd := &cobra.Command{
+		Use:   "schedule [scout-id]",
+		Short: "Set when a scout runs on its own",
+		Long: `Set when a scout runs on its own: every few hours, or once a day at a
+local time. The operating system's scheduler starts it, whether or not
+JobPilot is open, while you are logged in and the computer is awake.
+A run missed while the computer was off or asleep runs once when it is
+next on.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			schedule, err := scheduleFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+			if off, _ := cmd.Flags().GetBool("off"); !off && !schedule.IsScheduled() {
+				return fmt.Errorf("say when: --every <hours>, --daily <HH:MM>, or --off")
+			}
+			ctx := context.Background()
+			scout, err := client.GetScout(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("reading scout: %w", err)
+			}
+			scout.Schedule = schedule
+			updated, err := client.UpdateScout(ctx, scout)
+			if err != nil {
+				return fmt.Errorf("scheduling scout: %w", err)
+			}
+			fmt.Printf("✅ Scout %q now runs %s.\n", updated.Name, describeSchedule(updated.Schedule))
+			printScheduled(updated)
+			return nil
+		},
+	}
+	addScheduleFlags(scheduleCmd)
+	scheduleCmd.Flags().Bool("off", false, "run only when you run it")
+	cmd.AddCommand(scheduleCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "run [scout-id]",
@@ -1501,7 +1557,11 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 				return nil
 			}
 			for _, run := range runs {
-				fmt.Printf("  %s  %s  %s\n", run.StartedAt.Format(time.RFC1123), run.Status, run.ID)
+				startedBy := "by you"
+				if run.Trigger == domain.RunTriggerSchedule {
+					startedBy = "on schedule"
+				}
+				fmt.Printf("  %s  %s  %s  %s\n", run.StartedAt.Local().Format(time.RFC1123), run.Status, startedBy, run.ID)
 				if run.Error != "" {
 					fmt.Printf("    %s\n", run.Error)
 				}
@@ -1548,6 +1608,91 @@ func newScoutCmd(client *httpapi.Client) *cobra.Command {
 	})
 
 	return cmd
+}
+
+// addScheduleFlags adds the flags that say when a scout runs on its own.
+func addScheduleFlags(cmd *cobra.Command) {
+	cmd.Flags().Int("every", 0, "run every this many hours, 1 to 24")
+	cmd.Flags().String("daily", "", "run once a day at this local time, as HH:MM")
+	cmd.MarkFlagsMutuallyExclusive("every", "daily")
+}
+
+// scheduleFromFlags reads --every and --daily, and --off where the command
+// has it. Neither given is off.
+func scheduleFromFlags(cmd *cobra.Command) (domain.ScoutSchedule, error) {
+	every, _ := cmd.Flags().GetInt("every")
+	daily, _ := cmd.Flags().GetString("daily")
+	off := false
+	if cmd.Flags().Lookup("off") != nil {
+		off, _ = cmd.Flags().GetBool("off")
+	}
+	switch {
+	case off && (every != 0 || daily != ""):
+		return domain.ScoutSchedule{}, fmt.Errorf("--off cannot be given with --every or --daily")
+	case every != 0:
+		return domain.ScoutSchedule{Kind: domain.ScheduleEvery, EveryHours: every}, nil
+	case daily != "":
+		minutes, err := parseTimeOfDay(daily)
+		if err != nil {
+			return domain.ScoutSchedule{}, err
+		}
+		return domain.ScoutSchedule{Kind: domain.ScheduleDaily, DailyAt: minutes}, nil
+	}
+	return domain.ScoutSchedule{Kind: domain.ScheduleOff}, nil
+}
+
+// parseTimeOfDay reads HH:MM as minutes after midnight.
+func parseTimeOfDay(value string) (int, error) {
+	at, err := time.Parse("15:04", strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("--daily takes a time as HH:MM, such as 08:30, got %q", value)
+	}
+	return at.Hour()*60 + at.Minute(), nil
+}
+
+// describeSchedule says when a scout runs, to finish "runs ...".
+func describeSchedule(schedule domain.ScoutSchedule) string {
+	switch schedule.Kind {
+	case domain.ScheduleEvery:
+		if schedule.EveryHours == 1 {
+			return "every hour"
+		}
+		return fmt.Sprintf("every %d hours", schedule.EveryHours)
+	case domain.ScheduleDaily:
+		return fmt.Sprintf("daily at %02d:%02d", schedule.DailyAt/60, schedule.DailyAt%60)
+	}
+	return "only when you run it"
+}
+
+// describeAlarm says what is wrong with a scheduled scout's alarm, or
+// nothing when it is in place.
+func describeAlarm(alarm *domain.ScoutAlarmStatus) string {
+	if alarm == nil {
+		return ""
+	}
+	switch alarm.State {
+	case domain.AlarmMissing:
+		return "⚠ not scheduled with the operating system: " + alarm.Reason
+	case domain.AlarmSwitchedOff:
+		return "⚠ switched off outside JobPilot (on macOS, in System Settings → General → Login Items), so it will not run on its own"
+	case domain.AlarmUnavailable:
+		return "⚠ this system has no scheduler JobPilot can use, so it runs only when you run it"
+	}
+	return ""
+}
+
+// printScheduled says when a scheduled scout next runs, and what stands
+// in its way if anything does.
+func printScheduled(scout *domain.Scout) {
+	if !scout.Schedule.IsScheduled() {
+		return
+	}
+	if scout.NextRunAt != nil {
+		fmt.Printf("   Next run: %s.\n", scout.NextRunAt.Local().Format(time.RFC1123))
+	}
+	if note := describeAlarm(scout.Alarm); note != "" {
+		fmt.Printf("   %s\n", note)
+	}
 }
 
 // printScoutReport summarizes a run, listing what was rejected and why.
