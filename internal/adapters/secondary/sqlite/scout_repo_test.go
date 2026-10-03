@@ -5,6 +5,7 @@ package sqlite
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,4 +111,110 @@ func TestAgentRunRepository_ScoutRunHasNoApplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, unattached, 1)
 	assert.Equal(t, run.ID, unattached[0].ID)
+}
+
+func TestScoutRepository_Schedule(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := newTestDB(t)
+	search := seedSavedSearch(t, db)
+	repo := NewScoutRepository(db.Conn())
+	set := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
+
+	scout := &domain.Scout{
+		Name: "Mornings", SavedSearchID: search.ID, MinMatchScore: 70,
+		MaxApplicationsPerRun: 5, Source: domain.ScoutSourceLocal, IsEnabled: true,
+		Schedule:      domain.ScoutSchedule{Kind: domain.ScheduleDaily, DailyAt: 8 * 60, EveryHours: 3},
+		ScheduleSetAt: &set,
+	}
+	require.NoError(t, repo.Save(ctx, scout))
+
+	got, err := repo.GetByID(ctx, scout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScoutSchedule{Kind: domain.ScheduleDaily, DailyAt: 480}, got.Schedule,
+		"what a schedule's kind does not use is not kept")
+	require.NotNil(t, got.ScheduleSetAt)
+	assert.True(t, set.Equal(*got.ScheduleSetAt))
+
+	got.Schedule = domain.ScoutSchedule{Kind: domain.ScheduleEvery, EveryHours: 6}
+	require.NoError(t, repo.Update(ctx, got))
+	updated, err := repo.GetByID(ctx, scout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScoutSchedule{Kind: domain.ScheduleEvery, EveryHours: 6}, updated.Schedule)
+}
+
+// TestScoutRepository_AnEditIsNotARun covers the fix ADR-0027 needed:
+// Update used to write last_run_at from whatever it was given, so saving a
+// scout from a form that does not carry it erased its last run.
+func TestScoutRepository_AnEditIsNotARun(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := newTestDB(t)
+	search := seedSavedSearch(t, db)
+	repo := NewScoutRepository(db.Conn())
+	scout := &domain.Scout{
+		Name: "Daily Go", SavedSearchID: search.ID, MinMatchScore: 70,
+		MaxApplicationsPerRun: 5, Source: domain.ScoutSourceLocal, IsEnabled: true,
+	}
+	require.NoError(t, repo.Save(ctx, scout))
+	ran := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.MarkRun(ctx, scout.ID, ran))
+
+	edit := *scout
+	edit.Name, edit.LastRunAt = "Weekday Go", nil
+	require.NoError(t, repo.Update(ctx, &edit))
+
+	got, err := repo.GetByID(ctx, scout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Weekday Go", got.Name)
+	require.NotNil(t, got.LastRunAt)
+	assert.True(t, ran.Equal(*got.LastRunAt))
+
+	assert.ErrorIs(t, repo.MarkRun(ctx, "missing", ran), ports.ErrNotFound)
+}
+
+func TestAgentRunRepository_LastScoutStart(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := newTestDB(t)
+	search := seedSavedSearch(t, db)
+	scout := &domain.Scout{
+		Name: "Daily Go", SavedSearchID: search.ID, MinMatchScore: 70,
+		MaxApplicationsPerRun: 5, Source: domain.ScoutSourceLocal, IsEnabled: true,
+	}
+	require.NoError(t, NewScoutRepository(db.Conn()).Save(ctx, scout))
+	repo := NewAgentRunRepository(db.Conn())
+
+	last, err := repo.LastScoutStart(ctx, scout.ID)
+	require.NoError(t, err)
+	assert.Nil(t, last, "a scout that never ran has no last start")
+
+	earlier := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
+	for _, started := range []time.Time{later, earlier} {
+		require.NoError(t, repo.Save(ctx, &domain.AgentRun{
+			ScoutID: scout.ID, TaskType: domain.AgentTaskScoutRun,
+			Status: domain.AgentRunStatusCompleted, StartedAt: started,
+			Trigger: domain.RunTriggerSchedule,
+		}))
+	}
+
+	last, err = repo.LastScoutStart(ctx, scout.ID)
+	require.NoError(t, err)
+	require.NotNil(t, last)
+	assert.True(t, later.Equal(*last))
+
+	runs, err := repo.ListUnattached(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 2)
+	assert.Equal(t, domain.RunTriggerSchedule, runs[0].Trigger)
+
+	manual := &domain.AgentRun{TaskType: domain.AgentTaskScoutRun, Status: domain.AgentRunStatusRunning}
+	require.NoError(t, repo.Save(ctx, manual))
+	got, err := repo.GetByID(ctx, manual.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunTriggerManual, got.Trigger, "a run says who started it even when nobody said")
 }

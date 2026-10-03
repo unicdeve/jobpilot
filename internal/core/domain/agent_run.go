@@ -14,6 +14,17 @@ const (
 	AgentRunStatusFailed    AgentRunStatus = "failed"
 )
 
+// RunTrigger is what started a run (ADR-0027 §9).
+type RunTrigger string
+
+// Run triggers.
+const (
+	// RunTriggerManual is a run the user started.
+	RunTriggerManual RunTrigger = "manual"
+	// RunTriggerSchedule is a run a Scout's schedule started.
+	RunTriggerSchedule RunTrigger = "schedule"
+)
+
 // AgentRun is one execution of an agent task (docs/02_features/12_agent_activity.md),
 // scoped to the application it was working on.
 type AgentRun struct {
@@ -21,7 +32,10 @@ type AgentRun struct {
 	ApplicationID string `json:"application_id"`
 	// ScoutID is set for a scout run, which creates several applications
 	// and so belongs to none of them.
-	ScoutID     string         `json:"scout_id,omitempty"`
+	ScoutID string `json:"scout_id,omitempty"`
+	// Trigger is what started a scout run: the user, or its schedule.
+	// Runs of other kinds are always started by the user.
+	Trigger     RunTrigger     `json:"trigger,omitempty"`
 	TaskType    string         `json:"task_type"`
 	Status      AgentRunStatus `json:"status"`
 	StartedAt   time.Time      `json:"started_at"`

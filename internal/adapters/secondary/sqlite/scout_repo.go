@@ -24,7 +24,8 @@ func NewScoutRepository(db *sql.DB) *ScoutRepository {
 
 const scoutColumns = `
 	id, name, saved_search_id, min_match_score, max_applications_per_run,
-	source, is_enabled, last_run_at, created_at, updated_at`
+	source, is_enabled, schedule, every_hours, daily_at, schedule_set_at,
+	last_run_at, created_at, updated_at`
 
 // Save inserts a new scout, assigning an ID and timestamps.
 func (r *ScoutRepository) Save(ctx context.Context, scout *domain.Scout) error {
@@ -36,11 +37,13 @@ func (r *ScoutRepository) Save(ctx context.Context, scout *domain.Scout) error {
 		scout.CreatedAt = now
 	}
 	scout.UpdatedAt = now
+	schedule := scout.Schedule.Normalized()
 
 	_, err := r.db.ExecContext(ctx, `INSERT INTO scouts (`+scoutColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		scout.ID, scout.Name, scout.SavedSearchID, scout.MinMatchScore,
 		scout.MaxApplicationsPerRun, string(scout.Source), scout.IsEnabled,
+		string(schedule.Kind), schedule.EveryHours, schedule.DailyAt, scout.ScheduleSetAt,
 		scout.LastRunAt, scout.CreatedAt, scout.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to save scout: %w", err)
@@ -48,40 +51,63 @@ func (r *ScoutRepository) Save(ctx context.Context, scout *domain.Scout) error {
 	return nil
 }
 
-// Update persists a scout's mutable fields.
+// Update persists what the user can change about a scout.
+//
+// It does not write last_run_at: an edit is not a run, and a run that
+// finishes while the user is editing must not be undone by their save, nor
+// their save by it. MarkRun records a run.
 func (r *ScoutRepository) Update(ctx context.Context, scout *domain.Scout) error {
 	scout.UpdatedAt = time.Now()
+	schedule := scout.Schedule.Normalized()
 
 	result, err := r.db.ExecContext(ctx, `UPDATE scouts SET
 		name = ?, saved_search_id = ?, min_match_score = ?,
 		max_applications_per_run = ?, source = ?, is_enabled = ?,
-		last_run_at = ?, updated_at = ?
+		schedule = ?, every_hours = ?, daily_at = ?, schedule_set_at = ?,
+		updated_at = ?
 		WHERE id = ?`,
 		scout.Name, scout.SavedSearchID, scout.MinMatchScore,
 		scout.MaxApplicationsPerRun, string(scout.Source), scout.IsEnabled,
-		scout.LastRunAt, scout.UpdatedAt, scout.ID)
+		string(schedule.Kind), schedule.EveryHours, schedule.DailyAt, scout.ScheduleSetAt,
+		scout.UpdatedAt, scout.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update scout: %w", err)
 	}
+	return requireAffected(result, scout.ID)
+}
+
+// MarkRun records when a scout's run finished, and touches nothing else.
+func (r *ScoutRepository) MarkRun(ctx context.Context, id string, at time.Time) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE scouts SET last_run_at = ? WHERE id = ?`, at, id)
+	if err != nil {
+		return fmt.Errorf("failed to record the scout's run: %w", err)
+	}
+	return requireAffected(result, id)
+}
+
+func requireAffected(result sql.Result, id string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to update scout: %w", err)
 	}
 	if affected == 0 {
-		return &ports.NotFoundError{Kind: "scout", ID: scout.ID}
+		return &ports.NotFoundError{Kind: "scout", ID: id}
 	}
 	return nil
 }
 
 func scanScout(scanner interface{ Scan(...any) error }) (*domain.Scout, error) {
 	var scout domain.Scout
-	var source string
+	var source, schedule string
 	if err := scanner.Scan(&scout.ID, &scout.Name, &scout.SavedSearchID,
 		&scout.MinMatchScore, &scout.MaxApplicationsPerRun, &source,
-		&scout.IsEnabled, &scout.LastRunAt, &scout.CreatedAt, &scout.UpdatedAt); err != nil {
+		&scout.IsEnabled, &schedule, &scout.Schedule.EveryHours, &scout.Schedule.DailyAt,
+		&scout.ScheduleSetAt, &scout.LastRunAt, &scout.CreatedAt, &scout.UpdatedAt); err != nil {
 		return nil, err
 	}
 	scout.Source = domain.ScoutSource(source)
+	scout.Schedule.Kind = domain.ScheduleKind(schedule)
+	scout.Schedule = scout.Schedule.Normalized()
 	return &scout, nil
 }
 

@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
@@ -27,6 +28,9 @@ type AgentRunRepository interface {
 	ListSummaries(ctx context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error)
 	// GetSummary returns one run, named the same way.
 	GetSummary(ctx context.Context, id string) (*domain.AgentRunSummary, error)
+	// LastScoutStart returns when a scout's most recent run started, or
+	// nil if it has never run.
+	LastScoutStart(ctx context.Context, scoutID string) (*time.Time, error)
 }
 
 // AgentEventRepository persists and retrieves the structured steps within

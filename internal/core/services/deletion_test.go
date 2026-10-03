@@ -248,6 +248,19 @@ func (f *fakeEraser) Erase(context.Context) error {
 	return f.err
 }
 
+type fakeDeletionAlarms struct {
+	description string
+	err         error
+	calls       *[]string
+}
+
+func (f *fakeDeletionAlarms) DescribeAlarms(context.Context) string { return f.description }
+
+func (f *fakeDeletionAlarms) RemoveAllAlarms(context.Context) error {
+	*f.calls = append(*f.calls, "remove scout alarms")
+	return f.err
+}
+
 func newDeletionService(store *fakeDeletionStore, calls *[]string) (*DeletionService, *fakeDeletionCredentials, *fakeEraser, *fakeEraser) {
 	creds := &fakeDeletionCredentials{calls: calls, fromEnv: map[string]bool{}, deleteErr: map[string]error{}}
 	browser := &fakeEraser{name: "the browser profile", calls: calls}
@@ -484,6 +497,36 @@ func TestDeletionService_DeleteEverything(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "browser profile")
 		assert.Equal(t, []string{"erase the browser profile"}, *calls)
+	})
+
+	t.Run("the scouts' schedules go first, so none is left firing for a scout that is gone", func(t *testing.T) {
+		t.Parallel()
+		store, calls := newDeletionFixture()
+		svc, _, _, _ := newDeletionService(store, calls)
+		alarms := &fakeDeletionAlarms{calls: calls, description: "2 scheduled scouts in the operating system's scheduler"}
+		svc.WithScoutAlarms(alarms)
+		reach, err := svc.Preview(ctx, domain.DeleteEverything, "")
+		require.NoError(t, err)
+		assert.Equal(t, "2 scheduled scouts in the operating system's scheduler", reach.Outside[0])
+
+		_, err = svc.Delete(ctx, domain.DeleteEverything, "", reach.Token)
+
+		require.NoError(t, err)
+		assert.Equal(t, "remove scout alarms", (*calls)[0])
+	})
+
+	t.Run("schedules that cannot be removed stop it before anything is deleted", func(t *testing.T) {
+		t.Parallel()
+		store, calls := newDeletionFixture()
+		svc, _, _, _ := newDeletionService(store, calls)
+		svc.WithScoutAlarms(&fakeDeletionAlarms{calls: calls, err: errors.New("launchctl: permission denied")})
+		reach, err := svc.Preview(ctx, domain.DeleteEverything, "")
+		require.NoError(t, err)
+
+		_, err = svc.Delete(ctx, domain.DeleteEverything, "", reach.Token)
+
+		require.ErrorContains(t, err, "scheduled scouts")
+		assert.Equal(t, []string{"remove scout alarms"}, *calls)
 	})
 
 	t.Run("anything stored since the preview refuses it", func(t *testing.T) {

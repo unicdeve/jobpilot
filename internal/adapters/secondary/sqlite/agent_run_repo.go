@@ -32,9 +32,13 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 		run.StartedAt = time.Now()
 	}
 
+	if run.Trigger == "" {
+		run.Trigger = domain.RunTriggerManual
+	}
+
 	query := `INSERT INTO agent_runs (
-		id, application_id, scout_id, task_type, status, started_at, completed_at, error
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		id, application_id, scout_id, started_by, task_type, status, started_at, completed_at, error
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	// application_id is a foreign key and foreign keys are on, so an
 	// empty string is rejected outright — it names an application that
@@ -42,7 +46,8 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 	// belongs to none of them, which is the first run that needs NULL
 	// here (ADR-0018 §4).
 	_, err := r.db.ExecContext(ctx, query,
-		run.ID, nullableString(run.ApplicationID), nullableString(run.ScoutID), run.TaskType, run.Status,
+		run.ID, nullableString(run.ApplicationID), nullableString(run.ScoutID), string(run.Trigger),
+		run.TaskType, run.Status,
 		run.StartedAt, run.CompletedAt, nullableString(run.Error),
 	)
 	if err != nil {
@@ -66,7 +71,7 @@ func (r *AgentRunRepository) Update(ctx context.Context, run *domain.AgentRun) e
 }
 
 const agentRunColumns = `
-	id, application_id, scout_id, task_type, status, started_at, completed_at, error`
+	id, application_id, scout_id, started_by, task_type, status, started_at, completed_at, error`
 
 func scanAgentRun(scanner interface{ Scan(...any) error }) (*domain.AgentRun, error) {
 	var run domain.AgentRun
@@ -83,6 +88,7 @@ func agentRunDest(run *domain.AgentRun) []any {
 		&run.ID,
 		nullStringInto(&run.ApplicationID),
 		nullStringInto(&run.ScoutID),
+		(*string)(&run.Trigger),
 		nullStringInto(&run.TaskType),
 		nullStringInto((*string)(&run.Status)),
 		&run.StartedAt,
@@ -165,11 +171,28 @@ func (r *AgentRunRepository) ListUnattached(ctx context.Context, limit int) ([]*
 	return runs, nil
 }
 
+// LastScoutStart returns when the scout's most recent run started, or nil
+// if it has never run. Whether a scheduled scout is due is measured from
+// it (ADR-0027 §2).
+func (r *AgentRunRepository) LastScoutStart(ctx context.Context, scoutID string) (*time.Time, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT started_at FROM agent_runs WHERE scout_id = ? ORDER BY started_at DESC LIMIT 1`, scoutID)
+	var started time.Time
+	err := row.Scan(&started)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the scout's last run: %w", err)
+	}
+	return &started, nil
+}
+
 // agentRunSummaryQuery selects a run with what it served: the scout that
 // started it, or the job its application is for. Both are LEFT JOINs, so
 // a run whose scout or application has since been deleted is still listed.
 const agentRunSummaryQuery = `SELECT
-	r.id, r.application_id, r.scout_id, r.task_type, r.status, r.started_at, r.completed_at, r.error,
+	r.id, r.application_id, r.scout_id, r.started_by, r.task_type, r.status, r.started_at, r.completed_at, r.error,
 	s.name, j.title, j.company_name,
 	(SELECT COUNT(*) FROM agent_events e WHERE e.run_id = r.id)
 FROM agent_runs r
