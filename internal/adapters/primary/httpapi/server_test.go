@@ -589,6 +589,17 @@ func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.
 	return run, nil
 }
 
+func (f *fakeAgentRunRepository) LastScoutStart(_ context.Context, scoutID string) (*time.Time, error) {
+	var last *time.Time
+	for _, run := range f.runs {
+		if run.ScoutID == scoutID && (last == nil || run.StartedAt.After(*last)) {
+			started := run.StartedAt
+			last = &started
+		}
+	}
+	return last, nil
+}
+
 func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, _ int) ([]*domain.AgentRun, error) {
 	var out []*domain.AgentRun
 	for _, run := range f.runs {
@@ -2539,6 +2550,15 @@ func (f *fakeScoutRepository) Update(_ context.Context, scout *domain.Scout) err
 		return &ports.NotFoundError{Kind: "scout", ID: scout.ID}
 	}
 	f.scouts[scout.ID] = scout
+	return nil
+}
+
+func (f *fakeScoutRepository) MarkRun(_ context.Context, id string, at time.Time) error {
+	scout, ok := f.scouts[id]
+	if !ok {
+		return &ports.NotFoundError{Kind: "scout", ID: id}
+	}
+	scout.LastRunAt = &at
 	return nil
 }
 

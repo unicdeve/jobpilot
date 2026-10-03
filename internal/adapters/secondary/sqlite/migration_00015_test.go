@@ -37,6 +37,16 @@ func migrateUp(t *testing.T, db *DB) {
 	require.NoError(t, err)
 }
 
+// migrateUpTo applies migrations up to and including version, so a test of
+// one migration is not broken by a later one adding a column.
+func migrateUpTo(t *testing.T, db *DB, version int64) {
+	t.Helper()
+	provider, err := db.migrationProvider()
+	require.NoError(t, err)
+	_, err = provider.UpTo(context.Background(), version)
+	require.NoError(t, err)
+}
+
 // execAll runs statements on one connection with foreign keys off, which is
 // how rows referencing deleted ones came to exist in the first place.
 func execAll(t *testing.T, db *DB, foreignKeys bool, statements ...string) {
@@ -118,7 +128,7 @@ func TestMigration00015_KeepsEveryColumnAndRow(t *testing.T) {
 		rowsBefore[table.name] = count(t, db, `SELECT count(*) FROM `+table.name)
 	}
 
-	migrateUp(t, db)
+	migrateUpTo(t, db, 15)
 
 	for _, table := range deletionRuleTables {
 		assert.Equal(t, before[table.name], columnInfo(t, db, table.name), "%s changed shape", table.name)

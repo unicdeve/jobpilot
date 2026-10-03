@@ -751,6 +751,17 @@ func (f *fakeAgentRunRepository) GetSummary(_ context.Context, id string) (*doma
 	return &domain.AgentRunSummary{AgentRun: *run}, nil
 }
 
+func (f *fakeAgentRunRepository) LastScoutStart(_ context.Context, scoutID string) (*time.Time, error) {
+	var last *time.Time
+	for _, run := range f.runs {
+		if run.ScoutID == scoutID && (last == nil || run.StartedAt.After(*last)) {
+			started := run.StartedAt
+			last = &started
+		}
+	}
+	return last, nil
+}
+
 // fakeAgentEventRepository is an in-memory ports.AgentEventRepository for
 // tests.
 type fakeAgentEventRepository struct {

@@ -120,7 +120,10 @@ type SettingsRepository interface {
 type ScoutRepository interface {
 	Save(ctx context.Context, scout *domain.Scout) error
 	GetByID(ctx context.Context, id string) (*domain.Scout, error)
+	// Update persists what the user can change, and never the time of
+	// the last run, which MarkRun records.
 	Update(ctx context.Context, scout *domain.Scout) error
+	MarkRun(ctx context.Context, id string, at time.Time) error
 	List(ctx context.Context) ([]*domain.Scout, error)
 	Delete(ctx context.Context, id string) error
 }

@@ -65,6 +65,25 @@ type DeletionService struct {
 	// be nil where there is none, as in the CLI's tests.
 	browserProfile ports.LocalDataEraser
 	log            ports.LocalDataEraser
+	// scoutAlarms are the scheduled Scouts' entries in the operating
+	// system's scheduler, removed before anything else (ADR-0027 §6).
+	scoutAlarms deletionScoutAlarms
+}
+
+// deletionScoutAlarms is what "delete all data" needs of the Scouts'
+// alarms: what there is to say about them, and a way to remove them all.
+type deletionScoutAlarms interface {
+	DescribeAlarms(ctx context.Context) string
+	RemoveAllAlarms(ctx context.Context) error
+}
+
+// WithScoutAlarms has "delete all data" remove the scheduled Scouts' alarms
+// first, since one left behind would fire for a Scout that no longer
+// exists, forever. Should a later step fail, the daemon puts back the
+// alarms of the Scouts that remain the next time it reconciles them.
+func (s *DeletionService) WithScoutAlarms(alarms deletionScoutAlarms) *DeletionService {
+	s.scoutAlarms = alarms
+	return s
 }
 
 // NewDeletionService constructs a DeletionService.
@@ -254,6 +273,11 @@ func (s *DeletionService) everythingReach(ctx context.Context) (*domain.Deletion
 		return nil, err
 	}
 
+	if s.scoutAlarms != nil {
+		if alarms := s.scoutAlarms.DescribeAlarms(ctx); alarms != "" {
+			reach.Outside = append(reach.Outside, alarms)
+		}
+	}
 	if s.browserProfile != nil {
 		reach.Outside = append(reach.Outside, s.browserProfile.Describe())
 	}
@@ -297,9 +321,14 @@ func (s *DeletionService) deleteEverything(ctx context.Context, token string) (*
 	}
 	result := &domain.DeletionResult{Reach: *reach}
 
+	if s.scoutAlarms != nil {
+		if err := s.scoutAlarms.RemoveAllAlarms(ctx); err != nil {
+			return nil, fmt.Errorf("delete all data stopped at the scheduled scouts, and nothing else was deleted: %w", err)
+		}
+	}
 	if s.browserProfile != nil {
 		if err := s.browserProfile.Erase(ctx); err != nil {
-			return nil, fmt.Errorf("delete all data stopped at the browser profile, and nothing else was deleted: %w", err)
+			return nil, fmt.Errorf("delete all data stopped at the browser profile, after removing the scouts' schedules: %w", err)
 		}
 	}
 

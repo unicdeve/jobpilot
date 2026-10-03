@@ -55,10 +55,26 @@ type Scout struct {
 	// is right about twenty jobs is still twenty things to read.
 	MaxApplicationsPerRun int         `json:"max_applications_per_run"`
 	Source                ScoutSource `json:"source"`
-	IsEnabled             bool        `json:"is_enabled"`
-	LastRunAt             *time.Time  `json:"last_run_at,omitempty"`
-	CreatedAt             time.Time   `json:"created_at"`
-	UpdatedAt             time.Time   `json:"updated_at"`
+	// IsEnabled pauses a Scout: a disabled one does not run, by hand or by
+	// schedule. Pausing keeps its schedule (ADR-0027 §8).
+	IsEnabled bool `json:"is_enabled"`
+	// Schedule is when the Scout runs on its own, and ScheduleSetAt when
+	// that was last changed, which is where its first scheduled run is
+	// measured from (ADR-0027 §2).
+	Schedule      ScoutSchedule `json:"schedule"`
+	ScheduleSetAt *time.Time    `json:"schedule_set_at,omitempty"`
+	LastRunAt     *time.Time    `json:"last_run_at,omitempty"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+
+	// What follows is worked out when a Scout is read, and never stored.
+
+	// NextRunAt is when a scheduled, enabled Scout next runs.
+	NextRunAt *time.Time `json:"next_run_at,omitempty"`
+	// Alarm is whether the operating system holds its schedule.
+	Alarm *ScoutAlarmStatus `json:"alarm,omitempty"`
+	// Activity is what it is doing right now, if anything.
+	Activity ScoutActivity `json:"activity,omitempty"`
 }
 
 // maxApplicationsPerRunCeiling bounds what a user can ask for in one run.
@@ -86,7 +102,7 @@ func (s Scout) Validate() error {
 		return fmt.Errorf("a run must be allowed to create between 1 and %d applications, got %d",
 			maxApplicationsPerRunCeiling, s.MaxApplicationsPerRun)
 	}
-	return nil
+	return s.Schedule.Validate()
 }
 
 // ScoutVerdict is what a Scout decided about one job, and why.

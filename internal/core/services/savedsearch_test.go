@@ -157,6 +157,20 @@ func TestSavedSearchService_Delete(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, def)
 	})
+
+	t.Run("deleting a search says its scouts changed, so their alarms go too", func(t *testing.T) {
+		t.Parallel()
+		told := 0
+		svc := NewSavedSearchService(newFakeSavedSearchRepository()).
+			WithScoutsChanged(func(context.Context) { told++ })
+		ctx := context.Background()
+		search, err := svc.Create(ctx, "Go roles", goCriteria())
+		require.NoError(t, err)
+
+		require.NoError(t, svc.Delete(ctx, search.ID))
+
+		assert.Equal(t, 1, told)
+	})
 }
 
 func TestSavedSearchService_Default_NoneConfigured(t *testing.T) {

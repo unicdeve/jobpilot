@@ -19,6 +19,16 @@ import (
 type SavedSearchService struct {
 	repo ports.SavedSearchRepository
 	now  func() time.Time
+	// scoutsChanged is told when deleting a search deleted the Scouts
+	// that run it, so their alarms go with them (ADR-0027 §6).
+	scoutsChanged func(context.Context)
+}
+
+// WithScoutsChanged has the service report a deletion that took Scouts
+// with it.
+func (s *SavedSearchService) WithScoutsChanged(fn func(context.Context)) *SavedSearchService {
+	s.scoutsChanged = fn
+	return s
 }
 
 // NewSavedSearchService constructs a SavedSearchService over repo.
@@ -178,8 +188,17 @@ func (s *SavedSearchService) SetDefault(ctx context.Context, id string) (*domain
 // remaining search rather than leaving the user with searches but no
 // default, which would make an unqualified discovery run fail for a reason
 // they would have to go looking for.
+//
+// The Scouts that run the search are deleted with it (ADR-0018), and so
+// are their alarms.
 func (s *SavedSearchService) Delete(ctx context.Context, id string) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	if s.scoutsChanged != nil {
+		s.scoutsChanged(ctx)
+	}
+	return nil
 }
 
 // Templates returns the catalog of ready-made searches a user can adopt.

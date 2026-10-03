@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -46,6 +47,28 @@ type ScoutService struct {
 	matcher       ScoutMatcher
 	// now is injectable so a test can assert on recorded times.
 	now func() time.Time
+
+	// runLock holds one Scout run at a time, whatever started it
+	// (ADR-0027 §5). It is a channel rather than a mutex so that a run
+	// waiting for it can give up when its request is cancelled.
+	runLock chan struct{}
+	// mu guards running and waiting, which say what each Scout is doing.
+	mu      sync.Mutex
+	running string
+	waiting map[string]int
+
+	// background is the daemon's lifetime, which a scheduled run belongs
+	// to rather than to the request that woke it (ADR-0027 §4).
+	background context.Context
+	scheduled  sync.WaitGroup
+
+	// alarms is the operating system's scheduler, or nil where there is
+	// none to use (ADR-0027 §6).
+	alarms      ports.ScoutAlarms
+	alarmTarget AlarmTarget
+	alarmMu     sync.Mutex
+	alarmStatus map[string]domain.ScoutAlarmStatus
+	alarmsRead  time.Time
 }
 
 // NewScoutService constructs a ScoutService.
@@ -63,6 +86,9 @@ func NewScoutService(
 		scouts: scouts, savedSearches: savedSearches, candidates: candidates,
 		applications: applications, runs: runs, events: events,
 		finder: finder, matcher: matcher, now: time.Now,
+		runLock:    make(chan struct{}, 1),
+		waiting:    map[string]int{},
+		background: context.Background(),
 	}
 }
 
@@ -82,39 +108,93 @@ func (s *ScoutService) CreateScout(ctx context.Context, scout *domain.Scout) err
 	if scout.MaxApplicationsPerRun == 0 {
 		scout.MaxApplicationsPerRun = 10
 	}
+	scout.Schedule = scout.Schedule.Normalized()
 	if err := scout.Validate(); err != nil {
 		return err
 	}
 	if _, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID); err != nil {
 		return fmt.Errorf("the scout's saved search could not be found: %w", ports.AsReference(err))
 	}
-	return s.scouts.Save(ctx, scout)
+	scout.ScheduleSetAt = nil
+	if scout.Schedule.IsScheduled() {
+		now := s.now()
+		scout.ScheduleSetAt = &now
+	}
+	if err := s.scouts.Save(ctx, scout); err != nil {
+		return err
+	}
+	s.scoutsChanged(ctx)
+	s.describe(ctx, scout)
+	return nil
 }
 
 // UpdateScout validates and persists changes to a Scout.
+//
+// What the user cannot change is carried over from the stored Scout: when
+// it last ran, and when its schedule was set unless the schedule is what
+// changed.
 func (s *ScoutService) UpdateScout(ctx context.Context, scout *domain.Scout) error {
+	scout.Schedule = scout.Schedule.Normalized()
 	if err := scout.Validate(); err != nil {
 		return err
 	}
 	if _, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID); err != nil {
 		return fmt.Errorf("the scout's saved search could not be found: %w", ports.AsReference(err))
 	}
-	return s.scouts.Update(ctx, scout)
+	stored, err := s.scouts.GetByID(ctx, scout.ID)
+	if err != nil {
+		return err
+	}
+
+	scout.LastRunAt, scout.CreatedAt = stored.LastRunAt, stored.CreatedAt
+	scout.ScheduleSetAt = stored.ScheduleSetAt
+	switch {
+	case !scout.Schedule.IsScheduled():
+		scout.ScheduleSetAt = nil
+	case scout.Schedule != stored.Schedule.Normalized() || scout.ScheduleSetAt == nil:
+		now := s.now()
+		scout.ScheduleSetAt = &now
+	}
+	if err := s.scouts.Update(ctx, scout); err != nil {
+		return err
+	}
+	s.scoutsChanged(ctx)
+	s.describe(ctx, scout)
+	return nil
 }
 
-// ListScouts returns every Scout.
+// ListScouts returns every Scout, with when each next runs, whether the
+// operating system holds its schedule, and what it is doing now.
 func (s *ScoutService) ListScouts(ctx context.Context) ([]*domain.Scout, error) {
-	return s.scouts.List(ctx)
+	scouts, err := s.scouts.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.refreshAlarmsIfStale(ctx)
+	for _, scout := range scouts {
+		s.describe(ctx, scout)
+	}
+	return scouts, nil
 }
 
-// GetScout returns one Scout.
+// GetScout returns one Scout, described as ListScouts describes it.
 func (s *ScoutService) GetScout(ctx context.Context, id string) (*domain.Scout, error) {
-	return s.scouts.GetByID(ctx, id)
+	scout, err := s.scouts.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.refreshAlarmsIfStale(ctx)
+	s.describe(ctx, scout)
+	return scout, nil
 }
 
-// DeleteScout removes a Scout.
+// DeleteScout removes a Scout, and its alarm with it.
 func (s *ScoutService) DeleteScout(ctx context.Context, id string) error {
-	return s.scouts.Delete(ctx, id)
+	if err := s.scouts.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.scoutsChanged(ctx)
+	return nil
 }
 
 // ListRuns returns recent scout runs, newest first.
@@ -127,13 +207,16 @@ func (s *ScoutService) ListRunEvents(ctx context.Context, runID string) ([]*doma
 	return s.events.ListByRun(ctx, runID)
 }
 
-// Run executes a Scout once.
+// Run executes a Scout once, now, because the user asked.
 //
 // A run that fails partway keeps the applications it already created and
 // records the failure (AC-006). Nothing here is transactional across jobs
 // on purpose: an application already created is a real thing the user can
 // act on, and undoing it because a later job failed to score would throw
 // away good work for tidiness.
+//
+// Runs happen one at a time, so this waits for any run in progress, of
+// this Scout or another, before it starts (ADR-0027 §5).
 func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRunReport, error) {
 	scout, err := s.scouts.GetByID(ctx, scoutID)
 	if err != nil {
@@ -141,6 +224,37 @@ func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRu
 	}
 	if !scout.IsEnabled {
 		return nil, fmt.Errorf("scout %q is disabled", scout.Name)
+	}
+
+	s.enqueue(scout.ID)
+	release, err := s.acquire(ctx, scout.ID)
+	if err != nil {
+		return nil, fmt.Errorf("stopped waiting for another scout's run to finish: %w", err)
+	}
+	defer release()
+	return s.execute(ctx, scout.ID, domain.RunTriggerManual)
+}
+
+// execute runs a Scout, holding the run lock. It reads the Scout again,
+// because one that waited may have been changed or paused meanwhile.
+func (s *ScoutService) execute(ctx context.Context, scoutID string, trigger domain.RunTrigger) (*domain.ScoutRunReport, error) {
+	scout, err := s.scouts.GetByID(ctx, scoutID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load the scout: %w", err)
+	}
+	if !scout.IsEnabled {
+		return nil, fmt.Errorf("scout %q is disabled", scout.Name)
+	}
+	if trigger == domain.RunTriggerSchedule {
+		// A manual run may have gone while this one waited its turn,
+		// which makes this one not due any more.
+		since, err := s.since(ctx, scout)
+		if err != nil {
+			return nil, err
+		}
+		if !scout.Schedule.Due(s.now(), since) {
+			return nil, errNoLongerDue
+		}
 	}
 
 	search, err := s.savedSearches.GetByID(ctx, scout.SavedSearchID)
@@ -157,6 +271,7 @@ func (s *ScoutService) Run(ctx context.Context, scoutID string) (*domain.ScoutRu
 		// No ApplicationID: a scout run creates several applications and
 		// belongs to none of them (ADR-0018 §4).
 		ScoutID:   scout.ID,
+		Trigger:   trigger,
 		TaskType:  ScoutTaskType,
 		Status:    domain.AgentRunStatusRunning,
 		StartedAt: s.now(),
@@ -377,14 +492,8 @@ func (s *ScoutService) finish(ctx context.Context, run *domain.AgentRun, report 
 		fmt.Sprintf("%d jobs considered", report.Considered),
 		fmt.Sprintf("%d applications created", report.Created))
 
-	scout, err := s.scouts.GetByID(ctx, report.ScoutID)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to load scout for finalization", "scout_id", report.ScoutID, "error", err)
-		return
-	}
-	scout.LastRunAt = &completed
-	if err := s.scouts.Update(ctx, scout); err != nil {
-		slog.WarnContext(ctx, "failed to record scout last run", "scout_id", scout.ID, "error", err)
+	if err := s.scouts.MarkRun(ctx, report.ScoutID, completed); err != nil {
+		slog.WarnContext(ctx, "failed to record scout last run", "scout_id", report.ScoutID, "error", err)
 	}
 }
 

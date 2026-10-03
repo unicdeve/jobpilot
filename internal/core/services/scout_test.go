@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
+	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
 type fakeScoutRepository struct {
@@ -29,7 +30,8 @@ func (f *fakeScoutRepository) Save(_ context.Context, scout *domain.Scout) error
 	if scout.ID == "" {
 		scout.ID = fmt.Sprintf("scout-%d", len(f.scouts)+1)
 	}
-	f.scouts[scout.ID] = scout
+	stored := *scout
+	f.scouts[scout.ID] = &stored
 	return nil
 }
 
@@ -39,23 +41,43 @@ func (f *fakeScoutRepository) GetByID(_ context.Context, id string) (*domain.Sco
 	}
 	scout, ok := f.scouts[id]
 	if !ok {
-		return nil, fmt.Errorf("scout not found: %s", id)
+		return nil, &ports.NotFoundError{Kind: "scout", ID: id}
 	}
-	return scout, nil
+	// A copy, as the database returns: a caller changing what it read has
+	// not changed what is stored.
+	read := *scout
+	return &read, nil
 }
 
 func (f *fakeScoutRepository) Update(_ context.Context, scout *domain.Scout) error {
 	if f.updateErr != nil {
 		return f.updateErr
 	}
-	f.scouts[scout.ID] = scout
+	if _, ok := f.scouts[scout.ID]; !ok {
+		return &ports.NotFoundError{Kind: "scout", ID: scout.ID}
+	}
+	stored := *scout
+	f.scouts[scout.ID] = &stored
+	return nil
+}
+
+func (f *fakeScoutRepository) MarkRun(_ context.Context, id string, at time.Time) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	scout, ok := f.scouts[id]
+	if !ok {
+		return &ports.NotFoundError{Kind: "scout", ID: id}
+	}
+	scout.LastRunAt = &at
 	return nil
 }
 
 func (f *fakeScoutRepository) List(context.Context) ([]*domain.Scout, error) {
 	out := make([]*domain.Scout, 0, len(f.scouts))
 	for _, scout := range f.scouts {
-		out = append(out, scout)
+		read := *scout
+		out = append(out, &read)
 	}
 	return out, nil
 }
@@ -618,6 +640,13 @@ func (r *cancellationAwareScoutStore) Update(ctx context.Context, scout *domain.
 		return err
 	}
 	return r.fakeScoutRepository.Update(ctx, scout)
+}
+
+func (r *cancellationAwareScoutStore) MarkRun(ctx context.Context, id string, at time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.fakeScoutRepository.MarkRun(ctx, id, at)
 }
 
 func TestScoutRun_CancellationFinalizesPartialWork(t *testing.T) {
