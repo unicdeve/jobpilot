@@ -553,6 +553,8 @@ export interface AgentRun {
   application_id: string;
   /// Set for a scout run, which belongs to no single application.
   scout_id?: string;
+  /// What started the run: the user, or a scout's schedule.
+  trigger?: RunTrigger;
   task_type: string;
   status: AgentRunStatus;
   started_at: string;
@@ -606,6 +608,32 @@ export interface AgentRunFilter {
 
 export type ScoutSource = "local" | "sources";
 
+export type RunTrigger = "manual" | "schedule";
+
+/// When a scout runs on its own (ADR-0027): never, every few hours, or
+/// once a day at a local time, kept as minutes after midnight.
+export type ScheduleKind = "off" | "every" | "daily";
+
+export interface ScoutSchedule {
+  kind: ScheduleKind;
+  every_hours?: number;
+  daily_at?: number;
+}
+
+/// Whether the operating system's scheduler holds a scheduled scout:
+/// in place, missing (with why), switched off by the user outside
+/// JobPilot, or not available on this system at all.
+export type AlarmState = "scheduled" | "missing" | "switched_off" | "unavailable";
+
+export interface ScoutAlarmStatus {
+  state: AlarmState;
+  reason?: string;
+}
+
+/// What a scout is doing now. Scout runs happen one at a time, so one may
+/// be waiting for another's to finish.
+export type ScoutActivity = "running" | "waiting";
+
 /**
  * A Scout is a standing instruction: run a saved search, judge what it
  * finds against the candidate, and create applications to review.
@@ -623,9 +651,15 @@ export interface Scout {
   max_applications_per_run: number;
   source: ScoutSource;
   is_enabled: boolean;
+  schedule: ScoutSchedule;
+  schedule_set_at?: string | null;
   last_run_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  /// Worked out by the daemon when the scout is read, never stored.
+  next_run_at?: string;
+  alarm?: ScoutAlarmStatus;
+  activity?: ScoutActivity;
 }
 
 /** What a Scout decided about one job, and why. */

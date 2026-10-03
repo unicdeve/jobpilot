@@ -10,9 +10,9 @@ import {
   actionLabel,
   formatDuration,
   runDuration,
+  runKind,
   runSubject,
   stepOutput,
-  taskLabel,
 } from "../lib/activity";
 import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
@@ -73,7 +73,7 @@ export function ActivityRun() {
             <StatusBadge value={run.status} className="mt-1 shrink-0" />
           </div>
           <p className="mt-1 text-sm text-subtle-foreground">
-            {taskLabel(run.task_type)} · {dateTime(run.started_at)}
+            {runKind(run)} · {dateTime(run.started_at)}
             {duration ? <> · took {duration}</> : run.status === "running" && <> · still running</>}
           </p>
           <p className="mt-1 font-mono text-[11px] text-muted-foreground select-text">{run.id}</p>

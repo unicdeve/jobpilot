@@ -5,7 +5,7 @@ import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
 import { FILTER_ALL as ALL, FilterSelect } from "../components/filter-select";
 import { StatusBadge } from "../components/status-badge";
-import { runDuration, runSubject, TASK_LABELS, taskLabel } from "../lib/activity";
+import { runDuration, runKind, runSubject, TASK_LABELS } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";
 import { useInfiniteActivity } from "../lib/queries";
 import type { AgentRunFilter, AgentRunStatus, AgentRunSummary, AgentTaskType } from "../lib/types";
@@ -139,7 +139,7 @@ function RunRow({ run }: { run: AgentRunSummary }) {
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 text-[13px] leading-snug font-medium">{runSubject(run)}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {taskLabel(run.task_type)} · <span title={dateTime(run.started_at)}>{relativeTime(run.started_at)}</span>
+            {runKind(run)} · <span title={dateTime(run.started_at)}>{relativeTime(run.started_at)}</span>
             {duration && <> · {duration}</>}
           </p>
           {run.error && <p className="mt-1 line-clamp-2 text-xs text-destructive">{run.error}</p>}

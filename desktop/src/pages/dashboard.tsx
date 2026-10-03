@@ -5,7 +5,7 @@ import { EmptyState } from "../components/empty-state";
 import { Page, Panel, Section } from "../components/page";
 import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
-import { runSubject, taskLabel } from "../lib/activity";
+import { runKind, runSubject } from "../lib/activity";
 import { relativeTime, scoreTone } from "../lib/format";
 import {
   useApplications,
@@ -226,7 +226,7 @@ function RecentActivity() {
             <RowLink key={run.id} to={`/activity/${run.id}`} trailing={<StatusBadge value={run.status} />}>
               <p className="truncate text-[13px] font-medium">{runSubject(run)}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {taskLabel(run.task_type)} · {relativeTime(run.started_at)}
+                {runKind(run)} · {relativeTime(run.started_at)}
               </p>
             </RowLink>
           ))}

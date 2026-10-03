@@ -1,5 +1,6 @@
-import { ChevronRight, Ellipsis, Plus, Radar } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Ellipsis, LoaderCircle, Plus, Radar, TriangleAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../components/confirm";
 import { EmptyState } from "../components/empty-state";
@@ -21,7 +22,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { runDuration } from "../lib/activity";
 import type { ScoutInput } from "../lib/api";
 import { dateTime, relativeTime } from "../lib/format";
+import { alarmProblem, isMac, isScheduled, nextRunLabel, scheduleLabel } from "../lib/scouts";
 import {
+  keys,
   useCreateScout,
   useDeleteScout,
   useRunScout,
@@ -31,11 +34,19 @@ import {
   useUpdateScout,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import type { SavedSearch, Scout, ScoutRunReport, ScoutSource } from "../lib/types";
+import type { SavedSearch, ScheduleKind, Scout, ScoutRunReport, ScoutSchedule, ScoutSource } from "../lib/types";
 
 const SOURCE_LABELS: Record<ScoutSource, string> = {
   local: "Jobs already saved here",
   sources: "Fetch from the job boards first",
+};
+
+// The select and the field beside it read as one phrase: "Every 6 hours",
+// "Every day at 8:00 AM".
+const SCHEDULE_LABELS: Record<ScheduleKind, string> = {
+  off: "Only when I run it",
+  every: "Every",
+  daily: "Every day at",
 };
 
 const emptyScout = (savedSearchId: string): ScoutInput => ({
@@ -45,6 +56,7 @@ const emptyScout = (savedSearchId: string): ScoutInput => ({
   max_applications_per_run: 10,
   source: "local",
   is_enabled: true,
+  schedule: { kind: "off" },
 });
 
 const toInput = (scout: Scout): ScoutInput => ({
@@ -54,23 +66,13 @@ const toInput = (scout: Scout): ScoutInput => ({
   max_applications_per_run: scout.max_applications_per_run,
   source: scout.source,
   is_enabled: scout.is_enabled,
+  schedule: scout.schedule ?? { kind: "off" },
 });
 
 export function Scouts() {
   const { notify } = useToast();
-  const { data: scouts } = useScouts();
-  const { data: searches } = useSavedSearches();
-  const { data: runs } = useScoutRuns(10);
-
-  // editing is the scout being edited, or "new"; null when the editor is shut.
-  const [editing, setEditing] = useState<Scout | "new" | null>(null);
-  const [deleting, setDeleting] = useState<Scout | null>(null);
+  const queryClient = useQueryClient();
   const [report, setReport] = useState<ScoutRunReport | null>(null);
-
-  const deleteScout = useDeleteScout({
-    onSuccess: () => setDeleting(null),
-    onError: (err) => notify(String(err)),
-  });
   const runScout = useRunScout({
     onSuccess: (result) => {
       setReport(result);
@@ -83,8 +85,34 @@ export function Scouts() {
     },
     onError: (err) => notify(String(err)),
   });
+  const { data: scouts } = useScouts(runScout.isPending);
+  const { data: searches } = useSavedSearches();
+  const { data: runs } = useScoutRuns(10);
+
+  // A run the schedule started ends without this screen asking for it, so
+  // its end is noticed here and what it made is read again.
+  const busy = scouts?.some((scout) => scout.activity) ?? false;
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (wasBusy.current && !busy) {
+      void queryClient.invalidateQueries({ queryKey: keys.scoutRuns });
+      void queryClient.invalidateQueries({ queryKey: keys.applications.all });
+      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
+    }
+    wasBusy.current = busy;
+  }, [busy, queryClient]);
+
+  // editing is the scout being edited, or "new"; null when the editor is shut.
+  const [editing, setEditing] = useState<Scout | "new" | null>(null);
+  const [deleting, setDeleting] = useState<Scout | null>(null);
+
+  const deleteScout = useDeleteScout({
+    onSuccess: () => setDeleting(null),
+    onError: (err) => notify(String(err)),
+  });
 
   const searchName = (id: string) => searches?.find((s) => s.id === id)?.name ?? "a deleted search";
+  const scoutName = (id: string | undefined) => scouts?.find((s) => s.id === id)?.name ?? "A deleted scout";
 
   // A scout runs a saved search, so without one there is nothing to run.
   if (searches && searches.length === 0) {
@@ -111,7 +139,7 @@ export function Scouts() {
     >
       <p className="max-w-2xl text-sm text-muted-foreground">
         A scout runs one of your saved searches, scores what it finds against your profile, and creates applications
-        for you to review. It never contacts an employer and never submits.
+        for you to review, when you ask or on a schedule. It never contacts an employer and never submits.
       </p>
 
       <Section title="Your scouts" className="mt-6">
@@ -125,54 +153,79 @@ export function Scouts() {
           </Panel>
         ) : (
           <Panel className="divide-y divide-border">
-            {scouts.map((scout) => (
-              <div key={scout.id} className="flex items-center gap-4 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium">
-                    {scout.name}
-                    {!scout.is_enabled && (
-                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">
-                        Paused
-                      </span>
+            {scouts.map((scout) => {
+              const problem = isScheduled(scout) ? alarmProblem(scout.alarm) : undefined;
+              const asked = runScout.isPending && runScout.variables === scout.id;
+              return (
+                <div key={scout.id} className="flex items-center gap-4 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-[13px] font-medium">
+                      <span className="truncate">{scout.name}</span>
+                      {!scout.is_enabled && (
+                        <span className="rounded bg-muted px-1.5 py-px text-[11px] leading-4 font-normal text-muted-foreground">
+                          Paused
+                        </span>
+                      )}
+                      {scout.activity && (
+                        <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px text-[11px] leading-4 font-normal text-primary">
+                          <LoaderCircle className="size-3 animate-spin" />
+                          {scout.activity === "running" ? "Running" : "Waiting for another scout"}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-subtle-foreground">
+                      {searchName(scout.saved_search_id)} · score ≥ {scout.min_match_score} · up to{" "}
+                      {scout.max_applications_per_run} per run ·{" "}
+                      {scout.source === "local" ? "saved jobs" : "fetches from the job boards"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Runs {scheduleLabel(scout.schedule)}
+                      {isScheduled(scout) && scout.next_run_at && !problem && (
+                        <span title={dateTime(scout.next_run_at)}>, next {nextRunLabel(scout.next_run_at)}</span>
+                      )}
+                      {" · "}
+                      {scout.last_run_at ? (
+                        <span title={dateTime(scout.last_run_at)}>last ran {relativeTime(scout.last_run_at)}</span>
+                      ) : (
+                        "hasn’t run yet"
+                      )}
+                    </p>
+                    {problem && (
+                      <p className="mt-1 flex items-start gap-1.5 text-xs text-warning">
+                        <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                        {problem}
+                      </p>
                     )}
-                  </p>
-                  <p className="mt-0.5 text-xs text-subtle-foreground">
-                    {searchName(scout.saved_search_id)} · score ≥ {scout.min_match_score} · up to{" "}
-                    {scout.max_applications_per_run} per run ·{" "}
-                    {scout.source === "local" ? "saved jobs" : "fetches from the job boards"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {scout.last_run_at ? (
-                      <span title={dateTime(scout.last_run_at)}>Last ran {relativeTime(scout.last_run_at)}</span>
-                    ) : (
-                      "Hasn’t run yet"
-                    )}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => runScout.mutate(scout.id)}
-                  disabled={runScout.isPending || !scout.is_enabled}
-                >
-                  {runScout.isPending && runScout.variables === scout.id ? "Running…" : "Run now"}
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<Button size="icon-sm" variant="ghost" aria-label={`More for ${scout.name}`} />}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => runScout.mutate(scout.id)}
+                    disabled={runScout.isPending || !scout.is_enabled || scout.activity !== undefined}
                   >
-                    <Ellipsis />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setEditing(scout)}>Edit…</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(scout)}>
-                      Delete…
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
+                    {scout.activity === "waiting"
+                      ? "Waiting…"
+                      : asked || scout.activity === "running"
+                        ? "Running…"
+                        : "Run now"}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={<Button size="icon-sm" variant="ghost" aria-label={`More for ${scout.name}`} />}
+                    >
+                      <Ellipsis />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setEditing(scout)}>Edit…</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onClick={() => setDeleting(scout)}>
+                        Delete…
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })}
           </Panel>
         )}
       </Section>
@@ -199,7 +252,10 @@ export function Scouts() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px]">
+                      <span className="font-medium">{scoutName(run.scout_id)}</span>
+                      <span className="text-muted-foreground"> · </span>
                       <span title={dateTime(run.started_at)}>{relativeTime(run.started_at)}</span>
+                      {run.trigger === "schedule" && <span className="text-muted-foreground"> · on schedule</span>}
                       {duration && <span className="text-muted-foreground"> · took {duration}</span>}
                     </p>
                     {run.error && <p className="mt-0.5 truncate text-xs text-destructive">{run.error}</p>}
@@ -221,7 +277,7 @@ export function Scouts() {
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title={`Delete “${deleting?.name}”?`}
-        description="The scout stops, and its past runs stay in Activity. Applications it created are kept."
+        description="The scout stops, along with its schedule, and its past runs stay in Activity. Applications it created are kept."
         confirmLabel="Delete scout"
         onConfirm={() => deleting && deleteScout.mutate(deleting.id)}
         pending={deleteScout.isPending}
@@ -347,6 +403,8 @@ function ScoutEditor({
               </Select>
             </FormField>
 
+            <ScheduleField schedule={draft.schedule} onChange={(schedule) => setDraft({ ...draft, schedule })} />
+
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.is_enabled}
@@ -358,13 +416,100 @@ function ScoutEditor({
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
-            <Button type="submit" disabled={!draft.name.trim() || createScout.isPending || updateScout.isPending}>
+            <Button
+              type="submit"
+              disabled={
+                !draft.name.trim() || !scheduleValid(draft.schedule) || createScout.isPending || updateScout.isPending
+              }
+            >
               {scout ? "Save scout" : "Create scout"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/// scheduleValid reports a schedule the daemon will accept: every 1 to 24
+/// hours, or a time of day.
+function scheduleValid(schedule: ScoutSchedule): boolean {
+  switch (schedule.kind) {
+    case "every":
+      return Number.isInteger(schedule.every_hours) && schedule.every_hours! >= 1 && schedule.every_hours! <= 24;
+    case "daily":
+      return Number.isInteger(schedule.daily_at) && schedule.daily_at! >= 0 && schedule.daily_at! < 24 * 60;
+    default:
+      return true;
+  }
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/// ScheduleField says when a scout runs on its own: never, every few
+/// hours, or once a day at a time on this computer's clock.
+function ScheduleField({ schedule, onChange }: { schedule: ScoutSchedule; onChange: (s: ScoutSchedule) => void }) {
+  const kind = schedule.kind ?? "off";
+  const choose = (next: ScheduleKind) => {
+    if (next === "every") onChange({ kind: "every", every_hours: schedule.every_hours ?? 6 });
+    else if (next === "daily") onChange({ kind: "daily", daily_at: schedule.daily_at ?? 8 * 60 });
+    else onChange({ kind: "off" });
+  };
+  const dailyAt = schedule.daily_at ?? 8 * 60;
+
+  return (
+    <FormField
+      label="Runs on its own"
+      htmlFor="scout-schedule"
+      hint={
+        kind === "off"
+          ? undefined
+          : `Your computer starts it, even with JobPilot closed, while you’re logged in and it’s awake. A run missed while it was off or asleep happens once when it’s back.${
+              isMac() ? " macOS will show that JobPilot added a background item." : ""
+            }`
+      }
+    >
+      <div className="flex items-center gap-3">
+        <Select items={SCHEDULE_LABELS} value={kind} onValueChange={(value) => value && choose(value as ScheduleKind)}>
+          <SelectTrigger id="scout-schedule" className={kind === "off" ? "min-w-0 flex-1" : "w-44"}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(SCHEDULE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {kind === "every" && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Input
+              aria-label="Hours between runs"
+              type="number"
+              min={1}
+              max={24}
+              className="w-16"
+              value={Number.isNaN(schedule.every_hours) ? "" : schedule.every_hours}
+              onChange={(e) => onChange({ kind: "every", every_hours: e.target.valueAsNumber })}
+            />
+            <span className="text-sm text-muted-foreground">hours</span>
+          </div>
+        )}
+        {kind === "daily" && (
+          <Input
+            aria-label="Time of day"
+            type="time"
+            className="w-34"
+            value={Number.isNaN(dailyAt) ? "" : `${pad(Math.floor(dailyAt / 60))}:${pad(dailyAt % 60)}`}
+            onChange={(e) => {
+              const [hours, minutes] = e.target.value.split(":").map(Number);
+              onChange({ kind: "daily", daily_at: e.target.value ? hours * 60 + minutes : Number.NaN });
+            }}
+          />
+        )}
+      </div>
+    </FormField>
   );
 }
 
