@@ -10,8 +10,8 @@ Phase 7 (review mode) is complete: application review state and approval UI came
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and under way.
 Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also built: the `io.github.unicdeve.jobpilot` identifier, versions, and alarms that remove themselves (below).
-Not yet built: installers, and the release workflow (`docs/08_development/packaging.md`).
+Also built: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, and the installers' configuration (below).
+Not yet built: the release workflow (`docs/08_development/packaging.md`).
 
 ## Implemented
 
@@ -364,6 +364,11 @@ Not yet built: installers, and the release workflow (`docs/08_development/packag
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
   A daemon shutting down removes the discovery file only if it still names that daemon.
   The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
+- Installers (ADR-0029 §3, §5, §6): `make bundle TARGET=<rust target> VERSION=x.y.z` builds the sidecars (`make sidecars`) and then the desktop's bundle for that target, with `desktop/src-tauri/tauri.bundle.conf.json` naming the sidecars, since Tauri will not compile the app while one it names is missing (`docs/08_development/packaging.md`).
+  `tauri.conf.json` names the formats (`.app` and `.dmg`, NSIS, `.deb` and `.rpm`), requires macOS 12, which Go does, ad-hoc signs on macOS, and installs per user on Windows with the hooks in `desktop/src-tauri/windows/hooks.nsh`: `stop` before installing, `alarms restore` after, and `stop` then `alarms remove` before uninstalling.
+  `alarms restore` was added because an upgrade runs the old uninstaller, whose hook cannot tell it from an uninstall (ADR-0029 §5, amended).
+  Measured on macOS: a universal `.app` and `.dmg` built, with `jobpilot`, `jobpilot-cli` and `jobpilot-desktop` side by side in `Contents/MacOS`, all three universal and ad-hoc signed with the hardened runtime, and `codesign --verify --deep --strict` passing; the app starting the daemon inside it, and a CLI linked onto `PATH` doing the same; and `alarms restore` scheduling a removed Scout again, doing nothing with no database, and leaving a running daemon's alarms to it.
+  Not yet measured: a downloaded, quarantined copy opened through Open Anyway, starting its daemon and having launchd start it; Login Items showing the agents as JobPilot's; and the NSIS installer, `.deb` and `.rpm`, which are built on their own platforms by the release workflow.
 - Versions (ADR-0029 §2, §4): `internal/version` holds the version a binary was built as, which `make dist` sets from `VERSION` and every other build leaves as `dev`.
   `jobpilot --version` and `jobpilot-cli --version` print it, the CLI without reaching the daemon; `/v1/health` returns the daemon's; Settings → About shows the app's and the daemon's.
   `make dist VERSION=x.y.z` builds both binaries for macOS (arm64, x86_64), Linux (x86_64, arm64) and Windows (x86_64) with `CGO_ENABLED=0`, and packs each pair as a `.tar.gz`, or a `.zip` for Windows.

@@ -23,6 +23,8 @@ yarn-error.log*
 # Rust / Tauri
 target/
 src-tauri/target/
+# The sidecars `make sidecars` builds for a bundle.
+desktop/src-tauri/binaries/
 
 # Go
 bin/

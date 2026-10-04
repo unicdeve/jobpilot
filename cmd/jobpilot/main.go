@@ -11,7 +11,8 @@
 // `jobpilot stop` asks the running daemon to stop and waits for it to go,
 // which the Windows installer runs before replacing or removing it, and
 // `jobpilot alarms remove` removes every Scout's alarm, which its
-// uninstaller runs after that (ADR-0029 §5).
+// uninstaller runs after that, and `jobpilot alarms restore` schedules them
+// again, which the installer runs once its files are in place (ADR-0029 §5).
 package main
 
 import (
@@ -73,6 +74,10 @@ func main() {
 		if err := removeAlarms(); err != nil {
 			log.Fatalf("jobpilot alarms remove: %v", err)
 		}
+	case len(args) == 2 && args[0] == "alarms" && args[1] == "restore":
+		if err := restoreAlarms(); err != nil {
+			log.Fatalf("jobpilot alarms restore: %v", err)
+		}
 	case len(args) == 3 && args[0] == "scout" && args[1] == "wake":
 		if err := wake(args[2]); err != nil {
 			log.Fatalf("jobpilot scout wake: %v", err)
@@ -82,6 +87,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       jobpilot --version            print the version")
 		fmt.Fprintln(os.Stderr, "       jobpilot stop                 stop the running daemon, and wait for it to go")
 		fmt.Fprintln(os.Stderr, "       jobpilot alarms remove        remove every scheduled scout's alarm")
+		fmt.Fprintln(os.Stderr, "       jobpilot alarms restore       schedule every scheduled scout again")
 		fmt.Fprintln(os.Stderr, "       jobpilot scout wake <id>      run a scheduled scout if it is due")
 		os.Exit(2)
 	}

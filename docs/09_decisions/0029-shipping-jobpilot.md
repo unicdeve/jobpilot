@@ -5,6 +5,7 @@
 Accepted on 2026-10-03.
 Four choices were made that day: the bundle identifier is `io.github.unicdeve.jobpilot`, releases are unsigned until signing is paid for, updating is manual, and the repository is public when the first release goes out.
 Decisions 1 to 10 say how Phase 10 of the roadmap is built around them, and were accepted with them.
+§5 was amended on 2026-10-04, at the user's direction, before any release: the Windows installer restores the alarms once its files are in place, since an upgrade runs the old uninstaller.
 
 It builds the post-MVP requirement "Application packaging/update mechanism" (`docs/00_product/01_requirements.md`), within `docs/08_development/packaging.md`, which it revises.
 It settles what ADR-0027 §7 and ADR-0028 left to packaging: the bundle identifier, and removing a Scout's alarm when JobPilot is uninstalled.
@@ -118,7 +119,14 @@ A release never migrates downward.
 **Windows.** The NSIS installer's hooks run, as the user:
 
 - before installing: the installed `jobpilot.exe stop`, if there is one, so an upgrade can replace it;
-- before uninstalling: `jobpilot.exe stop`, then `jobpilot.exe alarms remove`, which removes every JobPilot task.
+- before uninstalling: `jobpilot.exe stop`, then `jobpilot.exe alarms remove`, which removes every JobPilot task;
+- after installing: `jobpilot.exe alarms restore`, which schedules every enabled, scheduled Scout again from the database and exits.
+
+The last is the amendment.
+Upgrading runs the old version's uninstaller first, by default, and Tauri passes it nothing that tells an upgrade from an uninstall, so its hook removes every task on an ordinary upgrade.
+Nothing else would schedule them again until JobPilot was next opened, and a Scout that stopped running unannounced is the failure scheduling exists to avoid.
+`alarms restore` does nothing with no database, which is a first install, and nothing while a daemon runs, which keeps the alarms itself; it holds the daemon's lock while it works.
+Starting the daemon after installing would have done the same without a new command, at the cost of an installer leaving a process running.
 
 **macOS and Linux.** No uninstaller runs as the user, so each alarm checks for its own executable.
 The entry runs a short `/bin/sh` script: if the executable is gone, it removes its own entry and exits; otherwise it runs `jobpilot scout wake <id>` in its place, as today.
@@ -185,7 +193,7 @@ The first "Prepare in browser" says it is downloading what it needs.
 
 ## Consequences
 
-- `tauri.conf.json` gains the identifier, `externalBin`, the NSIS hooks and per-user install mode, and the `deb` and `rpm` settings; `bundle.targets` names those formats rather than `all`.
+- `tauri.conf.json` gains the identifier, the NSIS hooks and per-user install mode, and the `deb` and `rpm` settings; `bundle.targets` names those formats rather than `all`. `externalBin` is in `tauri.bundle.conf.json`, which only bundling passes to `tauri build`, since Tauri will not compile the app while a binary it names is missing (`packaging.md`).
 - The daemon gains `stop` and `alarms remove` beside `scout wake`, a `--version` flag, and `POST /v1/shutdown`. `/v1/health` returns a version.
 - The daemon-finding code in Go (`internal/adapters/primary/httpapi/ensure.go`) and in Rust (`desktop/src-tauri/src/daemon.rs`) both learn decision 4, and stay in step as they do today.
 - Every alarm's entry changes shape, from the executable to a script that runs it. The fingerprint changes with it, so reconcile rewrites every existing entry once.

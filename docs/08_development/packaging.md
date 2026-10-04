@@ -29,7 +29,15 @@ The Go binaries are pure Go and built with `CGO_ENABLED=0`, so every target cros
 `make dist` builds them, with the version given at build time; GoReleaser is not used (ADR-0029 §3).
 A binary built any other way, including `make build` and `make dev`, reports its version as `dev`.
 
-The desktop is built by `tauri build` on a machine of each platform, after the sidecars for that platform are in place.
+The desktop is built by `make bundle TARGET=<rust target> VERSION=x.y.z` on a machine of each platform: `universal-apple-darwin` on a Mac, `x86_64-pc-windows-msvc` on Windows, and `x86_64-unknown-linux-gnu` or `aarch64-unknown-linux-gnu` on Linux.
+It first runs `make sidecars`, which builds the daemon and the CLI into `desktop/src-tauri/binaries/` under the names Tauri's `externalBin` expects (`jobpilot-<target>`), universal on macOS by `lipo` from both architectures, then `tauri build` for that target.
+A universal build needs both Rust targets: `rustup target add aarch64-apple-darwin x86_64-apple-darwin`.
+
+The sidecars are named in `desktop/src-tauri/tauri.bundle.conf.json`, which `make bundle` passes to `tauri build --config`, rather than in `tauri.conf.json` with the rest of the bundle's settings.
+Tauri refuses to compile the app at all while a binary `externalBin` names is missing, so every `tauri dev`, `cargo clippy` and `cargo test` would otherwise need the sidecars built first, and a development app would start the staged daemon beside it rather than the one `make dev` runs.
+
+The bundle requires macOS 12, which is what Go requires, Windows 10, and on Linux what Tauri's `.deb` and `.rpm` declare.
+Windows installs per user (`installMode: currentUser`), with the hooks in `desktop/src-tauri/windows/hooks.nsh`.
 
 ## Versions
 

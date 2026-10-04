@@ -39,6 +39,16 @@ func EnsureDataDir() (string, error) {
 	return dir, nil
 }
 
+// DBPath returns where the application's SQLite database file is, or would
+// be, without creating anything.
+func DBPath() (string, error) {
+	dir, err := GetDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, dbFileName), nil
+}
+
 // DefaultDBPath returns the path to the application's SQLite database file,
 // creating the data directory if needed. This is the single source of
 // truth for that path: both cmd/jobpilot-cli and cmd/migrate call it, so

@@ -27,6 +27,13 @@ DIST_TARGETS=darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 VERSION ?=
 DIST_LDFLAGS=-s -w -X github.com/unicdev/jobpilot/internal/version.Version=$(VERSION)
 
+# The Rust target `make bundle` builds the desktop for, which also names the
+# sidecars Tauri looks for: desktop/src-tauri/binaries/jobpilot-<target>.
+# This machine's by default; universal-apple-darwin is a release's macOS.
+TARGET ?= $(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')
+SIDECAR_DIR=desktop/src-tauri/binaries
+SIDECAR_LDFLAGS=-s -w -X github.com/unicdev/jobpilot/internal/version.Version=$(or $(VERSION),dev)
+
 # air rebuilds and restarts the daemon on change (`make dev`). Pinned and
 # installed into ./bin for the reason golangci-lint is, and a development
 # tool only: nothing the application builds depends on it.
@@ -40,7 +47,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build dist clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build dist sidecars bundle clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -76,6 +83,46 @@ dist:
 			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) || exit 1; \
 		fi; \
 	done
+
+# sidecars builds the daemon and CLI the desktop bundle carries next to the
+# app's executable (ADR-0029 §3), named for TARGET as Tauri's externalBin
+# expects. A universal macOS build carries universal binaries, made with
+# lipo from both architectures; each architecture's own is staged too, since
+# Tauri compiles the app once per architecture and each compile looks for
+# its own. Without VERSION they say "dev".
+sidecars:
+	@rm -rf $(SIDECAR_DIR) && mkdir -p $(SIDECAR_DIR)
+	@build() { \
+		echo "building the sidecars ($(or $(VERSION),dev)) for $$1/$$2"; \
+		CGO_ENABLED=0 GOOS=$$1 GOARCH=$$2 go build -trimpath -ldflags "$(SIDECAR_LDFLAGS)" -o $$3/$(BINARY_NAME)$$4 ./cmd/jobpilot && \
+		CGO_ENABLED=0 GOOS=$$1 GOARCH=$$2 go build -trimpath -ldflags "$(SIDECAR_LDFLAGS)" -o $$3/$(CLI_BINARY_NAME)$$4 ./cmd/jobpilot-cli; \
+	}; \
+	place() { mv $$1/$(BINARY_NAME)$$2 $(SIDECAR_DIR)/$(BINARY_NAME)-$(TARGET)$$2 && \
+		mv $$1/$(CLI_BINARY_NAME)$$2 $(SIDECAR_DIR)/$(CLI_BINARY_NAME)-$(TARGET)$$2; }; \
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	case "$(TARGET)" in \
+		aarch64-apple-darwin) build darwin arm64 $$tmp "" && place $$tmp "";; \
+		x86_64-apple-darwin) build darwin amd64 $$tmp "" && place $$tmp "";; \
+		universal-apple-darwin) \
+			build darwin arm64 $$tmp/arm64 "" && build darwin amd64 $$tmp/amd64 "" && \
+			for bin in $(BINARY_NAME) $(CLI_BINARY_NAME); do \
+				lipo -create -output $(SIDECAR_DIR)/$$bin-$(TARGET) $$tmp/arm64/$$bin $$tmp/amd64/$$bin && \
+				cp $$tmp/arm64/$$bin $(SIDECAR_DIR)/$$bin-aarch64-apple-darwin && \
+				cp $$tmp/amd64/$$bin $(SIDECAR_DIR)/$$bin-x86_64-apple-darwin || exit 1; \
+			done;; \
+		x86_64-unknown-linux-gnu) build linux amd64 $$tmp "" && place $$tmp "";; \
+		aarch64-unknown-linux-gnu) build linux arm64 $$tmp "" && place $$tmp "";; \
+		x86_64-pc-windows-msvc) build windows amd64 $$tmp .exe && place $$tmp .exe;; \
+		*) echo "no sidecars for TARGET=$(TARGET)" >&2; exit 1;; \
+	esac
+
+# bundle builds the desktop's installers for TARGET, carrying the sidecars:
+# a .app and .dmg on macOS, the NSIS installer on Windows, .deb and .rpm on
+# Linux. The sidecars are named in tauri.bundle.conf.json rather than
+# tauri.conf.json, since Tauri refuses to build without them, which every
+# development build and check would then need first.
+bundle: sidecars
+	cd desktop && bun tauri build --target $(TARGET) --config src-tauri/tauri.bundle.conf.json
 
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
