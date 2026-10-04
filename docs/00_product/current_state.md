@@ -392,8 +392,7 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
   The webview's storage is keyed by the identifier, so the theme preference is chosen again once, and macOS asks again for permission to notify.
   The macOS agents are named after it too.
-  An agent under the old prefix is listed with no fingerprint, so the first reconcile rewrites it under the new one; a Scout the user had switched off in Login Items stays off, which `launchctl disable` says again for the new label.
-  The old prefix is recognised until the first release, then removed.
+  The old prefix was recognised long enough to move the agents of the one machine that had run JobPilot, and then removed before any release, which never carried it.
 - LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
   configured backend is set up at all and whether it answers right now, so a
   screen can check before starting work that needs it. The desktop's
@@ -706,7 +705,6 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
    - third-party notices: the MIT and BSD licenses of the Go, Rust and npm dependencies compiled into the binaries ask for their copyright notices to travel with them, which nothing yet gathers;
    - a first run of `release.yml`, from a pre-release tag such as `v0.1.0-rc.1`;
    - measuring a downloaded build: opening a quarantined `.dmg`'s app through Open Anyway and launchd starting its daemon (ADR-0029 §6), Login Items showing the agents as JobPilot's (§5), and the NSIS installer's hooks, the `.deb` and the `.rpm` on their systems;
-   - dropping the legacy `com.user.jobpilot.scout.` prefix from the launchd adapter, which nothing released ever carried (ADR-0029 §1).
 2. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
    Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
    Both wait on the first release's installers.

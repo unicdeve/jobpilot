@@ -23,13 +23,6 @@ const bundleIdentifier = "io.github.unicdeve.jobpilot"
 // launchdLabelPrefix names JobPilot's launchd agents.
 const launchdLabelPrefix = bundleIdentifier + ".scout."
 
-// legacyLaunchdLabelPrefix named the agents before the identifier was
-// settled: the placeholder Tauri was created with. An agent under it is
-// moved to launchdLabelPrefix the next time the alarms are reconciled.
-// Nothing released ever carried it, so it is removed at the first release
-// (ADR-0029 §1).
-const legacyLaunchdLabelPrefix = "com.user.jobpilot.scout."
-
 // Launchd keeps scheduled Scouts as launchd agents in the user's
 // LaunchAgents directory, one per Scout.
 type Launchd struct {
@@ -59,74 +52,36 @@ func (l *Launchd) label(scoutID string) string { return launchdLabelPrefix + sco
 
 func (l *Launchd) path(scoutID string) string { return filepath.Join(l.dir, l.label(scoutID)+".plist") }
 
-func (l *Launchd) legacyLabel(scoutID string) string { return legacyLaunchdLabelPrefix + scoutID }
-
-func (l *Launchd) legacyPath(scoutID string) string {
-	return filepath.Join(l.dir, l.legacyLabel(scoutID)+".plist")
-}
-
 // List returns the agents JobPilot wrote, and which the user switched off
 // in System Settings → Login Items.
-//
-// An agent still under the legacy prefix is listed with no fingerprint, so
-// the reconcile that reads it rewrites it, and Write moves it to the
-// current prefix.
 func (l *Launchd) List(ctx context.Context) ([]domain.ScoutAlarmEntry, error) {
+	paths, err := filepath.Glob(filepath.Join(l.dir, launchdLabelPrefix+"*.plist"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
 	disabled, err := l.disabled(ctx)
 	if err != nil {
 		return nil, err
 	}
-	current, err := l.agentFiles(launchdLabelPrefix)
-	if err != nil {
-		return nil, err
-	}
-	legacy, err := l.agentFiles(legacyLaunchdLabelPrefix)
-	if err != nil {
-		return nil, err
-	}
 
-	byScout := map[string]domain.ScoutAlarmEntry{}
-	for scoutID, path := range current {
+	entries := make([]domain.ScoutAlarmEntry, 0, len(paths))
+	for _, path := range paths {
+		scoutID := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), launchdLabelPrefix), ".plist")
+		if checkScoutID(scoutID) != nil {
+			continue
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
-		byScout[scoutID] = domain.ScoutAlarmEntry{
+		entries = append(entries, domain.ScoutAlarmEntry{
 			ScoutID:     scoutID,
 			Fingerprint: readFingerprint(content),
 			SwitchedOff: disabled[l.label(scoutID)],
-		}
+		})
 	}
-	for scoutID := range legacy {
-		byScout[scoutID] = domain.ScoutAlarmEntry{
-			ScoutID:     scoutID,
-			SwitchedOff: disabled[l.label(scoutID)] || disabled[l.legacyLabel(scoutID)],
-		}
-	}
-
-	entries := make([]domain.ScoutAlarmEntry, 0, len(byScout))
-	for _, entry := range byScout {
-		entries = append(entries, entry)
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].ScoutID < entries[j].ScoutID })
 	return entries, nil
-}
-
-// agentFiles returns the plist of every agent under prefix, by Scout ID.
-func (l *Launchd) agentFiles(prefix string) (map[string]string, error) {
-	paths, err := filepath.Glob(filepath.Join(l.dir, prefix+"*.plist"))
-	if err != nil {
-		return nil, err
-	}
-	files := make(map[string]string, len(paths))
-	for _, path := range paths {
-		scoutID := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), prefix), ".plist")
-		if checkScoutID(scoutID) != nil {
-			continue
-		}
-		files[scoutID] = path
-	}
-	return files, nil
 }
 
 // Write replaces the Scout's agent and loads it, unless the user switched
@@ -143,11 +98,6 @@ func (l *Launchd) Write(ctx context.Context, alarm domain.ScoutAlarm) error {
 	if err != nil {
 		return err
 	}
-	_, legacyErr := os.Stat(l.legacyPath(alarm.ScoutID))
-	legacyOff := legacyErr == nil && disabled[l.legacyLabel(alarm.ScoutID)]
-	if err := l.removeLegacy(ctx, alarm.ScoutID); err != nil {
-		return err
-	}
 
 	l.bootout(ctx, l.label(alarm.ScoutID))
 	if err := os.MkdirAll(l.dir, 0o755); err != nil {
@@ -158,12 +108,6 @@ func (l *Launchd) Write(ctx context.Context, alarm domain.ScoutAlarm) error {
 	}
 	if disabled[l.label(alarm.ScoutID)] {
 		return nil
-	}
-	// The user switched off the agent this one replaces, and launchd
-	// holds that against the old label, so it is said again for the new.
-	if legacyOff {
-		_, err := l.run(ctx, "launchctl", "disable", l.domain+"/"+l.label(alarm.ScoutID))
-		return err
 	}
 
 	for attempt := 0; ; attempt++ {
@@ -179,30 +123,13 @@ func (l *Launchd) Write(ctx context.Context, alarm domain.ScoutAlarm) error {
 	}
 }
 
-// Remove unloads the Scout's agent and deletes its file, under either
-// prefix.
+// Remove unloads the Scout's agent and deletes its file.
 func (l *Launchd) Remove(ctx context.Context, scoutID string) error {
 	if err := checkScoutID(scoutID); err != nil {
 		return err
 	}
-	if err := l.removeLegacy(ctx, scoutID); err != nil {
-		return err
-	}
 	l.bootout(ctx, l.label(scoutID))
 	if err := os.Remove(l.path(scoutID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-// removeLegacy unloads and deletes the Scout's agent under the legacy
-// prefix, if there is one.
-func (l *Launchd) removeLegacy(ctx context.Context, scoutID string) error {
-	if _, err := os.Stat(l.legacyPath(scoutID)); errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	l.bootout(ctx, l.legacyLabel(scoutID))
-	if err := os.Remove(l.legacyPath(scoutID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -214,8 +141,7 @@ func (l *Launchd) bootout(ctx context.Context, label string) {
 	_, _ = l.run(ctx, "launchctl", "bootout", l.domain+"/"+label)
 }
 
-// disabled reads which of JobPilot's labels, under either prefix, launchd
-// holds switched off.
+// disabled reads which of JobPilot's labels launchd holds switched off.
 //
 // `launchctl print-disabled` prints one line per label it has an override
 // for: `"label" => disabled` since macOS 13, `"label" => true` before.
@@ -227,7 +153,7 @@ func (l *Launchd) disabled(ctx context.Context) (map[string]bool, error) {
 	disabled := map[string]bool{}
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, `"`+launchdLabelPrefix) && !strings.HasPrefix(line, `"`+legacyLaunchdLabelPrefix) {
+		if !strings.HasPrefix(line, `"`+launchdLabelPrefix) {
 			continue
 		}
 		label, state, ok := strings.Cut(line, "=>")
