@@ -10,7 +10,8 @@ Phase 7 (review mode) is complete: application review state and approval UI came
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and under way.
 Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Not yet built: versions and replacing an older daemon, the `io.github.unicdeve.jobpilot` identifier, alarms that remove themselves, installers, and the release workflow (`docs/08_development/packaging.md`).
+Also built: the `io.github.unicdeve.jobpilot` identifier.
+Not yet built: versions and replacing an older daemon, alarms that remove themselves, installers, and the release workflow (`docs/08_development/packaging.md`).
 
 ## Implemented
 
@@ -357,9 +358,12 @@ Not yet built: versions and replacing an older daemon, the `io.github.unicdeve.j
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
   A daemon shutting down removes the discovery file only if it still names that daemon.
   The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
-- The app identifier is `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`; both were the Tauri template's.
+- The app identifier is `io.github.unicdeve.jobpilot` (ADR-0029 §1), replacing the Tauri template's `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`.
   The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
-  The webview's storage is keyed by the identifier, so the theme preference is chosen again once.
+  The webview's storage is keyed by the identifier, so the theme preference is chosen again once, and macOS asks again for permission to notify.
+  The macOS agents are named after it too.
+  An agent under the old prefix is listed with no fingerprint, so the first reconcile rewrites it under the new one; a Scout the user had switched off in Login Items stays off, which `launchctl disable` says again for the new label.
+  The old prefix is recognised until the first release, then removed.
 - LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
   configured backend is set up at all and whether it answers right now, so a
   screen can check before starting work that needs it. The desktop's
@@ -666,7 +670,7 @@ Not yet built: versions and replacing an older daemon, the `io.github.unicdeve.j
 
 1. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
    Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
-   Both wait on the rest of Phase 10 (ADR-0029): the identifier becomes `io.github.unicdeve.jobpilot`, replacing Tauri's placeholder `com.user.jobpilot` in the app and the macOS agents' names, and alarms remove themselves once JobPilot is uninstalled. Until then an uninstalled JobPilot leaves its alarms behind.
+   Both wait on the rest of Phase 10 (ADR-0029): installers, and alarms that remove themselves once JobPilot is uninstalled. Until then an uninstalled JobPilot leaves its alarms behind.
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.

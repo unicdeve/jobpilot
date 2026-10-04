@@ -30,7 +30,7 @@ func TestLaunchdPlist(t *testing.T) {
 	require.NoError(t, err)
 	plist := string(content)
 
-	assert.Contains(t, plist, "<string>com.user.jobpilot.scout."+scoutID+"</string>")
+	assert.Contains(t, plist, "<string>io.github.unicdeve.jobpilot.scout."+scoutID+"</string>")
 	assert.Contains(t, plist, "<string>/Applications/Jobs &amp; Me.app/Contents/MacOS/jobpilot</string>\n\t\t<string>scout</string>\n\t\t<string>wake</string>\n\t\t<string>"+scoutID+"</string>",
 		"the executable is escaped, and the scout is woken by ID")
 	assert.Contains(t, plist, "<key>Hour</key>\n\t\t<integer>8</integer>\n\t\t<key>Minute</key>\n\t\t<integer>30</integer>")
@@ -75,7 +75,7 @@ func TestLaunchd_WriteListRemove(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"launchctl print-disabled gui/501",
-		"launchctl bootout gui/501/com.user.jobpilot.scout." + scoutID,
+		"launchctl bootout gui/501/io.github.unicdeve.jobpilot.scout." + scoutID,
 		"launchctl bootstrap gui/501 " + l.path(scoutID),
 	}, runner.calls)
 	info, err := os.Stat(l.path(scoutID))
@@ -102,6 +102,99 @@ func TestLaunchd_ListIgnoresWhatIsNotJobPilots(t *testing.T) {
 
 	entries, err := l.List(context.Background())
 
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+// writeLegacyAgent leaves an agent under the prefix used before the
+// identifier was settled, as a daemon built before then wrote it.
+func writeLegacyAgent(t *testing.T, l *Launchd) {
+	t.Helper()
+	content, err := launchdPlist(l.legacyLabel(scoutID), dailyAlarm("/usr/local/bin/jobpilot"))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(l.dir, 0o755))
+	require.NoError(t, os.WriteFile(l.legacyPath(scoutID), content, 0o644))
+}
+
+func TestLaunchd_ALegacyAgentIsListedToBeRewritten(t *testing.T) {
+	l := newTestLaunchd(t, &fakeRunner{})
+	writeLegacyAgent(t, l)
+
+	entries, err := l.List(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []domain.ScoutAlarmEntry{{ScoutID: scoutID}}, entries,
+		"no fingerprint, so a reconcile writes it again under the current prefix")
+}
+
+func TestLaunchd_ALegacyAgentBesideACurrentOneIsListedOnce(t *testing.T) {
+	ctx := context.Background()
+	l := newTestLaunchd(t, &fakeRunner{})
+	require.NoError(t, l.Write(ctx, dailyAlarm("/usr/local/bin/jobpilot")))
+	writeLegacyAgent(t, l)
+
+	entries, err := l.List(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, []domain.ScoutAlarmEntry{{ScoutID: scoutID}}, entries,
+		"rewritten, so the legacy agent is removed")
+}
+
+func TestLaunchd_WriteMovesALegacyAgent(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{}
+	l := newTestLaunchd(t, runner)
+	writeLegacyAgent(t, l)
+
+	require.NoError(t, l.Write(ctx, dailyAlarm("/usr/local/bin/jobpilot")))
+
+	assert.Equal(t, []string{
+		"launchctl print-disabled gui/501",
+		"launchctl bootout gui/501/com.user.jobpilot.scout." + scoutID,
+		"launchctl bootout gui/501/io.github.unicdeve.jobpilot.scout." + scoutID,
+		"launchctl bootstrap gui/501 " + l.path(scoutID),
+	}, runner.calls)
+	_, err := os.Stat(l.legacyPath(scoutID))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(l.path(scoutID))
+	assert.NoError(t, err)
+}
+
+func TestLaunchd_ALegacyAgentSwitchedOffStaysOffWhenMoved(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{respond: func(call string, _ []string) ([]byte, error) {
+		if strings.HasPrefix(call, "launchctl print-disabled") {
+			return []byte("disabled services = {\n\t\"" + legacyLaunchdLabelPrefix + scoutID + "\" => disabled\n}\n"), nil
+		}
+		return nil, nil
+	}}
+	l := newTestLaunchd(t, runner)
+	writeLegacyAgent(t, l)
+
+	entries, err := l.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.True(t, entries[0].SwitchedOff)
+
+	require.NoError(t, l.Write(ctx, dailyAlarm("/usr/local/bin/jobpilot")))
+
+	assert.Zero(t, runner.ran("launchctl bootstrap"), "loading it would turn it back on behind the user's back")
+	assert.Equal(t, 1, runner.ran("launchctl disable gui/501/"+launchdLabelPrefix+scoutID),
+		"launchd holds the switch against the old label, so it is said again for the new one")
+}
+
+func TestLaunchd_RemoveTakesALegacyAgentToo(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{}
+	l := newTestLaunchd(t, runner)
+	writeLegacyAgent(t, l)
+
+	require.NoError(t, l.Remove(ctx, scoutID))
+
+	_, err := os.Stat(l.legacyPath(scoutID))
+	assert.True(t, os.IsNotExist(err))
+	assert.Equal(t, 1, runner.ran("launchctl bootout gui/501/"+legacyLaunchdLabelPrefix+scoutID))
+	entries, err := l.List(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, entries)
 }
