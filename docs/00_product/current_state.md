@@ -8,9 +8,10 @@ application generation, a desktop app, and a browser automation worker —
 with explicit gaps noted below.
 Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
-Phase 10 (distribution) is decided by ADR-0029 and under way.
-Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also built: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, the installers' configuration, and the release workflow (below).
+Phase 10 (distribution) is decided by ADR-0029 and built; the first release has not been made (Next, item 1).
+Built: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
+Also: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, the installers' configuration, and the release workflow (below).
+The README says how to install, open an unsigned build, update and uninstall, and how to put the CLI on `PATH`.
 Not yet run: the release workflow, which needs a tag pushed (`docs/08_development/packaging.md`).
 
 ## Implemented
@@ -500,8 +501,11 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   title bar is drawn over the sidebar (`src-tauri/tauri.macos.conf.json`).
   Matches is no longer a screen of its own: a match is a job with a score,
   ranked under Jobs → Analyzed, and `/matches` redirects there.
-  Not built: any settings category beyond appearance, the model, job
-  searches and API keys (unimplemented backend).
+  Settings has appearance, the AI model, job searches, notifications, API
+  keys, data and About; the categories `docs/02_features/13_settings.md`
+  lists beyond those (prompt customization, application mode, data
+  retention, storage location, browser settings, policies) have no backend
+  yet.
 
 - Agent Activity (`docs/02_features/12_agent_activity.md`): the desktop's
   Activity screen lists every agent run — browser preparation and scout runs
@@ -697,12 +701,17 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 
 ## Next
 
-1. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
+1. The first release (ADR-0029). Phase 10 is built and has not shipped:
+   - a license, which the repository does not have yet, and the repository made public, which also gives the arm64 Linux build its runner;
+   - a first run of `release.yml`, from a pre-release tag such as `v0.1.0-rc.1`;
+   - measuring a downloaded build: opening a quarantined `.dmg`'s app through Open Anyway and launchd starting its daemon (ADR-0029 §6), Login Items showing the agents as JobPilot's (§5), and the NSIS installer's hooks, the `.deb` and the `.rpm` on their systems;
+   - dropping the legacy `com.user.jobpilot.scout.` prefix from the launchd adapter, which nothing released ever carried (ADR-0029 §1).
+2. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
    Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
-   Both wait on the rest of Phase 10 (ADR-0029): the installers, whose Windows uninstaller is what removes a Scout's task there.
-2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
+   Both wait on the first release's installers.
+3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-4. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
-5. A title naming a region wider than a job's one listed place: Hugging Face's "EMEA Remote" roles on Workable list Paris and read as France (ADR-0026 §4).
+4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
+5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
+6. A title naming a region wider than a job's one listed place: Hugging Face's "EMEA Remote" roles on Workable list Paris and read as France (ADR-0026 §4).
    Whether such a title should make the reading less certain is a change to ADR-0023 for every source, left open.
