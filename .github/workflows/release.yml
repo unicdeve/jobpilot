@@ -1,0 +1,202 @@
+# Builds a release from a tag vX.Y.Z and leaves it as a draft GitHub
+# Release for the user to check and publish (ADR-0029 §8,
+# docs/08_development/packaging.md).
+#
+# The tag is checked against the version every release file carries, the
+# checks CI runs are run again, and then each platform builds on a machine
+# of its own: the desktop bundles with `make bundle`, and the standalone
+# CLI and daemon with `make dist`. Every file is listed in SHA256SUMS.
+#
+# Releases are unsigned until signing is paid for (ADR-0029 §6). Each
+# signing secret reaches the build only when it is set, so adding the
+# secrets is all that turning signing on takes.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag and version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the version from the tag
+        id: tag
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$tag is not a release tag, which is vX.Y.Z with an optional -prerelease"
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Every version file says the same
+        run: make version-check VERSION=${{ steps.tag.outputs.version }}
+
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  cli:
+    name: CLI and daemon archives
+    needs: [version, checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make dist VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cli
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop (${{ matrix.target }})
+    needs: [version, checks]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: universal-apple-darwin
+            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
+            bundles: dmg/*.dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust-targets: x86_64-pc-windows-msvc
+            bundles: nsis/*.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            rust-targets: x86_64-unknown-linux-gnu
+            bundles: deb/*.deb rpm/*.rpm
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            rust-targets: aarch64-unknown-linux-gnu
+            bundles: deb/*.deb rpm/*.rpm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Tauri's Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev build-essential pkg-config
+      # The Windows image has no make.
+      - name: Install make
+        if: runner.os == 'Windows'
+        run: choco install make --version=4.4.1 --no-progress -y
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - name: bun install
+        working-directory: desktop
+        run: bun install --frozen-lockfile
+      # Installs the toolchain rust-toolchain.toml pins, with the targets
+      # this build compiles: both architectures for a universal macOS app.
+      - name: Rust toolchain
+        working-directory: desktop/src-tauri
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.target }}
+      # Tauri reads an empty variable as an identity to sign with, so each
+      # one is set only when its secret is.
+      - name: Signing, where its secrets are set
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              if [ -n "${!name}" ]; then
+                { echo "$name<<__SIGNING__"; echo "${!name}"; echo "__SIGNING__"; } >> "$GITHUB_ENV"
+              fi
+            done
+          fi
+          # A Windows signing command, with %1 for the file, is given to
+          # Tauri as bundle.windows.signCommand.
+          if [ "$RUNNER_OS" = Windows ] && [ -n "$WINDOWS_SIGN_COMMAND" ]; then
+            config="$(cygpath -m "$RUNNER_TEMP")/sign.json"
+            jq -n --arg cmd "$WINDOWS_SIGN_COMMAND" '{bundle: {windows: {signCommand: $cmd}}}' > "$config"
+            echo "BUNDLE_FLAGS=--config $config" >> "$GITHUB_ENV"
+          fi
+      - name: make bundle
+        run: make bundle TARGET=${{ matrix.target }} VERSION=${{ needs.version.outputs.version }}
+      - name: Collect the bundles
+        run: |
+          mkdir -p out
+          cd desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+          cp ${{ matrix.bundles }} "$GITHUB_WORKSPACE/out/"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: [version, cli, desktop]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # A draft, published by hand once its builds are installed and its
+      # notes written (packaging.md, "Releasing").
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--draft --verify-tag --title "JobPilot $GITHUB_REF_NAME" --notes-file .github/release-notes.md)
+          if [ "${{ needs.version.outputs.prerelease }}" = true ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" artifacts/*

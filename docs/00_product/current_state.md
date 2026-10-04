@@ -10,8 +10,8 @@ Phase 7 (review mode) is complete: application review state and approval UI came
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and under way.
 Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also built: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, and the installers' configuration (below).
-Not yet built: the release workflow (`docs/08_development/packaging.md`).
+Also built: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, the installers' configuration, and the release workflow (below).
+Not yet run: the release workflow, which needs a tag pushed (`docs/08_development/packaging.md`).
 
 ## Implemented
 
@@ -364,6 +364,10 @@ Not yet built: the release workflow (`docs/08_development/packaging.md`).
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
   A daemon shutting down removes the discovery file only if it still names that daemon.
   The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
+- Release workflow (ADR-0029 §8, `.github/workflows/release.yml`): a `v*` tag is checked against the version every release file carries (`make version-check`, which `make set-version` satisfies, `Cargo.lock` included), `ci.yml` runs again as a reusable workflow, and then `make dist` builds the standalone archives on Linux while `make bundle` builds each desktop bundle on a runner of its platform, arm64 Linux on `ubuntu-24.04-arm`.
+  The last job writes `SHA256SUMS` and creates a draft release with `.github/release-notes.md` as its notes, a pre-release for a tag with one.
+  Signing secrets reach the build only when they are set (`packaging.md`, "Signing").
+  Checked with actionlint and its scripts run locally; not yet run on GitHub, and the arm64 Linux job needs the repository public or a paid runner.
 - Installers (ADR-0029 §3, §5, §6): `make bundle TARGET=<rust target> VERSION=x.y.z` builds the sidecars (`make sidecars`) and then the desktop's bundle for that target, with `desktop/src-tauri/tauri.bundle.conf.json` naming the sidecars, since Tauri will not compile the app while one it names is missing (`docs/08_development/packaging.md`).
   `tauri.conf.json` names the formats (`.app` and `.dmg`, NSIS, `.deb` and `.rpm`), requires macOS 12, which Go does, ad-hoc signs on macOS, and installs per user on Windows with the hooks in `desktop/src-tauri/windows/hooks.nsh`: `stop` before installing, `alarms restore` after, and `stop` then `alarms remove` before uninstalling.
   `alarms restore` was added because an upgrade runs the old uninstaller, whose hook cannot tell it from an uninstall (ADR-0029 §5, amended).

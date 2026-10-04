@@ -47,7 +47,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build dist sidecars bundle clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build dist sidecars bundle set-version version-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -116,13 +116,44 @@ sidecars:
 		*) echo "no sidecars for TARGET=$(TARGET)" >&2; exit 1;; \
 	esac
 
+# The files a release's version is written in (ADR-0029 §2). Cargo.lock
+# carries the desktop crate's version too, and every --locked build fails
+# once it disagrees with Cargo.toml.
+VERSION_FILES=desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml desktop/package.json desktop/src-tauri/Cargo.lock
+
+# set-version writes VERSION into every file a release reads it from.
+set-version:
+	@case "$(VERSION)" in ""|v*) echo "set-version needs a version without the v, as in: make set-version VERSION=1.2.3" >&2; exit 1;; esac
+	perl -pi -e 's/^(  "version": ")[^"]*/$${1}$(VERSION)/' desktop/src-tauri/tauri.conf.json desktop/package.json
+	perl -pi -e '$$done++ if !$$done && s/^version = "[^"]*"/version = "$(VERSION)"/' desktop/src-tauri/Cargo.toml
+	perl -0pi -e 's/(name = "jobpilot-desktop"\nversion = ")[^"]*/$${1}$(VERSION)/' desktop/src-tauri/Cargo.lock
+	@$(MAKE) --no-print-directory version-check VERSION=$(VERSION)
+
+# version-check fails unless every file a release reads its version from
+# says VERSION, which the release workflow checks the tag against.
+version-check:
+	@case "$(VERSION)" in ""|v*) echo "version-check needs a version without the v, as in: make version-check VERSION=1.2.3" >&2; exit 1;; esac
+	@bad=0; \
+	for file in $(VERSION_FILES); do \
+		case "$$file" in \
+			*.json) found=$$(perl -ne 'print "$$1\n" if /^  "version": "([^"]*)"/' $$file);; \
+			*Cargo.toml) found=$$(perl -ne 'if (/^version = "([^"]*)"/) { print "$$1\n"; exit }' $$file);; \
+			*Cargo.lock) found=$$(perl -0ne 'print "$$1\n" if /name = "jobpilot-desktop"\nversion = "([^"]*)"/' $$file);; \
+		esac; \
+		if [ "$$found" != "$(VERSION)" ]; then echo "$$file says $${found:-nothing}, not $(VERSION)" >&2; bad=1; fi; \
+	done; \
+	[ $$bad = 0 ] && echo "every version file says $(VERSION)"
+
 # bundle builds the desktop's installers for TARGET, carrying the sidecars:
 # a .app and .dmg on macOS, the NSIS installer on Windows, .deb and .rpm on
 # Linux. The sidecars are named in tauri.bundle.conf.json rather than
 # tauri.conf.json, since Tauri refuses to build without them, which every
 # development build and check would then need first.
+#
+# BUNDLE_FLAGS is passed on to `tauri build`, as the release workflow does
+# with a --config that signs on Windows once there is a signing command.
 bundle: sidecars
-	cd desktop && bun tauri build --target $(TARGET) --config src-tauri/tauri.bundle.conf.json
+	cd desktop && bun tauri build --target $(TARGET) --config src-tauri/tauri.bundle.conf.json $(BUNDLE_FLAGS)
 
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot

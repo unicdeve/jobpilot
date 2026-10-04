@@ -41,8 +41,9 @@ Windows installs per user (`installMode: currentUser`), with the hooks in `deskt
 
 ## Versions
 
-`desktop/src-tauri/tauri.conf.json`, `desktop/src-tauri/Cargo.toml` and `desktop/package.json` carry the release's version, without the `v`.
-The release workflow refuses a tag that disagrees with any of them.
+`desktop/src-tauri/tauri.conf.json`, `desktop/src-tauri/Cargo.toml` and `desktop/package.json` carry the release's version, without the `v`, and so does `desktop/src-tauri/Cargo.lock`, whose entry for the desktop crate every `--locked` build checks against `Cargo.toml`.
+`make set-version VERSION=x.y.z` writes it into all four, and `make version-check VERSION=x.y.z` fails unless all four say it.
+The release workflow runs the check, so it refuses a tag that disagrees with any of them.
 
 A newer app or CLI replaces an older daemon it finds running; an older one uses a newer daemon, and the CLI says it is older (ADR-0029 §4).
 A daemon refuses to open a database written by a newer JobPilot.
@@ -52,12 +53,17 @@ Releases never migrate a database downward, so going back a version means restor
 
 1. Run `make starter-list` and commit the regenerated `internal/core/domain/starter_companies_gen.go`, so no company JobPilot suggests watching was measured before the release that ships it (`docs/02_features/17_company_watchlists.md`).
    It reads every board over the network, which is why CI does not run it.
-2. Set the version in the three files above, and commit.
+2. Run `make set-version VERSION=x.y.z`, and commit.
 3. Tag the commit `vX.Y.Z` and push the tag.
-4. `.github/workflows/release.yml` checks the tag against the version, runs the checks CI runs, builds every artifact, and creates a **draft** GitHub Release with them attached.
+   A tag with a pre-release, `vX.Y.Z-rc.1`, makes a pre-release.
+4. `.github/workflows/release.yml` checks the tag against the version, runs `ci.yml`'s checks, builds every artifact, and creates a **draft** GitHub Release with them attached and `.github/release-notes.md` as its notes.
 5. Download the draft's builds and install them on each platform at hand.
-6. Write the release notes: what changed, anything the user must do, and the unsigned-build steps below.
+6. Write the release notes' "What changed", and anything the user must do.
+   The template already says how to open an unsigned build.
 7. Publish the draft.
+
+The workflow builds each platform on a machine of its own: the universal macOS app on `macos-latest`, the Windows installer on `windows-latest`, the `.deb` and `.rpm` on `ubuntu-24.04` and, for arm64, `ubuntu-24.04-arm`, and the standalone archives on Linux.
+GitHub's arm64 Linux runners are free for public repositories only, so the arm64 job waits for a runner while the repository is private (ADR-0029 makes it public with the first release).
 
 Publishing is always done by hand.
 
@@ -70,8 +76,11 @@ Releases are unsigned until signing is paid for (ADR-0029 §6).
 
 The README and every release's notes say both.
 
-The release workflow signs whenever its signing secrets are present: an Apple Developer ID certificate with notarization credentials, and a Windows signing command.
-Turning signing on is adding those secrets.
+The release workflow signs whenever its signing secrets are present, and each reaches the build only when it is set, since Tauri reads an empty one as an identity to sign with.
+Turning signing on is adding those secrets to the repository:
+
+- **macOS:** `APPLE_CERTIFICATE` (the Developer ID Application certificate, a base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY`, which Tauri signs with in place of the ad-hoc `-`; and `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID`, which it notarizes with.
+- **Windows:** `WINDOWS_SIGN_COMMAND`, a command with `%1` for the file to sign, which the workflow gives Tauri as `bundle.windows.signCommand` through `make bundle BUNDLE_FLAGS=--config …`. Tauri splits it on spaces, so a path with a space in it needs a wrapper script.
 
 ## Updating
 
