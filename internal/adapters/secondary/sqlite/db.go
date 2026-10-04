@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -135,11 +136,37 @@ func (db *DB) InitializeSchema(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := refuseNewerDatabase(ctx, provider); err != nil {
+		return err
+	}
 
 	if _, err := provider.Up(ctx); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
+	return nil
+}
+
+// ErrNewerDatabase is a database with migrations this build does not know,
+// which a newer JobPilot applied.
+var ErrNewerDatabase = errors.New("the data was written by a newer version of JobPilot")
+
+// refuseNewerDatabase stops a daemon from opening a database a newer
+// JobPilot has migrated: its schema is one this build was never written
+// against, and no release migrates downward (ADR-0029 §4).
+func refuseNewerDatabase(ctx context.Context, provider *goose.Provider) error {
+	applied, err := provider.GetDBVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read the database's version: %w", err)
+	}
+	var known int64
+	for _, source := range provider.ListSources() {
+		known = max(known, source.Version)
+	}
+	if applied > known {
+		return fmt.Errorf("%w: it is at migration %d, and this version knows migrations up to %d; "+
+			"install the newer JobPilot again to use it", ErrNewerDatabase, applied, known)
+	}
 	return nil
 }
 

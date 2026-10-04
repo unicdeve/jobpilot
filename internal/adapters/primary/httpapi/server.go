@@ -19,6 +19,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
+	"github.com/unicdev/jobpilot/internal/version"
 )
 
 // Services bundles the core services the daemon exposes over HTTP. It
@@ -48,6 +49,9 @@ type Services struct {
 	AboutYou      *services.AboutYouService
 	Companies     *services.CompanyWatchService
 	Notifications *services.NotificationService
+	// Stop asks the daemon to shut down as it does on SIGTERM, for a
+	// newer client replacing it (ADR-0029 §4).
+	Stop func()
 }
 
 // NewHandler builds the daemon's HTTP handler over svc.
@@ -55,6 +59,7 @@ func NewHandler(svc Services) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /v1/health", handleHealth)
+	mux.HandleFunc("POST /v1/shutdown", handleShutdown(svc.Stop))
 
 	mux.HandleFunc("POST /v1/onboarding/environment", handleSetupEnvironment(svc.Onboarding))
 	mux.HandleFunc("POST /v1/onboarding/llm-check", handleConfigureLLM(svc.Onboarding))
@@ -178,8 +183,31 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+// healthResponse says the daemon is up, and which version it is, so a
+// client can tell whether to replace it (ADR-0029 §4).
+type healthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
+
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, healthResponse{Status: "ok", Version: version.Version})
+}
+
+// handleShutdown answers before stopping, so the client hears that it was
+// asked. Stopping goes on after the server has closed, while a Scout run
+// records how it ended and a notification is delivered, so the client
+// waits for the process to go rather than for this answer. It exposes nothing the API does not already: anything that can
+// reach it can delete all data (ADR-0012).
+func handleShutdown(stop func()) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if stop == nil {
+			writeError(w, http.StatusNotImplemented, errors.New("this daemon cannot be stopped over its API"))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		stop()
+	}
 }
 
 // --- onboarding ---

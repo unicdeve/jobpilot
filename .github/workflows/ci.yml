@@ -2,8 +2,8 @@
 #
 # Linux runs `make check`, which already vets and lints the Go code as every
 # platform. macOS and Windows run the tests, which is what only a real
-# machine of each can do. The desktop is built and linted on all three,
-# since its Rust differs per platform.
+# machine of each can do. The desktop is built, linted and tested on all
+# three, since its Rust differs per platform.
 name: CI
 
 on:
@@ -95,3 +95,6 @@ jobs:
       - name: clippy
         working-directory: desktop/src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: desktop/src-tauri
+        run: cargo test --locked

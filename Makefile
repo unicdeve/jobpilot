@@ -20,6 +20,13 @@ GO_VERSION=$(shell go env GOVERSION)
 # and lint-integration check the code as.
 PLATFORMS=darwin linux windows
 
+# What `make dist` builds the daemon and CLI for (ADR-0029 §3), and the
+# version it builds them as: a release's, without the tag's "v". Every other
+# build says "dev" (internal/version).
+DIST_TARGETS=darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
+VERSION ?=
+DIST_LDFLAGS=-s -w -X github.com/unicdev/jobpilot/internal/version.Version=$(VERSION)
+
 # air rebuilds and restarts the daemon on change (`make dev`). Pinned and
 # installed into ./bin for the reason golangci-lint is, and a development
 # tool only: nothing the application builds depends on it.
@@ -33,7 +40,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build dist clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -42,6 +49,33 @@ all: build
 build:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
 	go build -o bin/$(CLI_BINARY_NAME) ./cmd/jobpilot-cli
+
+# dist builds the daemon and CLI as a release, for every target, into
+# dist/<os>-<arch>/, and packs each target's pair as the standalone archive
+# a machine without the desktop installs: a .tar.gz, or a .zip for Windows.
+# They are pure Go, so one machine cross-compiles every target (ADR-0029 §3).
+dist:
+	@case "$(VERSION)" in \
+		"") echo "make dist needs a version, as in: make dist VERSION=1.2.3" >&2; exit 1;; \
+		v*) echo "VERSION is the tag without its v: $(patsubst v%,%,$(VERSION))" >&2; exit 1;; \
+	esac
+	rm -rf dist
+	@for target in $(DIST_TARGETS); do \
+		goos=$${target%/*}; goarch=$${target#*/}; ext=""; \
+		if [ "$$goos" = windows ]; then ext=.exe; fi; \
+		out=dist/$$goos-$$goarch; \
+		echo "building $(VERSION) for $$goos/$$goarch"; \
+		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
+			-o $$out/$(BINARY_NAME)$$ext ./cmd/jobpilot || exit 1; \
+		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
+			-o $$out/$(CLI_BINARY_NAME)$$ext ./cmd/jobpilot-cli || exit 1; \
+		archive=jobpilot-cli_$(VERSION)_$${goos}_$${goarch}; \
+		if [ "$$goos" = windows ]; then \
+			(cd $$out && zip -q ../$$archive.zip $(BINARY_NAME)$$ext $(CLI_BINARY_NAME)$$ext) || exit 1; \
+		else \
+			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) || exit 1; \
+		fi; \
+	done
 
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot

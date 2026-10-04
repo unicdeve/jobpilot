@@ -1,16 +1,32 @@
 mod daemon;
 mod notify;
+mod version;
 
 use std::time::Duration;
+use tauri::Emitter;
 
 // Both block for seconds at a time, so they run off the main thread: a
 // command without `async` runs on it, and would freeze the window while it
 // waits.
+//
+// Replacing an older daemon waits for it to stop, so the window is told,
+// with "daemon-waiting", what it is waiting on.
 #[tauri::command]
-async fn ensure_daemon() -> Result<u16, String> {
-    tauri::async_runtime::spawn_blocking(daemon::ensure_daemon)
-        .await
-        .map_err(|e| e.to_string())?
+async fn ensure_daemon(app: tauri::AppHandle) -> Result<u16, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        daemon::ensure_daemon(|| {
+            let _ = app.emit("daemon-waiting", ());
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// app_version is this app's version, shown under Settings → About beside
+/// the daemon's (ADR-0029 §2).
+#[tauri::command]
+fn app_version() -> &'static str {
+    version::app_version()
 }
 
 #[tauri::command]
@@ -31,7 +47,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![ensure_daemon, find_daemon])
+        .invoke_handler(tauri::generate_handler![
+            ensure_daemon,
+            find_daemon,
+            app_version
+        ])
         .setup(move |app| {
             if delivering {
                 // Started by the daemon to post notifications: no window,

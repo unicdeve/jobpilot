@@ -18,8 +18,9 @@ import (
 
 // wakeTimeout bounds `scout wake` from start to finish. It only finds or
 // starts the daemon and asks one question; the run itself, if there is
-// one, belongs to the daemon and is not waited for.
-const wakeTimeout = time.Minute
+// one, belongs to the daemon and is not waited for. Replacing an older
+// daemon waits for it to stop, though.
+const wakeTimeout = httpapi.DaemonStopTimeout + time.Minute
 
 // wake is what a scheduled Scout's alarm runs: ask the daemon to run the
 // Scout if it is due, starting the daemon if none is running, and exit
@@ -30,12 +31,9 @@ func wake(scoutID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), wakeTimeout)
 	defer cancel()
 
-	self, err := executable()
-	if err != nil {
-		logger.Printf("scout wake %s: %v", scoutID, err)
-		return err
-	}
-	client, err := httpapi.EnsureDaemon(ctx, self)
+	client, err := httpapi.EnsureDaemon(ctx, executable, func(notice string) {
+		logger.Printf("scout wake %s: %s", scoutID, notice)
+	})
 	if err != nil {
 		logger.Printf("scout wake %s: %v", scoutID, err)
 		return err

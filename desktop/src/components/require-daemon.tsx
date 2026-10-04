@@ -8,10 +8,10 @@ import { Button } from "./ui/button";
 /// visibly — which is why first-run setup needs it as much as the main shell
 /// does, despite living outside the sidebar.
 export function RequireDaemon({ children }: { children: React.ReactNode }) {
-  const { status, error, retry } = useDaemon();
+  const { status, error, waiting, retry } = useDaemon();
 
   if (status === "connecting") {
-    return <Loading label="Connecting to JobPilot…" />;
+    return <Loading label={waiting ? "Waiting for the previous version of JobPilot to finish…" : "Connecting to JobPilot…"} />;
   }
 
   if (status === "error") {

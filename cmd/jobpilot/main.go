@@ -7,6 +7,10 @@
 // Run as `jobpilot scout wake <scout-id>`, it is instead what a scheduled
 // Scout's alarm starts: a client that asks the daemon, starting one if
 // none is running, to run that Scout if it is due (ADR-0027 §4).
+//
+// `jobpilot stop` asks the running daemon to stop and waits for it to go,
+// which the Windows installer runs before replacing or removing it
+// (ADR-0029 §5).
 package main
 
 import (
@@ -36,6 +40,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
+	"github.com/unicdev/jobpilot/internal/version"
 )
 
 // browserProfileDirName is a JobPilot-owned Chrome profile, never the
@@ -57,12 +62,20 @@ func main() {
 		if err := run(); err != nil {
 			log.Fatalf("jobpilot daemon: %v", err)
 		}
+	case len(args) == 1 && args[0] == "--version":
+		fmt.Println("jobpilot " + version.Version)
+	case len(args) == 1 && args[0] == "stop":
+		if err := httpapi.StopDaemon(context.Background()); err != nil {
+			log.Fatalf("jobpilot stop: %v", err)
+		}
 	case len(args) == 3 && args[0] == "scout" && args[1] == "wake":
 		if err := wake(args[2]); err != nil {
 			log.Fatalf("jobpilot scout wake: %v", err)
 		}
 	default:
 		fmt.Fprintln(os.Stderr, "usage: jobpilot                      run the daemon")
+		fmt.Fprintln(os.Stderr, "       jobpilot --version            print the version")
+		fmt.Fprintln(os.Stderr, "       jobpilot stop                 stop the running daemon, and wait for it to go")
 		fmt.Fprintln(os.Stderr, "       jobpilot scout wake <id>      run a scheduled scout if it is due")
 		os.Exit(2)
 	}
@@ -71,12 +84,22 @@ func main() {
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// A newer client asks over the API, and is answered as SIGTERM is.
+	ctx, shutdown := context.WithCancel(ctx)
+	defer shutdown()
 
 	// Before the database is opened: a second daemon would migrate it under
-	// the first, and share its browser profile.
-	if err := refuseSecondDaemon(ctx); err != nil {
-		return err
+	// the first, and share its browser profile. The lock is held until the
+	// process exits, after the database has closed, which is what a client
+	// replacing this daemon waits for (ADR-0029 §4).
+	lock, err := system.LockDaemon(ctx, daemonLockWait)
+	if errors.Is(err, system.ErrDaemonRunning) {
+		return errors.New("another jobpilot daemon is already running, or still stopping; stop it first with `jobpilot stop`")
 	}
+	if err != nil {
+		return fmt.Errorf("locking the data directory: %w", err)
+	}
+	defer func() { _ = lock.Release() }()
 
 	dbPath, err := system.DefaultDBPath()
 	if err != nil {
@@ -100,6 +123,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("wiring services: %w", err)
 	}
+	svc.Stop = shutdown
 	// Scheduled runs belong to the daemon's lifetime, and shutdown waits
 	// for them to record how they ended before the database closes.
 	// Deferred first so it runs last: a scout run the next line waits for
@@ -147,7 +171,7 @@ func run() error {
 		serveErr <- nil
 	}()
 
-	log.Printf("jobpilot daemon listening on 127.0.0.1:%d (pid %d)", port, os.Getpid())
+	log.Printf("jobpilot daemon %s listening on 127.0.0.1:%d (pid %d)", version.Version, port, os.Getpid())
 
 	select {
 	case <-ctx.Done():
@@ -163,26 +187,9 @@ func run() error {
 	}
 }
 
-// existingDaemonHealthTimeout bounds the check for a daemon already running.
-const existingDaemonHealthTimeout = 2 * time.Second
-
-// refuseSecondDaemon fails when the discovery file names a daemon that
-// answers. Two would share one database and one browser profile, and the
-// clients would find only whichever wrote the file last. A file left by a
-// daemon that did not shut down cleanly names one that does not answer, and
-// is written over.
-func refuseSecondDaemon(ctx context.Context) error {
-	info, err := httpapi.ReadDiscoveryInfo()
-	if err != nil || info.PID == os.Getpid() {
-		return nil
-	}
-	healthCtx, cancel := context.WithTimeout(ctx, existingDaemonHealthTimeout)
-	defer cancel()
-	if err := httpapi.NewClient(info.Port).Health(healthCtx); err != nil {
-		return nil
-	}
-	return fmt.Errorf("another jobpilot daemon is already running (pid %d, port %d); stop it first", info.PID, info.Port)
-}
+// daemonLockWait is how long a starting daemon waits for the lock, which a
+// client checking whether a daemon is running holds for a moment.
+const daemonLockWait = 2 * time.Second
 
 // wireServices constructs every core service the daemon exposes, exactly as
 // cmd/jobpilot-cli used to wire them in-process before this package existed.

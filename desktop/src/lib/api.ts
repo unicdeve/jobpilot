@@ -4,6 +4,7 @@
 
 import type {
   AboutYou,
+  DaemonHealth,
   JobCompany,
   StarterCompany,
   WatchedCompany,
@@ -98,7 +99,7 @@ export function isNotFound(err: unknown): boolean {
 }
 
 export interface ApiClient {
-  health(): Promise<void>;
+  health(): Promise<DaemonHealth>;
 
   /// getProfile resolves to null when there is no profile yet, which is how
   /// every installation starts rather than something that went wrong.
@@ -330,7 +331,7 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
   return {
-    health: () => request<void>(daemon, "GET", "/v1/health"),
+    health: () => request<DaemonHealth>(daemon, "GET", "/v1/health"),
 
     getProfile: () =>
       request<Candidate>(daemon, "GET", "/v1/profile").catch((err: unknown) => {

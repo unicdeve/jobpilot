@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createApiClient, type ApiClient } from "./api";
 
@@ -7,6 +8,9 @@ interface DaemonState {
   status: "connecting" | "ready" | "error";
   client: ApiClient | null;
   error: string | null;
+  /// waiting is a connection held up by an older daemon this app is
+  /// replacing, while it stops (ADR-0029 §4).
+  waiting: boolean;
   retry: () => void;
 }
 
@@ -24,11 +28,12 @@ const DaemonContext = createContext<DaemonState | null>(null);
 /// again, the app carries on where it was; not found, it says so and Retry
 /// starts one.
 export function DaemonProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Omit<DaemonState, "retry">>({
+  const [state, setState] = useState<Omit<DaemonState, "retry" | "waiting">>({
     status: "connecting",
     client: null,
     error: null,
   });
+  const [waiting, setWaiting] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const queryClient = useQueryClient();
 
@@ -78,6 +83,10 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     setState({ status: "connecting", client: null, error: null });
+    setWaiting(false);
+    const unlisten = listen("daemon-waiting", () => {
+      if (!cancelled) setWaiting(true);
+    });
 
     invoke<number>("ensure_daemon")
       .then((resolved) => {
@@ -93,15 +102,19 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (cancelled) return;
         setState({ status: "error", client: null, error: String(err) });
+      })
+      .finally(() => {
+        if (!cancelled) setWaiting(false);
       });
 
     return () => {
       cancelled = true;
+      void unlisten.then((stop) => stop());
     };
   }, [attempt, queryClient, onUnreachable]);
 
   return (
-    <DaemonContext.Provider value={{ ...state, retry: () => setAttempt((a) => a + 1) }}>
+    <DaemonContext.Provider value={{ ...state, waiting, retry: () => setAttempt((a) => a + 1) }}>
       {children}
     </DaemonContext.Provider>
   );

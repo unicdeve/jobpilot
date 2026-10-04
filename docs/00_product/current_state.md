@@ -10,8 +10,8 @@ Phase 7 (review mode) is complete: application review state and approval UI came
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and under way.
 Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also built: the `io.github.unicdeve.jobpilot` identifier.
-Not yet built: versions and replacing an older daemon, alarms that remove themselves, installers, and the release workflow (`docs/08_development/packaging.md`).
+Also built: the `io.github.unicdeve.jobpilot` identifier, and versions (below).
+Not yet built: alarms that remove themselves, installers, and the release workflow (`docs/08_development/packaging.md`).
 
 ## Implemented
 
@@ -358,6 +358,20 @@ Not yet built: versions and replacing an older daemon, alarms that remove themse
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
   A daemon shutting down removes the discovery file only if it still names that daemon.
   The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
+- Versions (ADR-0029 §2, §4): `internal/version` holds the version a binary was built as, which `make dist` sets from `VERSION` and every other build leaves as `dev`.
+  `jobpilot --version` and `jobpilot-cli --version` print it, the CLI without reaching the daemon; `/v1/health` returns the daemon's; Settings → About shows the app's and the daemon's.
+  `make dist VERSION=x.y.z` builds both binaries for macOS (arm64, x86_64), Linux (x86_64, arm64) and Windows (x86_64) with `CGO_ENABLED=0`, and packs each pair as a `.tar.gz`, or a `.zip` for Windows.
+  Every client compares its version with the daemon's: the CLI and `scout wake` in `httpapi.EnsureDaemon`, the desktop in `daemon.rs`.
+  A newer one asks the daemon to stop (`POST /v1/shutdown`), waits for its process to exit, and starts its own, and the desktop says "Waiting for the previous version of JobPilot to finish…" meanwhile; an older one uses the daemon, and the CLI says on stderr that it is older.
+  `jobpilot stop` stops the running daemon the same way.
+  Whether the process has exited is told by an exclusive lock on `daemon.lock` in the data directory, which the daemon holds until it exits, since a stopping daemon stops answering before its Scout run has recorded how it ended.
+  The same lock replaced the health check that kept a second daemon from starting, which let one start while the first was still stopping.
+  A client that finds the lock held and nothing answering waits for that daemon to answer or go, rather than starting another.
+  A daemon refuses a database with migrations it does not know, which a newer JobPilot wrote.
+  The desktop now starts the daemon detached, as the Go clients do: in a process group of its own, and on Windows with no console, where a release build would otherwise have opened a window for it.
+  A CLI put on `PATH` as a link to the one inside the app resolves the link to find the daemon beside it.
+  Measured on macOS: a 1.1.0 client replacing a running 1.0.0 daemon, and a 1.0.5 client using the 1.1.0 daemon (`ensure_integration_test.go`); a release build of the desktop replacing a 0.0.9 daemon with its 0.1.0 one, which outlived the app; and `jobpilot stop`.
+  Not measured on Linux or Windows, where the lock is the same `flock` and `LockFileEx` on both sides.
 - The app identifier is `io.github.unicdeve.jobpilot` (ADR-0029 §1), replacing the Tauri template's `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`.
   The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
   The webview's storage is keyed by the identifier, so the theme preference is chosen again once, and macOS asks again for permission to notify.

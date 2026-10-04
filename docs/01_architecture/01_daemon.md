@@ -32,16 +32,25 @@ Supported lifecycle patterns:
 4. Optional user-configured startup integration can launch the daemon/UI on login.
 
 One daemon runs at a time.
-A daemon refuses to start while the discovery file names another that answers, because two would share one database and one browser profile, and the clients would find only whichever wrote the file last.
+A daemon holds an exclusive lock on `daemon.lock` in the data directory for as long as its process runs, and refuses to start while another holds it, because two would share one database and one browser profile, and the clients would find only whichever wrote the discovery file last.
+The operating system lets go of the lock when the process exits, however it exits, so a daemon that crashed leaves nothing behind that stops the next one.
 A file left by a daemon that did not shut down cleanly names one that does not answer, and is written over.
 A daemon shutting down removes the discovery file only if it still names that daemon.
-Two daemons starting at the same instant can both pass the check; nothing starts daemons that way today.
+
+A client that finds the lock held and no daemon answering is looking at one starting or stopping, and waits for it to answer or to go before starting another.
+
+Every client compares its version with the daemon's, from `/v1/health` (ADR-0029 §4).
+A newer client asks the daemon to stop with `POST /v1/shutdown`, waits for its process to let go of the lock, and starts its own; an older one uses the daemon, and the CLI says that it is older.
+A version of `dev`, which every build but a release's has, matches any other.
+`jobpilot stop` stops the running daemon the same way, and is what the Windows installer runs before replacing or removing it.
+A daemon whose database has migrations it does not know refuses to start, since a newer JobPilot wrote it and no release migrates downward.
 
 The desktop follows a daemon that restarts: a request that cannot reach it makes the desktop wait for a daemon to answer, without starting one (`docs/08_development/hot_reload.md`).
 
 The daemon should exit cleanly when there is no work and no reason to remain
 alive. Auto-exit on idle is not yet implemented — today the daemon only
-stops on an explicit signal (`SIGINT`/`SIGTERM`).
+stops on an explicit signal (`SIGINT`/`SIGTERM`), or when a client asks
+over `POST /v1/shutdown`, which it treats the same way.
 
 ## Concurrency
 

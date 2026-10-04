@@ -31,6 +31,20 @@ func TestDB_InitializeSchema(t *testing.T) {
 	}
 }
 
+func TestDB_InitializeSchema_RefusesANewerDatabase(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	// A newer JobPilot has applied a migration this build does not have.
+	_, err := db.Conn().Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (99999, 1)`)
+	require.NoError(t, err)
+
+	err = db.InitializeSchema(context.Background())
+
+	require.ErrorIs(t, err, ErrNewerDatabase)
+	assert.Contains(t, err.Error(), "migration 99999")
+}
+
 func TestDB_InitializeSchema_Idempotent(t *testing.T) {
 	t.Parallel()
 

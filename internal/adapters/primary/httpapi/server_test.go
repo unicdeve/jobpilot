@@ -23,6 +23,7 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
 	"github.com/unicdev/jobpilot/internal/core/services"
+	"github.com/unicdev/jobpilot/internal/version"
 )
 
 // --- in-memory port fakes, local to this package's tests ---
@@ -849,7 +850,38 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 
 func TestClient_Health(t *testing.T) {
 	client, _, _ := testServer(t)
-	require.NoError(t, client.Health(context.Background()))
+	daemonVersion, err := client.Health(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, version.Version, daemonVersion, "a client decides from it whether to replace the daemon")
+}
+
+func TestClient_Shutdown(t *testing.T) {
+	stopped := make(chan struct{})
+	ts := httptest.NewServer(NewHandler(Services{Stop: func() { close(stopped) }}))
+	t.Cleanup(ts.Close)
+	_, portStr, err := net.SplitHostPort(ts.Listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	require.NoError(t, NewClient(port).Shutdown(context.Background()))
+
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the daemon was not asked to stop")
+	}
+}
+
+func TestShutdown_WithNothingToStopIsRefused(t *testing.T) {
+	ts := httptest.NewServer(NewHandler(Services{}))
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Post(ts.URL+"/v1/shutdown", "application/json", nil)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
 }
 
 func TestCORS_AllowsKnownDesktopOrigin(t *testing.T) {

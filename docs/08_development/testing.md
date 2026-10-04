@@ -73,7 +73,7 @@ Only the tests need a machine of each kind.
 Work on `develop`, and pull requests into it, run no CI; `make check` is the gate there.
 Linux runs `make check`.
 macOS and Windows run both test suites, with `-race` on macOS; the race detector needs cgo, which a Windows runner has no compiler for.
-The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check` and `cargo clippy -- -D warnings`.
+The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
 
 CI runs the alarm and keystore adapters' tests, which check the files and commands they generate.
 It does not run them against a real scheduler or keychain; `docs/00_product/current_state.md` lists which platforms have been measured.

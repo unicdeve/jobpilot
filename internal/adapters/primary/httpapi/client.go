@@ -47,9 +47,18 @@ func NewClient(port int) *Client {
 	}
 }
 
-// Health reports whether the daemon is reachable and responding.
-func (c *Client) Health(ctx context.Context) error {
-	_, err := c.do(ctx, http.MethodGet, "/v1/health", nil, nil)
+// Health reports whether the daemon is reachable and responding, and
+// returns its version.
+func (c *Client) Health(ctx context.Context) (string, error) {
+	var resp healthResponse
+	_, err := c.do(ctx, http.MethodGet, "/v1/health", nil, &resp)
+	return resp.Version, err
+}
+
+// Shutdown asks the daemon to stop. It answers before it has stopped, so
+// the caller waits for its process to go (system.WaitForDaemonExit).
+func (c *Client) Shutdown(ctx context.Context) error {
+	_, err := c.do(ctx, http.MethodPost, "/v1/shutdown", nil, nil)
 	return err
 }
 

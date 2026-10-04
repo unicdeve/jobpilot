@@ -624,6 +624,13 @@ export interface Notification {
   seen_at?: string;
 }
 
+/// What the daemon says when asked whether it is up: its version, "dev"
+/// for a build no release made (ADR-0029 §2).
+export interface DaemonHealth {
+  status: string;
+  version: string;
+}
+
 /// The user's choices about notifications: whether to post them at all,
 /// and the score a strong match needs.
 export interface NotificationSettings {

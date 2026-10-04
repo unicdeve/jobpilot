@@ -17,6 +17,7 @@ import {
   type QueryClient,
   type UseMutationOptions,
 } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { useMemo } from "react";
 import { useApi } from "./daemon";
 import { since, type TimeRange } from "./job-filters";
@@ -99,6 +100,7 @@ export const keys = {
   scouts: ["scouts"] as const,
   notifications: ["notifications"] as const,
   notificationSettings: ["notification-settings"] as const,
+  versions: ["versions"] as const,
   scoutRuns: ["scout-runs"] as const,
   activity: {
     all: ["activity"] as const,
@@ -396,6 +398,20 @@ export function useMarkNotificationsSeen(opts?: MutationOpts<void, string | unde
     onSettled: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.notifications });
       opts?.onSettled?.(...args);
+    },
+  });
+}
+
+/// useVersions is this app's version and the daemon's, which can differ: an
+/// app finds a newer daemon and uses it rather than replacing it
+/// (ADR-0029 §4).
+export function useVersions() {
+  const api = useApi();
+  return useQuery<{ app: string; daemon: string }>({
+    queryKey: keys.versions,
+    queryFn: async () => {
+      const [app, health] = await Promise.all([invoke<string>("app_version"), api.health()]);
+      return { app, daemon: health.version };
     },
   });
 }

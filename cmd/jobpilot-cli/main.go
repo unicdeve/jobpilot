@@ -21,13 +21,21 @@ import (
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/domain/geo"
+	"github.com/unicdev/jobpilot/internal/version"
 )
 
 func main() {
 	// rootCmd.Execute() is the single place errors from any command are
 	// printed and turned into a process exit code (below); silence Cobra's
 	// own error/usage printing so each error is reported exactly once.
-	var rootCmd = &cobra.Command{Use: "jobpilot-cli", SilenceUsage: true, SilenceErrors: true}
+	var rootCmd = &cobra.Command{Use: "jobpilot-cli", Version: version.Version, SilenceUsage: true, SilenceErrors: true}
+	rootCmd.SetVersionTemplate("jobpilot-cli {{.Version}}\n")
+
+	// Answered before the daemon is reached, which it does not need.
+	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("jobpilot-cli " + version.Version)
+		return
+	}
 
 	ctx := context.Background()
 
