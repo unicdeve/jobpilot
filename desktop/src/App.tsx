@@ -1,14 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout";
 import { DiscoveryActivity, LaunchRefresh } from "./components/discovery-activity";
 import { RequireDaemon } from "./components/require-daemon";
 import { isNotFound } from "./lib/api";
 import { DaemonProvider } from "./lib/daemon";
+import { lazyPage } from "./lib/lazy-page";
 import "./lib/platform";
 import { ThemeProvider } from "./lib/theme";
 import { ToastProvider } from "./lib/toast";
-import { Welcome } from "./pages/welcome";
+
+// First-run setup is shown once, so it is loaded only when it is.
+const Welcome = lazyPage(() => import("./pages/welcome"), "Welcome");
 
 // The daemon is a local process reached over loopback, so refetching is
 // cheap — but it is also a desktop app, not a browser tab left open for
@@ -57,7 +61,9 @@ function App() {
                     <div data-tauri-drag-region className="h-13" />
                     <div className="px-8 pb-10">
                       <RequireDaemon>
-                        <Welcome />
+                        <Suspense fallback={null}>
+                          <Welcome />
+                        </Suspense>
                       </RequireDaemon>
                     </div>
                   </div>

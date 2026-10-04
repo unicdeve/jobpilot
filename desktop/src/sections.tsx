@@ -1,16 +1,45 @@
 import type { ReactNode } from "react";
 import { Route } from "react-router-dom";
-import { Activity, NoRunSelected } from "./pages/activity";
-import { ActivityRun } from "./pages/activity-run";
-import { ApplicationDetail } from "./pages/application-detail";
-import { Applications, NoApplicationSelected } from "./pages/applications";
-import { Dashboard } from "./pages/dashboard";
-import { JobDetail } from "./pages/job-detail";
-import { Jobs, NoJobSelected } from "./pages/jobs";
-import { Profile } from "./pages/profile";
-import { Resumes } from "./pages/resumes";
-import { Scouts } from "./pages/scouts";
-import { Settings } from "./pages/settings";
+import { lazyPage } from "./lib/lazy-page";
+
+// Every screen's module, loaded when the screen first renders. The shell
+// preloads them all once it is up (preloadSections), so moving between
+// sections does not wait on one.
+const pages = {
+  activity: () => import("./pages/activity"),
+  activityRun: () => import("./pages/activity-run"),
+  applicationDetail: () => import("./pages/application-detail"),
+  applications: () => import("./pages/applications"),
+  dashboard: () => import("./pages/dashboard"),
+  jobDetail: () => import("./pages/job-detail"),
+  jobs: () => import("./pages/jobs"),
+  profile: () => import("./pages/profile"),
+  resumes: () => import("./pages/resumes"),
+  scouts: () => import("./pages/scouts"),
+  settings: () => import("./pages/settings"),
+};
+
+const Activity = lazyPage(pages.activity, "Activity");
+const NoRunSelected = lazyPage(pages.activity, "NoRunSelected");
+const ActivityRun = lazyPage(pages.activityRun, "ActivityRun");
+const ApplicationDetail = lazyPage(pages.applicationDetail, "ApplicationDetail");
+const Applications = lazyPage(pages.applications, "Applications");
+const NoApplicationSelected = lazyPage(pages.applications, "NoApplicationSelected");
+const Dashboard = lazyPage(pages.dashboard, "Dashboard");
+const JobDetail = lazyPage(pages.jobDetail, "JobDetail");
+const Jobs = lazyPage(pages.jobs, "Jobs");
+const NoJobSelected = lazyPage(pages.jobs, "NoJobSelected");
+const Profile = lazyPage(pages.profile, "Profile");
+const Resumes = lazyPage(pages.resumes, "Resumes");
+const Scouts = lazyPage(pages.scouts, "Scouts");
+const Settings = lazyPage(pages.settings, "Settings");
+
+/// preloadSections loads every screen's module, for the shell to call once
+/// the first screen is showing. A module that fails to load here is tried
+/// again when its screen renders, which is where the failure is shown.
+export function preloadSections() {
+  for (const load of Object.values(pages)) void load().catch(() => {});
+}
 
 /// A Section is one of the sidebar's screens together with the routes inside
 /// it. The app shell keeps a section alive while another is showing, so each

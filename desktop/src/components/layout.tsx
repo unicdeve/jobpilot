@@ -10,7 +10,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { Activity, useEffect, useRef, useState } from "react";
+import { Activity, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Routes, useLocation, useNavigate, type Location } from "react-router-dom";
 import { useDaemon } from "../lib/daemon";
 import { PortalContainer } from "../lib/portal-container";
@@ -22,8 +22,8 @@ import {
   useProfile,
   useSavedSearches,
 } from "../lib/queries";
-import { setupSkipped } from "../pages/welcome";
-import { SECTIONS, sectionFor, type Section } from "../sections";
+import { setupSkipped } from "../lib/setup-skip";
+import { SECTIONS, preloadSections, sectionFor, type Section } from "../sections";
 import { ErrorBoundary } from "./error-boundary";
 import { RequireDaemon } from "./require-daemon";
 import { Button } from "./ui/button";
@@ -82,6 +82,7 @@ export function Layout() {
   const visited = useVisitedSections(location, active);
   const hrefFor = (root: string) => sectionHref(root, active, visited);
   useNavigationShortcuts(hrefFor);
+  usePreloadedSections();
 
   if (!active) return <Navigate to="/" replace />;
 
@@ -118,12 +119,29 @@ function SectionView({ section, at }: { section: Section; at: Location }) {
           window rather than to its content. */}
       <div className="absolute inset-0 overflow-y-auto">
         <ErrorBoundary resetKey={at.pathname}>
-          <Routes location={at}>{section.routes}</Routes>
+          {/* Nothing in its place while a screen's module loads: it comes
+              from disk, and is preloaded, so a spinner would only flash. */}
+          <Suspense fallback={null}>
+            <Routes location={at}>{section.routes}</Routes>
+          </Suspense>
         </ErrorBoundary>
       </div>
       <div ref={setPortalHost} />
     </PortalContainer>
   );
+}
+
+/// preloadDelay is how long after the shell appears the other screens are
+/// loaded, so loading them does not compete with drawing the first.
+const preloadDelay = 1000;
+
+/// usePreloadedSections loads every section's screen once the shell is up,
+/// so the first visit to one does not wait on it.
+function usePreloadedSections() {
+  useEffect(() => {
+    const timer = setTimeout(preloadSections, preloadDelay);
+    return () => clearTimeout(timer);
+  }, []);
 }
 
 /// useVisitedSections is where each section was last left, by root. A

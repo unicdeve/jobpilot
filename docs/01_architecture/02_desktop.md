@@ -156,6 +156,10 @@ React Router's `ScrollRestoration`, which restores the window's position and nee
 This depends on the query cache holding what a hidden section shows.
 A hidden section's queries have no observers, so the cache keeps unobserved data for an hour (`gcTime`) rather than the default five minutes; a list that emptied while hidden would come back loading, at the top.
 
+Each screen's module is loaded the first time it renders (`desktop/src/lib/lazy-page.ts`), and so is first-run setup, so the window starts by parsing the shell rather than every screen and the libraries only some of them use, such as the markdown renderer job descriptions need.
+The shell loads every section's module a second after it appears (`preloadSections`), so a first visit does not wait on one.
+While a module loads, its section shows nothing rather than a spinner, since it comes from disk and a spinner would only flash.
+
 ## Communication
 
 Use a local, authenticated-by-local-process-boundary IPC/API mechanism appropriate to the platform. Do not expose the daemon broadly on the network by default.
