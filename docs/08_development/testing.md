@@ -76,6 +76,7 @@ macOS and Windows run both test suites, with `-race` on macOS; the race detector
 The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
 
 `.github/workflows/release.yml` calls `ci.yml` (`workflow_call`), so a release is built only from a commit that passes the same checks.
+The Linux desktop job also runs `make notices-check`, which fails when a dependency changed without `make notices` being run (`packaging.md`, "Third-party notices").
 
 CI runs the alarm and keystore adapters' tests, which check the files and commands they generate.
 It does not run them against a real scheduler or keychain; `docs/00_product/current_state.md` lists which platforms have been measured.

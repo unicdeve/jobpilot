@@ -27,6 +27,15 @@ DIST_TARGETS=darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 VERSION ?=
 DIST_LDFLAGS=-s -w -X github.com/unicdev/jobpilot/internal/version.Version=$(VERSION)
 
+# The Rust targets a release builds the desktop for (release.yml): a
+# universal macOS app is both Apple targets. The third-party notices cover
+# the crates every one of them links.
+RUST_TARGETS=aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+
+# What the third-party notices are generated from, and into, which
+# `notices-check` fails on when they differ from what is committed.
+NOTICES_FILES=THIRD-PARTY-NOTICES.txt desktop/bundled-packages.json internal/tools/gennotices/curated
+
 # The Rust target `make bundle` builds the desktop for, which also names the
 # sidecars Tauri looks for: desktop/src-tauri/binaries/jobpilot-<target>.
 # This machine's by default; universal-apple-darwin is a release's macOS.
@@ -47,7 +56,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build dist sidecars bundle set-version version-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build dist sidecars bundle set-version version-check notices notices-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -60,7 +69,8 @@ build:
 # dist builds the daemon and CLI as a release, for every target, into
 # dist/<os>-<arch>/, and packs each target's pair as the standalone archive
 # a machine without the desktop installs: a .tar.gz, or a .zip for Windows.
-# Each archive carries LICENSE and NOTICE, as Apache-2.0 §4 asks of a copy.
+# Each archive carries LICENSE and NOTICE, as Apache-2.0 §4 asks of a copy,
+# and the third-party notices (make notices).
 # They are pure Go, so one machine cross-compiles every target (ADR-0029 §3).
 dist:
 	@case "$(VERSION)" in \
@@ -77,12 +87,12 @@ dist:
 			-o $$out/$(BINARY_NAME)$$ext ./cmd/jobpilot || exit 1; \
 		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
 			-o $$out/$(CLI_BINARY_NAME)$$ext ./cmd/jobpilot-cli || exit 1; \
-		cp LICENSE NOTICE $$out/ || exit 1; \
+		cp LICENSE NOTICE THIRD-PARTY-NOTICES.txt $$out/ || exit 1; \
 		archive=jobpilot-cli_$(VERSION)_$${goos}_$${goarch}; \
 		if [ "$$goos" = windows ]; then \
-			(cd $$out && zip -q ../$$archive.zip $(BINARY_NAME)$$ext $(CLI_BINARY_NAME)$$ext LICENSE NOTICE) || exit 1; \
+			(cd $$out && zip -q ../$$archive.zip $(BINARY_NAME)$$ext $(CLI_BINARY_NAME)$$ext LICENSE NOTICE THIRD-PARTY-NOTICES.txt) || exit 1; \
 		else \
-			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) LICENSE NOTICE || exit 1; \
+			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) LICENSE NOTICE THIRD-PARTY-NOTICES.txt || exit 1; \
 		fi; \
 	done
 
@@ -145,6 +155,24 @@ version-check:
 		if [ "$$found" != "$(VERSION)" ]; then echo "$$file says $${found:-nothing}, not $(VERSION)" >&2; bad=1; fi; \
 	done; \
 	[ $$bad = 0 ] && echo "every version file says $(VERSION)"
+
+# notices writes THIRD-PARTY-NOTICES.txt, the license of every third-party
+# component a release compiles in, which every archive and bundle carries
+# (internal/tools/gennotices). It builds the desktop's frontend first, whose
+# build records which npm packages it bundled. REFRESH_RUST_STD=1 also takes
+# Rust's standard library's notices again, after the toolchain changes.
+notices:
+	cd desktop && bun run build
+	go run ./internal/tools/gennotices -go-targets "$(DIST_TARGETS)" -rust-targets "$(RUST_TARGETS)" $(if $(REFRESH_RUST_STD),-refresh-rust-std)
+
+# notices-check fails when the committed notices are not what notices
+# writes: a dependency was added, removed or upgraded without them.
+notices-check: notices
+	@if [ -n "$$(git status --porcelain -- $(NOTICES_FILES))" ]; then \
+		git status --short -- $(NOTICES_FILES); \
+		echo "the third-party notices are out of date: run make notices and commit what it writes" >&2; \
+		exit 1; \
+	fi
 
 # bundle builds the desktop's installers for TARGET, carrying the sidecars:
 # a .app and .dmg on macOS, the NSIS installer on Windows, .deb and .rpm on

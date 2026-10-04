@@ -8,6 +8,7 @@ A feature is complete when:
 - [ ] Error cases relevant to the feature handled.
 - [ ] Existing tests pass.
 - [ ] Formatting/linting/static checks pass (`make check`).
+- [ ] A change to what ships, a dependency added, removed or upgraded in Go, Rust or the desktop's frontend, has `make notices` run and its output committed; CI's `make notices-check` fails until it has.
 - [ ] No unrelated refactor introduced.
 - [ ] Security implications considered.
 - [ ] Documentation updated if behavior changed.

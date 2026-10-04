@@ -39,6 +39,24 @@ Tauri refuses to compile the app at all while a binary `externalBin` names is mi
 The bundle requires macOS 12, which is what Go requires, Windows 10, and on Linux what Tauri's `.deb` and `.rpm` declare.
 Windows installs per user (`installMode: currentUser`), with the hooks in `desktop/src-tauri/windows/hooks.nsh`.
 
+## Third-party notices
+
+`THIRD-PARTY-NOTICES.txt`, at the repository's root, lists every third-party component a release compiles in, where its source is published, and its license, as the MIT, BSD and Apache licenses ask of a copy, and the MPL asks of where its source is.
+Every CLI archive and desktop bundle carries it, with `LICENSE` and `NOTICE`.
+
+`make notices` writes it with `internal/tools/gennotices`, from what each build's own tooling says ships rather than from everything installed:
+
+- the Go modules `go list -deps` finds linked into the daemon and the CLI for every target `make dist` builds, and Go's own standard library;
+- the crates `cargo metadata` resolves as normal dependencies of the desktop for every Rust target a release builds, leaving out build scripts, procedural macros and dev dependencies, which run while it is built and do not ship, and Rust's standard library with the crates it is built from;
+- the npm packages the desktop's Vite build bundled, which it records in `desktop/bundled-packages.json` on every build, leaving out Tailwind, the shadcn CLI and everything else only the build runs;
+- PDFium, which go-pdfium embeds as WebAssembly, with every library compiled into it.
+
+The licenses no package manager hands over, Go's, Rust's standard library's and PDFium's, are in `internal/tools/gennotices/curated/`, whose README says where each came from.
+A new Rust toolchain or go-pdfium fails `make notices` until its curated licenses are taken again: `make notices REFRESH_RUST_STD=1` for Rust, and by hand for PDFium.
+A component that declares a license without shipping its text is printed with the canonical text from `curated/spdx`, with its authors as the copyright holders.
+
+The file is committed, so what ships changing shows in review, and CI's `make notices-check` fails when it is not what `make notices` writes.
+
 ## Versions
 
 `desktop/src-tauri/tauri.conf.json`, `desktop/src-tauri/Cargo.toml` and `desktop/package.json` carry the release's version, without the `v`, and so does `desktop/src-tauri/Cargo.lock`, whose entry for the desktop crate every `--locked` build checks against `Cargo.toml`.

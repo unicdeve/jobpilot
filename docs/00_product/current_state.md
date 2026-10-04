@@ -365,6 +365,11 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
   A daemon shutting down removes the discovery file only if it still names that daemon.
   The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
+- Third-party notices (`docs/08_development/packaging.md`): `THIRD-PARTY-NOTICES.txt` lists every component a release compiles in, with where its source is and its license, and every archive and bundle carries it.
+  `make notices` writes it (`internal/tools/gennotices`) from `go list -deps` over the daemon and CLI for each Go target, `cargo metadata` over the desktop for each Rust target, and the npm packages the desktop's Vite build records bundling (`desktop/bundled-packages.json`); the standard libraries of Go and Rust, and PDFium with the libraries compiled into it, come from `curated/`, guarded by the versions they were taken for.
+  622 components today: 54 Go, 478 Rust with the standard library's own crates, and 90 npm, every one permissive apart from five MPL-2.0 crates, whose source is named as the MPL asks.
+  Identical license texts are printed once.
+  CI's Linux desktop job runs `make notices-check`, which fails when what ships changed without the file.
 - Release workflow (ADR-0029 §8, `.github/workflows/release.yml`): a `v*` tag is checked against the version every release file carries (`make version-check`, which `make set-version` satisfies, `Cargo.lock` included), `ci.yml` runs again as a reusable workflow, and then `make dist` builds the standalone archives on Linux while `make bundle` builds each desktop bundle on a runner of its platform, arm64 Linux on `ubuntu-24.04-arm`.
   The last job writes `SHA256SUMS` and creates a draft release with `.github/release-notes.md` as its notes, a pre-release for a tag with one.
   Signing secrets reach the build only when they are set (`packaging.md`, "Signing").
@@ -702,7 +707,6 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 
 1. The first release (ADR-0029). Phase 10 is built and has not shipped:
    - the repository made public, which also gives the arm64 Linux build its runner; JobPilot is licensed under Apache-2.0 (`LICENSE`, `NOTICE`), and every archive and bundle carries both;
-   - third-party notices: the MIT and BSD licenses of the Go, Rust and npm dependencies compiled into the binaries ask for their copyright notices to travel with them, which nothing yet gathers;
    - a first run of `release.yml`, from a pre-release tag such as `v0.1.0-rc.1`;
    - measuring a downloaded build: opening a quarantined `.dmg`'s app through Open Anyway and launchd starting its daemon (ADR-0029 §6), Login Items showing the agents as JobPilot's (§5), and the NSIS installer's hooks, the `.deb` and the `.rpm` on their systems;
 2. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.

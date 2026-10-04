@@ -128,6 +128,8 @@ releases.
 
 JobPilot is licensed under the [Apache License 2.0](LICENSE).
 Copyright 2026 Taiwo Ogunola; see [NOTICE](NOTICE).
+The third-party software it includes, and their licenses, are listed in
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 
 ## Third-party data
 

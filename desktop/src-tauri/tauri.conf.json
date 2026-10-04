@@ -43,7 +43,8 @@
     ],
     "resources": {
       "../../LICENSE": "LICENSE",
-      "../../NOTICE": "NOTICE"
+      "../../NOTICE": "NOTICE",
+      "../../THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

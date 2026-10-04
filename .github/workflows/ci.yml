@@ -100,3 +100,13 @@ jobs:
       - name: cargo test
         working-directory: desktop/src-tauri
         run: cargo test --locked
+      # The third-party notices are generated from what every platform's
+      # release links, so one platform checks them for all three.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.os == 'Linux'
+        with:
+          go-version-file: go.mod
+      - name: Third-party notices are up to date
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: make notices-check
