@@ -3,6 +3,7 @@ module github.com/unicdev/jobpilot
 go 1.26.4
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.3
 	github.com/conductor-oss/markitdown v0.0.1
 	github.com/google/uuid v1.6.0
 	github.com/klippa-app/go-pdfium v1.17.3
@@ -20,7 +21,6 @@ require (
 
 require (
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.3 // indirect
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
