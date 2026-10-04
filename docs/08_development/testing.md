@@ -64,6 +64,23 @@ lint-integration` cover both, and `make check` runs the whole gate:
 formatting, `go vet` (tagged and untagged), both lint passes, and both test
 suites.
 
+The tagged vet and lint passes check the code as each platform JobPilot ships for — macOS, Linux and Windows — wherever they run, so a file built only for Windows is linted on a Mac too.
+Only the tests need a machine of each kind.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, and on every pull request into it.
+Work on `develop`, and pull requests into it, run no CI; `make check` is the gate there.
+Linux runs `make check`.
+macOS and Windows run both test suites, with `-race` on macOS; the race detector needs cgo, which a Windows runner has no compiler for.
+The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check` and `cargo clippy -- -D warnings`.
+
+CI runs the alarm and keystore adapters' tests, which check the files and commands they generate.
+It does not run them against a real scheduler or keychain; `docs/00_product/current_state.md` lists which platforms have been measured.
+
+The Rust toolchain is pinned by `desktop/src-tauri/rust-toolchain.toml`, for the reason golangci-lint is: each release adds clippy lints, and an unpinned toolchain would fail CI on code nobody changed.
+`.gitattributes` keeps every file's line endings as committed on Windows, and never converts `testdata`, whose golden files are compared byte for byte.
+
 ## Tooling
 
 `golangci-lint` is pinned by `GOLANGCI_LINT_VERSION` in the `Makefile` and

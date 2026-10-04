@@ -1,0 +1,8 @@
+# Every text file is checked out as committed, with LF, on every platform.
+# Git on Windows defaults to rewriting LF as CRLF, which gofmt, the Makefile
+# and embedded SQL migrations do not expect.
+* text=auto eol=lf
+
+# Test fixtures are compared byte for byte and are never converted: some are
+# recorded output that legitimately mixes line endings.
+**/testdata/** -text

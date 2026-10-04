@@ -16,6 +16,10 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 GOLANGCI_LINT=bin/golangci-lint
 GO_VERSION=$(shell go env GOVERSION)
 
+# The operating systems JobPilot ships for (ADR-0029), which vet-integration
+# and lint-integration check the code as.
+PLATFORMS=darwin linux windows
+
 # air rebuilds and restarts the daemon on change (`make dev`). Pinned and
 # installed into ./bin for the reason golangci-lint is, and a development
 # tool only: nothing the application builds depends on it.
@@ -93,8 +97,15 @@ fmt-check:
 vet:
 	go vet ./...
 
+# Vetted as each platform JobPilot ships for, wherever it runs: the alarm,
+# keystore and process code differs per platform, and a file built only for
+# Windows is otherwise never checked on a Mac. The integration tag adds files
+# rather than excluding any, so this covers everything `vet` does.
 vet-integration:
-	go vet -tags=integration ./...
+	@for goos in $(PLATFORMS); do \
+		echo "go vet -tags=integration ./... (GOOS=$$goos)"; \
+		GOOS=$$goos go vet -tags=integration ./... || exit 1; \
+	done
 
 # Installs the pinned linter when it is missing, the wrong version, or built
 # against a different Go toolchain than the one now on PATH.
@@ -121,9 +132,13 @@ lint: tools
 	./$(GOLANGCI_LINT) run ./...
 
 # Integration-tagged test files (see docs/08_development/testing.md) are
-# invisible to golangci-lint without this flag.
+# invisible to golangci-lint without this flag. Linted as each platform, for
+# the reason vet-integration is.
 lint-integration: tools
-	./$(GOLANGCI_LINT) run --build-tags=integration ./...
+	@for goos in $(PLATFORMS); do \
+		echo "golangci-lint run --build-tags=integration ./... (GOOS=$$goos)"; \
+		GOOS=$$goos ./$(GOLANGCI_LINT) run --build-tags=integration ./... || exit 1; \
+	done
 
 lint-fix: tools
 	./$(GOLANGCI_LINT) run --fix ./...
