@@ -60,6 +60,7 @@ build:
 # dist builds the daemon and CLI as a release, for every target, into
 # dist/<os>-<arch>/, and packs each target's pair as the standalone archive
 # a machine without the desktop installs: a .tar.gz, or a .zip for Windows.
+# Each archive carries LICENSE and NOTICE, as Apache-2.0 §4 asks of a copy.
 # They are pure Go, so one machine cross-compiles every target (ADR-0029 §3).
 dist:
 	@case "$(VERSION)" in \
@@ -76,11 +77,12 @@ dist:
 			-o $$out/$(BINARY_NAME)$$ext ./cmd/jobpilot || exit 1; \
 		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
 			-o $$out/$(CLI_BINARY_NAME)$$ext ./cmd/jobpilot-cli || exit 1; \
+		cp LICENSE NOTICE $$out/ || exit 1; \
 		archive=jobpilot-cli_$(VERSION)_$${goos}_$${goarch}; \
 		if [ "$$goos" = windows ]; then \
-			(cd $$out && zip -q ../$$archive.zip $(BINARY_NAME)$$ext $(CLI_BINARY_NAME)$$ext) || exit 1; \
+			(cd $$out && zip -q ../$$archive.zip $(BINARY_NAME)$$ext $(CLI_BINARY_NAME)$$ext LICENSE NOTICE) || exit 1; \
 		else \
-			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) || exit 1; \
+			tar -czf dist/$$archive.tar.gz -C $$out $(BINARY_NAME) $(CLI_BINARY_NAME) LICENSE NOTICE || exit 1; \
 		fi; \
 	done
 

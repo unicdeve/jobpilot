@@ -702,7 +702,8 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 ## Next
 
 1. The first release (ADR-0029). Phase 10 is built and has not shipped:
-   - a license, which the repository does not have yet, and the repository made public, which also gives the arm64 Linux build its runner;
+   - the repository made public, which also gives the arm64 Linux build its runner; JobPilot is licensed under Apache-2.0 (`LICENSE`, `NOTICE`), and every archive and bundle carries both;
+   - third-party notices: the MIT and BSD licenses of the Go, Rust and npm dependencies compiled into the binaries ask for their copyright notices to travel with them, which nothing yet gathers;
    - a first run of `release.yml`, from a pre-release tag such as `v0.1.0-rc.1`;
    - measuring a downloaded build: opening a quarantined `.dmg`'s app through Open Anyway and launchd starting its daemon (ADR-0029 §6), Login Items showing the agents as JobPilot's (§5), and the NSIS installer's hooks, the `.deb` and the `.rpm` on their systems;
    - dropping the legacy `com.user.jobpilot.scout.` prefix from the launchd adapter, which nothing released ever carried (ADR-0029 §1).

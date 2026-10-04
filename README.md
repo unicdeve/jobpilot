@@ -124,6 +124,11 @@ alongside it; see [docs/08_development/hot_reload.md](docs/08_development/hot_re
 [docs/08_development/packaging.md](docs/08_development/packaging.md) describes
 releases.
 
+## License
+
+JobPilot is licensed under the [Apache License 2.0](LICENSE).
+Copyright 2026 Taiwo Ogunola; see [NOTICE](NOTICE).
+
 ## Third-party data
 
 The countries, cities and time zones JobPilot reads job locations and hours
