@@ -16,9 +16,12 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
-// launchdLabelPrefix names JobPilot's launchd agents. It is the app's
-// bundle identifier (ADR-0029 §1).
-const launchdLabelPrefix = "io.github.unicdeve.jobpilot.scout."
+// bundleIdentifier is the app's (ADR-0029 §1), which names its agents and
+// is what System Settings → Login Items shows them under.
+const bundleIdentifier = "io.github.unicdeve.jobpilot"
+
+// launchdLabelPrefix names JobPilot's launchd agents.
+const launchdLabelPrefix = bundleIdentifier + ".scout."
 
 // legacyLaunchdLabelPrefix named the agents before the identifier was
 // settled: the placeholder Tauri was created with. An agent under it is
@@ -132,7 +135,7 @@ func (l *Launchd) Write(ctx context.Context, alarm domain.ScoutAlarm) error {
 	if err := checkScoutID(alarm.ScoutID); err != nil {
 		return err
 	}
-	content, err := launchdPlist(l.label(alarm.ScoutID), alarm)
+	content, err := launchdPlist(l.label(alarm.ScoutID), l.path(alarm.ScoutID), l.domain, alarm)
 	if err != nil {
 		return err
 	}
@@ -237,7 +240,17 @@ func (l *Launchd) disabled(ctx context.Context) (map[string]bool, error) {
 	return disabled, nil
 }
 
-// launchdPlist is the agent for one Scout.
+// launchdRemoveSelf is the rest of an agent's script once its executable
+// is gone: $3 is the agent's service target and $4 its file. The file goes
+// first, since booting the agent out stops this script with it.
+const launchdRemoveSelf = `rm -f "$4"; exec launchctl bootout "$3"`
+
+// launchdPlist is the agent for one Scout, written at path and loaded in
+// serviceDomain.
+//
+// It runs a script that wakes the Scout, or removes the agent once
+// JobPilot is gone (wakeOrRemove). AssociatedBundleIdentifiers has Login
+// Items show it as JobPilot's rather than as sh's.
 //
 // RunAtLoad has it ask at login too, because launchd catches up a missed
 // calendar interval after sleep but not after a shutdown (ADR-0027 §3);
@@ -250,7 +263,7 @@ func (l *Launchd) disabled(ctx context.Context) (map[string]bool, error) {
 // ProcessType Interactive, because the daemon an alarm starts is the one
 // the desktop then talks to; under Background or the default, launchd
 // would throttle it as it throttles a job nobody is waiting on.
-func launchdPlist(label string, alarm domain.ScoutAlarm) ([]byte, error) {
+func launchdPlist(label, path, serviceDomain string, alarm domain.ScoutAlarm) ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(xml.Header)
 	b.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
@@ -274,7 +287,8 @@ func launchdPlist(label string, alarm domain.ScoutAlarm) ([]byte, error) {
 	}
 	key("ProgramArguments")
 	b.WriteString("\t<array>\n")
-	for _, arg := range append([]string{alarm.Executable}, wakeArgs(alarm.ScoutID)...) {
+	command := shellCommand(wakeOrRemove+launchdRemoveSelf, alarm.Executable, alarm.ScoutID, serviceDomain+"/"+label, path)
+	for _, arg := range command {
 		if err := str("\t\t", arg); err != nil {
 			return nil, err
 		}
@@ -316,6 +330,13 @@ func launchdPlist(label string, alarm domain.ScoutAlarm) ([]byte, error) {
 		return nil, fmt.Errorf("a scout with schedule %q has no alarm", alarm.Schedule.Kind)
 	}
 	b.WriteString("\t</dict>\n")
+
+	key("AssociatedBundleIdentifiers")
+	b.WriteString("\t<array>\n")
+	if err := str("\t\t", bundleIdentifier); err != nil {
+		return nil, err
+	}
+	b.WriteString("\t</array>\n")
 
 	key("RunAtLoad")
 	b.WriteString("\t<true/>\n")

@@ -9,8 +9,9 @@
 // none is running, to run that Scout if it is due (ADR-0027 §4).
 //
 // `jobpilot stop` asks the running daemon to stop and waits for it to go,
-// which the Windows installer runs before replacing or removing it
-// (ADR-0029 §5).
+// which the Windows installer runs before replacing or removing it, and
+// `jobpilot alarms remove` removes every Scout's alarm, which its
+// uninstaller runs after that (ADR-0029 §5).
 package main
 
 import (
@@ -68,6 +69,10 @@ func main() {
 		if err := httpapi.StopDaemon(context.Background()); err != nil {
 			log.Fatalf("jobpilot stop: %v", err)
 		}
+	case len(args) == 2 && args[0] == "alarms" && args[1] == "remove":
+		if err := removeAlarms(); err != nil {
+			log.Fatalf("jobpilot alarms remove: %v", err)
+		}
 	case len(args) == 3 && args[0] == "scout" && args[1] == "wake":
 		if err := wake(args[2]); err != nil {
 			log.Fatalf("jobpilot scout wake: %v", err)
@@ -76,6 +81,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: jobpilot                      run the daemon")
 		fmt.Fprintln(os.Stderr, "       jobpilot --version            print the version")
 		fmt.Fprintln(os.Stderr, "       jobpilot stop                 stop the running daemon, and wait for it to go")
+		fmt.Fprintln(os.Stderr, "       jobpilot alarms remove        remove every scheduled scout's alarm")
 		fmt.Fprintln(os.Stderr, "       jobpilot scout wake <id>      run a scheduled scout if it is due")
 		os.Exit(2)
 	}

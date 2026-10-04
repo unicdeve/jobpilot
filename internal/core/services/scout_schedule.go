@@ -392,7 +392,20 @@ func (s *ScoutService) RemoveAllAlarms(ctx context.Context) error {
 	s.alarmMu.Lock()
 	defer s.alarmMu.Unlock()
 
-	entries, err := s.alarms.List(ctx)
+	err := RemoveAlarms(ctx, s.alarms)
+	s.alarmStatus, s.alarmsRead = nil, time.Time{}
+	return err
+}
+
+// RemoveAlarms removes every alarm JobPilot holds in alarms. A system with
+// no scheduler JobPilot can use holds none. A failure to remove one does
+// not stop the rest.
+//
+// The Windows uninstaller runs it, through `jobpilot alarms remove`, with
+// no daemon running (ADR-0029 §5); "delete all data" through the Scout
+// service.
+func RemoveAlarms(ctx context.Context, alarms ports.ScoutAlarms) error {
+	entries, err := alarms.List(ctx)
 	if errors.Is(err, ports.ErrAlarmsUnavailable) {
 		return nil
 	}
@@ -401,10 +414,9 @@ func (s *ScoutService) RemoveAllAlarms(ctx context.Context) error {
 	}
 	var errs []error
 	for _, entry := range entries {
-		if err := s.alarms.Remove(ctx, entry.ScoutID); err != nil {
+		if err := alarms.Remove(ctx, entry.ScoutID); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	s.alarmStatus, s.alarmsRead = nil, time.Time{}
 	return errors.Join(errs...)
 }

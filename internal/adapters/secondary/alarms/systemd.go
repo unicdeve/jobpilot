@@ -96,7 +96,7 @@ func (s *Systemd) Write(ctx context.Context, alarm domain.ScoutAlarm) error {
 	if err := checkScoutID(alarm.ScoutID); err != nil {
 		return err
 	}
-	service, err := systemdService(alarm)
+	service, err := systemdService(alarm, s.path(alarm.ScoutID, ".timer"), s.path(alarm.ScoutID, ".service"))
 	if err != nil {
 		return err
 	}
@@ -151,12 +151,20 @@ func (s *Systemd) Remove(ctx context.Context, scoutID string) error {
 	return err
 }
 
-// systemdService is the one-shot service a Scout's timer starts.
+// systemdRemoveSelf is the rest of a service's script once its executable
+// is gone: $3 is the timer, and $4 and $5 the timer's and the service's
+// files.
+const systemdRemoveSelf = `systemctl --user disable --now "$3"; rm -f "$4" "$5"; exec systemctl --user daemon-reload`
+
+// systemdService is the one-shot service a Scout's timer starts, whose
+// timer and own unit are at timerPath and servicePath. It runs a script
+// that wakes the Scout, or removes both units once JobPilot is gone
+// (wakeOrRemove).
 //
 // KillMode=process keeps the daemon `scout wake` starts alive after it
 // exits: systemd otherwise stops everything left in the service's cgroup
 // when its main process ends.
-func systemdService(alarm domain.ScoutAlarm) ([]byte, error) {
+func systemdService(alarm domain.ScoutAlarm, timerPath, servicePath string) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("# Written by JobPilot to run a scout on its schedule.\n")
 	fmt.Fprintf(&b, "# %s%s\n", fingerprintMarker, alarm.Fingerprint())
@@ -164,8 +172,10 @@ func systemdService(alarm domain.ScoutAlarm) ([]byte, error) {
 	fmt.Fprintf(&b, "Description=JobPilot scout %s\n", alarm.ScoutID)
 	b.WriteString("\n[Service]\nType=oneshot\n")
 
-	command := []string{systemdQuote(alarm.Executable)}
-	for _, arg := range wakeArgs(alarm.ScoutID) {
+	timer := systemdUnitPrefix + alarm.ScoutID + ".timer"
+	var command []string
+	for _, arg := range shellCommand(wakeOrRemove+systemdRemoveSelf,
+		alarm.Executable, alarm.ScoutID, timer, timerPath, servicePath) {
 		command = append(command, systemdQuote(arg))
 	}
 	fmt.Fprintf(&b, "ExecStart=%s\n", strings.Join(command, " "))

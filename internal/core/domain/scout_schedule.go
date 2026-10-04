@@ -170,8 +170,9 @@ type ScoutAlarm struct {
 }
 
 // alarmFormat changes whenever what an alarm says changes, so every entry
-// written before is rewritten.
-const alarmFormat = "1"
+// written before is rewritten. 2: an alarm runs a script that removes it
+// once JobPilot is gone (ADR-0029 §5).
+const alarmFormat = "2"
 
 // Fingerprint identifies what an alarm says. Two alarms with the same
 // fingerprint are the same entry, and one with a different fingerprint is

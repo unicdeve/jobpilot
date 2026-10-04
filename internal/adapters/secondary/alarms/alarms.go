@@ -71,3 +71,20 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 func wakeArgs(scoutID string) []string {
 	return []string{"scout", "wake", scoutID}
 }
+
+// wakeOrRemove is how a script an alarm runs begins: with the daemon, if
+// it is still there, which it then becomes. Otherwise the rest of the
+// script removes the alarm itself (ADR-0029 §5).
+//
+// On macOS and Linux no uninstaller runs as the user, and an alarm left
+// behind would fire, and fail, at every scheduled time forever. Moving the
+// app leaves its old path behind the same way, and the daemon writes the
+// alarms again at the new one the next time it starts (ADR-0027 §6).
+const wakeOrRemove = `if [ -x "$1" ]; then exec "$1" scout wake "$2"; fi; `
+
+// shellCommand is the command line an alarm on macOS or Linux runs: script
+// under /bin/sh, given args as $1, $2 and on. Every path and name is an
+// argument rather than part of the script, so none is ever read as shell.
+func shellCommand(script string, args ...string) []string {
+	return append([]string{"/bin/sh", "-c", script, "jobpilot-scout"}, args...)
+}

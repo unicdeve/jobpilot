@@ -26,13 +26,22 @@ func TestLaunchdPlist(t *testing.T) {
 	alarm := dailyAlarm("/Applications/Jobs & Me.app/Contents/MacOS/jobpilot")
 	alarm.Env = map[string]string{"HOME": "/Users/ada"}
 
-	content, err := launchdPlist(launchdLabelPrefix+scoutID, alarm)
+	label := launchdLabelPrefix + scoutID
+	content, err := launchdPlist(label, "/Users/ada/Library/LaunchAgents/"+label+".plist", "gui/501", alarm)
 	require.NoError(t, err)
 	plist := string(content)
 
 	assert.Contains(t, plist, "<string>io.github.unicdeve.jobpilot.scout."+scoutID+"</string>")
-	assert.Contains(t, plist, "<string>/Applications/Jobs &amp; Me.app/Contents/MacOS/jobpilot</string>\n\t\t<string>scout</string>\n\t\t<string>wake</string>\n\t\t<string>"+scoutID+"</string>",
-		"the executable is escaped, and the scout is woken by ID")
+	assert.Contains(t, plist, "<string>/bin/sh</string>\n\t\t<string>-c</string>\n\t\t<string>"+
+		`if [ -x &#34;$1&#34; ]; then exec &#34;$1&#34; scout wake &#34;$2&#34;; fi; rm -f &#34;$4&#34;; exec launchctl bootout &#34;$3&#34;`+
+		"</string>\n\t\t<string>jobpilot-scout</string>\n"+
+		"\t\t<string>/Applications/Jobs &amp; Me.app/Contents/MacOS/jobpilot</string>\n"+
+		"\t\t<string>"+scoutID+"</string>\n"+
+		"\t\t<string>gui/501/"+label+"</string>\n"+
+		"\t\t<string>/Users/ada/Library/LaunchAgents/"+label+".plist</string>\n",
+		"a script that wakes the scout or removes the agent, with every path an argument and escaped")
+	assert.Contains(t, plist, "<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>io.github.unicdeve.jobpilot</string>\n\t</array>",
+		"Login Items shows it as JobPilot's")
 	assert.Contains(t, plist, "<key>Hour</key>\n\t\t<integer>8</integer>\n\t\t<key>Minute</key>\n\t\t<integer>30</integer>")
 	assert.Contains(t, plist, "<key>RunAtLoad</key>\n\t<true/>", "it asks at login, which a shutdown would otherwise lose")
 	assert.Contains(t, plist, "<key>AbandonProcessGroup</key>\n\t<true/>", "the daemon it starts outlives it")
@@ -43,7 +52,7 @@ func TestLaunchdPlist(t *testing.T) {
 }
 
 func TestLaunchdPlist_EveryHours(t *testing.T) {
-	content, err := launchdPlist(launchdLabelPrefix+scoutID, hourlyAlarm("/usr/local/bin/jobpilot"))
+	content, err := launchdPlist(launchdLabelPrefix+scoutID, "/tmp/agent.plist", "gui/501", hourlyAlarm("/usr/local/bin/jobpilot"))
 	require.NoError(t, err)
 
 	assert.Contains(t, string(content), "<key>StartCalendarInterval</key>\n\t<dict>\n\t\t<key>Minute</key>\n\t\t<integer>0</integer>\n\t</dict>",
@@ -110,7 +119,7 @@ func TestLaunchd_ListIgnoresWhatIsNotJobPilots(t *testing.T) {
 // identifier was settled, as a daemon built before then wrote it.
 func writeLegacyAgent(t *testing.T, l *Launchd) {
 	t.Helper()
-	content, err := launchdPlist(l.legacyLabel(scoutID), dailyAlarm("/usr/local/bin/jobpilot"))
+	content, err := launchdPlist(l.legacyLabel(scoutID), l.legacyPath(scoutID), l.domain, dailyAlarm("/usr/local/bin/jobpilot"))
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(l.dir, 0o755))
 	require.NoError(t, os.WriteFile(l.legacyPath(scoutID), content, 0o644))

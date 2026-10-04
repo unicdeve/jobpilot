@@ -10,8 +10,8 @@ Phase 7 (review mode) is complete: application review state and approval UI came
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and under way.
 Built so far: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also built: the `io.github.unicdeve.jobpilot` identifier, and versions (below).
-Not yet built: alarms that remove themselves, installers, and the release workflow (`docs/08_development/packaging.md`).
+Also built: the `io.github.unicdeve.jobpilot` identifier, versions, and alarms that remove themselves (below).
+Not yet built: installers, and the release workflow (`docs/08_development/packaging.md`).
 
 ## Implemented
 
@@ -46,10 +46,16 @@ Not yet built: alarms that remove themselves, installers, and the release workfl
   Email is designed for and not built.
 - Scout schedules (ADR-0027, `docs/02_features/10_scouts.md`): a scout runs every N hours or daily at a local time, started by launchd, a systemd user timer or Task Scheduler whether or not JobPilot is open.
   An alarm runs `jobpilot scout wake <id>`, which finds or starts the daemon and asks `POST /v1/scouts/{id}/wake`; core decides whether the scout is due, and a due run belongs to the daemon.
+  On macOS and Linux it does so through a one-line `/bin/sh` script, which runs the executable if it is still there and otherwise removes its own entry: the launchd agent's plist, then the agent itself, or the systemd timer and both units (ADR-0029 §5, `alarmFormat` 2, so every older entry was rewritten once).
+  Every path is an argument to the script rather than part of it.
+  An uninstalled or moved JobPilot so leaves nothing firing; a moved one has its alarms written again at the new path when its daemon next starts.
+  On Windows, where the uninstaller runs as the user, `jobpilot alarms remove` removes every JobPilot task, and refuses while a daemon runs, since its next reconcile would write them back.
+  The macOS agent names the app in `AssociatedBundleIdentifiers`, for Login Items to show it as JobPilot's; whether it does is measured on a built app, which needs the installers.
   Runs happen one at a time, which also stops two overlapping runs creating the same application twice.
   The `scouts` table is the schedule: alarms are reconciled to it after every change, at start-up, and before "delete all data", by fingerprint, and a scout shows when it next runs and anything stopping its alarm.
   The desktop's scout editor and list, `jobpilot-cli scout schedule`, and `trigger` on every run (`started_by`, migration `00022_scout_schedules.sql`) say which runs were the schedule's.
-  Measured on macOS with a real launchd agent; Linux and Windows are built and unit-tested, not yet run.
+  Measured on macOS with a real launchd agent, including one removing itself once its executable was gone and `jobpilot alarms remove`; Linux and Windows are built and unit-tested, not yet run.
+  The scripts themselves run under the real `/bin/sh` in the tests, on macOS and Linux, with stand-ins for `launchctl` and `systemctl`.
   Building it fixed three faults: editing a scout erased its last run, a finishing run rewrote the whole scout row, and the CLI cut every request off at 60 seconds, cancelling a long scout run or letter in the daemon.
 - Scout cancellation preserves completed applications and finalizes the run with a separate five-second deadline, including cancellation during the final scoring call.
   Best-effort persistence failures are logged rather than silently discarded.
@@ -684,7 +690,7 @@ Not yet built: alarms that remove themselves, installers, and the release workfl
 
 1. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
    Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
-   Both wait on the rest of Phase 10 (ADR-0029): installers, and alarms that remove themselves once JobPilot is uninstalled. Until then an uninstalled JobPilot leaves its alarms behind.
+   Both wait on the rest of Phase 10 (ADR-0029): the installers, whose Windows uninstaller is what removes a Scout's task there.
 2. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 3. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.

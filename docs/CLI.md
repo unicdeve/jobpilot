@@ -5,6 +5,7 @@ This document lists the currently implemented CLI commands for the JobPilot.
 ## General
 - `jobpilot-cli --version`: Prints the CLI's version, without starting the daemon. A CLI older than the running daemon uses it, and says on stderr that it is older; a newer one stops the daemon and starts its own (ADR-0029 §4).
 - `jobpilot --version` and `jobpilot stop`: The daemon's version, and stopping the running daemon, which waits for its process to exit.
+- `jobpilot alarms remove`: Removes every scheduled scout's alarm from the operating system's scheduler, which the Windows uninstaller runs after `jobpilot stop`. It refuses while a daemon is running, since the daemon would schedule its scouts again.
 - `jobpilot-cli onboard`: Initialize a new JobPilot installation. Sets up the data directory, database schema, verifies LLM connectivity, creates the initial candidate profile, optionally imports a resume, and configures your first job search (required — discovery cannot run without one).
 
 ## Candidate Profile

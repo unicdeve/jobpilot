@@ -71,6 +71,7 @@ So a scheduled scout runs whether or not JobPilot has been opened since the mach
 - Scout runs happen one at a time, whatever started them. A run that finds another in progress waits, and says so.
 - Pausing a scout keeps its schedule; turning the schedule off keeps the scout.
 - The database is the schedule. The alarms are rebuilt from it after every change and whenever the daemon starts; deleting a scout, its saved search, or all data removes its alarm.
+- Uninstalling JobPilot leaves no alarm behind (ADR-0029 §5). On macOS and Linux, where no uninstaller runs as the user, an alarm that finds JobPilot gone removes itself; on Windows, the uninstaller removes them.
 - An alarm that could not be written, one the user switched off outside JobPilot, and a system with no scheduler JobPilot can use are each shown on the scout, which still runs by hand.
 - What a scheduled run found, or that it could not run, is posted as a notification, as is any run that found a strong match (`docs/02_features/11_notifications.md`).
 

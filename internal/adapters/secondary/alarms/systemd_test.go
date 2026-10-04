@@ -23,12 +23,15 @@ func TestSystemdService(t *testing.T) {
 	alarm := dailyAlarm("/opt/Job Pilot/100%/$HOME/jobpilot")
 	alarm.Env = map[string]string{"XDG_CONFIG_HOME": "/home/ada/.cfg"}
 
-	content, err := systemdService(alarm)
+	content, err := systemdService(alarm, "/home/ada/.config/systemd/user/a.timer", "/home/ada/.config/systemd/user/a.service")
 	require.NoError(t, err)
 	unit := string(content)
 
-	assert.Contains(t, unit, `ExecStart="/opt/Job Pilot/100%%/$$HOME/jobpilot" "scout" "wake" "`+scoutID+`"`,
-		"a space is quoted, and % and $ are not read as a specifier or a variable")
+	assert.Contains(t, unit, `ExecStart="/bin/sh" "-c" `+
+		`"if [ -x \"$$1\" ]; then exec \"$$1\" scout wake \"$$2\"; fi; systemctl --user disable --now \"$$3\"; rm -f \"$$4\" \"$$5\"; exec systemctl --user daemon-reload" `+
+		`"jobpilot-scout" "/opt/Job Pilot/100%%/$$HOME/jobpilot" "`+scoutID+`" "jobpilot-scout-`+scoutID+`.timer" `+
+		`"/home/ada/.config/systemd/user/a.timer" "/home/ada/.config/systemd/user/a.service"`+"\n",
+		"a script that wakes the scout or removes its units; a space is quoted, and % and $ are not read as a specifier or a variable")
 	assert.Contains(t, unit, "Type=oneshot\n")
 	assert.Contains(t, unit, "KillMode=process\n", "the daemon it starts outlives it")
 	assert.Contains(t, unit, `Environment="XDG_CONFIG_HOME=/home/ada/.cfg"`)
@@ -38,7 +41,7 @@ func TestSystemdService(t *testing.T) {
 func TestSystemdService_RefusesAnEnvironmentNameItCannotWrite(t *testing.T) {
 	alarm := dailyAlarm("/usr/bin/jobpilot")
 	alarm.Env = map[string]string{"A=B": "c"}
-	_, err := systemdService(alarm)
+	_, err := systemdService(alarm, "/t.timer", "/t.service")
 	assert.Error(t, err)
 }
 
