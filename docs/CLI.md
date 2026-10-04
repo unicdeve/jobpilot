@@ -66,9 +66,9 @@ Every deletion first shows what it takes with it and asks. `--yes` skips the que
 - `jobpilot-cli data delete-all`: Deletes everything JobPilot stores — the database's contents, API keys in the system keychain, the browser profile and its job board sign-ins, and the daemon's log — leaving it as a fresh install. Asks for the word `delete`. An API key supplied through an environment variable cannot be unset by JobPilot, and the confirmation says so.
 
 ## Settings
-- `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured).
+- `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured), the API key's label and whether it is stored, and, for a model that is not on this computer, where the candidate's data is sent.
 - `jobpilot-cli settings notifications`: Shows whether JobPilot posts notifications about scout runs, and the score a strong match needs. `--on` / `--off` turn posting on or off; turned off, notifications still wait on the Dashboard and in `notifications`. `--strong-match <1-100>` sets the score.
-- `jobpilot-cli settings set-llm`: Interactively configure the LLM provider and model. Choose from known providers (Ollama, llama.cpp, LM Studio) or a custom OpenAI-compatible endpoint, confirm/edit the base URL, and enter the model name manually. Settings are saved even if the endpoint can't be reached at save time.
+- `jobpilot-cli settings set-llm`: Interactively configure the LLM provider and model. Choose from known providers (Ollama, llama.cpp, LM Studio) or a custom OpenAI-compatible endpoint, confirm/edit the base URL, and enter the model name manually. For a custom endpoint — a hosted model such as OpenRouter, OpenAI or Groq — enter the base URL as the provider gives it, with its version, then choose an API key: none, one already stored for the model, or a new one, typed without echo and stored in the keychain (ADR-0030). Settings are saved even if the endpoint can't be reached at save time.
 
 ## Usage Example
 ```bash

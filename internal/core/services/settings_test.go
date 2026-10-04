@@ -96,6 +96,29 @@ func TestSettingsService_SaveLLMSettings(t *testing.T) {
 			name: "valid settings",
 			in:   domain.LLMSettings{Provider: "ollama", Model: "llama3", BaseURL: "http://localhost:11434"},
 		},
+		{
+			name: "a hosted model with a key, over https",
+			in:   domain.LLMSettings{Provider: "custom", Model: "gpt-5", BaseURL: "https://api.openai.com/v1", APIKeyLabel: "openai"},
+		},
+		{
+			name: "a local server with a key, over http",
+			in:   domain.LLMSettings{Provider: "custom", Model: "qwen", BaseURL: "http://127.0.0.1:8080/v1", APIKeyLabel: "local"},
+		},
+		{
+			name:    "a key is never sent across a network unencrypted",
+			in:      domain.LLMSettings{Provider: "custom", Model: "gpt-5", BaseURL: "http://models.example.com/v1", APIKeyLabel: "openai"},
+			wantErr: "would send it unencrypted",
+		},
+		{
+			name:    "a key label must be one the keychain can address",
+			in:      domain.LLMSettings{Provider: "custom", Model: "gpt-5", BaseURL: "https://api.openai.com/v1", APIKeyLabel: "My Key"},
+			wantErr: "API key: a credential label may use lower-case letters",
+		},
+		{
+			name:    "Ollama takes no key",
+			in:      domain.LLMSettings{Provider: "ollama", Model: "llama3", BaseURL: "http://localhost:11434", APIKeyLabel: "openai"},
+			wantErr: "Ollama keeps its own sign-in",
+		},
 	}
 
 	for _, tt := range tests {
@@ -112,7 +135,9 @@ func TestSettingsService_SaveLLMSettings(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Contains(t, repo.values[llmSettingsKey], `"provider":"ollama"`)
+			saved, err := svc.GetLLMSettings(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, tt.in, *saved, "what was saved reads back, the key's label with it")
 		})
 	}
 

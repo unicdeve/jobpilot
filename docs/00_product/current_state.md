@@ -33,6 +33,11 @@ Not yet built: versions and replacing an older daemon, the `io.github.unicdeve.j
 
 - Saved-search default changes and deletion with replacement promotion are transactional, preserving the previous state on failure.
   Criteria edits preserve a concurrently changed default.
+- A hosted model (ADR-0030, amending ADR-0019): "Custom" takes a provider's base URL as published (`https://openrouter.ai/api/v1`), a model, and an API key chosen from the model's keys or stored there and then, in Settings → AI model, the first-run wizard and `jobpilot-cli settings set-llm`.
+  The key is a credential under the source `llm`; the settings hold its label, the daemon reads the key from the keychain each time it builds a request and sends it as a bearer token, and a key is refused for plain http to anything but this computer.
+  A base URL that is not this computer shows, beside the field, that the profile, resume and job postings are sent to its host.
+  Errors are written from the response status, never the body, which can quote the key.
+  The OpenAI-compatible adapter now appends `/chat/completions` rather than `/v1/chat/completions`, and migration `00024` adds `/v1` to stored llama.cpp, LM Studio and custom base URLs so local servers keep working.
 - Notifications (ADR-0028, `docs/02_features/11_notifications.md`): a scheduled scout run that created applications or failed, and any run that created an application for a strong match (80 by default), is recorded in a `notifications` table (migration `00023_notifications.sql`) and posted by the desktop app, which the daemon starts in a windowless delivery mode so the notification is JobPilot's own on every platform.
   The text is counts and the scout's name, written in core; a claim makes a notification post at most once; one never posted waits on the Dashboard under "While you were away".
   Settings → Notifications and `jobpilot-cli settings notifications` turn posting off and set the strong-match score; `jobpilot-cli notifications` lists what is new.

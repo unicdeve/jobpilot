@@ -705,6 +705,16 @@ func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 				note = " (default, not yet configured)"
 			}
 			fmt.Printf("Provider: %s%s\nBase URL: %s\nModel: %s\n", resolved.Provider, note, resolved.BaseURL, resolved.Model)
+			if ref, ok := resolved.APIKeyRef(); ok {
+				where, err := keyStatus(ctx, client, ref)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("API key: %s (%s)\n", ref.Label, where)
+			}
+			if host := resolved.HostedAt(); host != "" {
+				fmt.Printf("\n%s\n", domain.HostedModelNotice(host))
+			}
 			return nil
 		},
 	})
@@ -747,6 +757,17 @@ func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 			}
 
 			settings := domain.LLMSettings{Provider: preset.Key, BaseURL: baseURL, Model: model}
+			if host := settings.HostedAt(); host != "" {
+				fmt.Printf("ℹ️  %s\n", domain.HostedModelNotice(host))
+			}
+			if preset.Key == llm.ProviderCustom {
+				label, err := chooseLLMKey(ctx, client)
+				if err != nil {
+					return err
+				}
+				settings.APIKeyLabel = label
+			}
+
 			result, err := client.SaveLLMSettings(ctx, settings)
 			if err != nil {
 				return fmt.Errorf("saving LLM settings: %w", err)
@@ -761,6 +782,74 @@ func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 	})
 
 	return cmd
+}
+
+// keyStatus says whether the credential ref names is stored, as the list
+// of stored credentials records it; the secret itself is never read.
+func keyStatus(ctx context.Context, client *httpapi.Client, ref domain.CredentialRef) (string, error) {
+	refs, err := client.ListCredentials(ctx)
+	if err != nil {
+		return "", fmt.Errorf("listing API keys: %w", err)
+	}
+	for _, stored := range refs {
+		if stored == ref {
+			return "in your keychain", nil
+		}
+	}
+	return "not stored — add it with 'settings set-llm'", nil
+}
+
+// chooseLLMKey asks which API key a custom endpoint is sent: none, one
+// already stored for the model, or a new one, which it stores (ADR-0030
+// §7). It returns the key's label, or "" for none.
+func chooseLLMKey(ctx context.Context, client *httpapi.Client) (string, error) {
+	refs, err := client.ListCredentials(ctx)
+	if err != nil {
+		return "", fmt.Errorf("listing API keys: %w", err)
+	}
+	const none, add = "No key", "Add a new key…"
+	items := []string{none}
+	for _, ref := range refs {
+		// Only the model's own keys: a job source's is not offered (§1).
+		if ref.Source == domain.LLMCredentialSource {
+			items = append(items, ref.Label)
+		}
+	}
+	items = append(items, add)
+
+	keySelect := promptui.Select{Label: "API key", Items: items}
+	_, choice, err := keySelect.Run()
+	if err != nil {
+		return "", fmt.Errorf("choosing an API key: %w", err)
+	}
+	if choice == none {
+		return "", nil
+	}
+	if choice != add {
+		return choice, nil
+	}
+
+	labelPrompt := promptui.Prompt{
+		Label: "Name this key (e.g. openrouter)",
+		Validate: func(v string) error {
+			_, err := domain.NewCredentialRef(domain.LLMCredentialSource, v)
+			return err
+		},
+	}
+	label, err := labelPrompt.Run()
+	if err != nil {
+		return "", fmt.Errorf("naming the key: %w", err)
+	}
+	secret, err := readSecret("API key")
+	if err != nil {
+		return "", err
+	}
+	ref, err := client.SetCredential(ctx, domain.LLMCredentialSource, label, secret)
+	if err != nil {
+		return "", fmt.Errorf("storing the key: %w", err)
+	}
+	fmt.Printf("✅ Stored the key %q in your keychain. It cannot be shown again.\n", ref.Label)
+	return ref.Label, nil
 }
 
 // resolveSavedSearch finds the saved search a command should use: the one

@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -796,6 +797,9 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, []ports.JobSource{source}, llmProv, nil, docConverter)
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
 
+	settingsSvc := services.NewSettingsService(settingsRepo)
+	credentialSvc := services.NewCredentialService(credentialStore, &fakeCredentialNames{})
+
 	svc := Services{
 		Candidates: candRepo,
 		Onboarding: services.NewOnboardingService(candRepo, services.NewResumeService(resRepo, candRepo, llmProv, docConverter), savedSearchSvc, llmProv, nil),
@@ -805,15 +809,29 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 		Searches:   savedSearchSvc,
 		Scouts: services.NewScoutService(&fakeScoutRepository{}, savedSearchRepo, candRepo, appRepo, runRepo, eventRepo,
 			discoverySvc, matchingSvc),
-		Matching:    matchingSvc,
-		Settings:    services.NewSettingsService(settingsRepo),
+		Matching: matchingSvc,
+		Settings: settingsSvc,
+		// Wired as the daemon wires it, so checking the model reads the
+		// stored settings and the stored key (ADR-0030 §2).
+		LLM: llm.NewReloadingProvider(
+			func(ctx context.Context) (domain.LLMSettings, error) {
+				settings, err := settingsSvc.GetLLMSettings(ctx)
+				if err != nil {
+					return domain.LLMSettings{}, err
+				}
+				return *settings, nil
+			},
+			func(ctx context.Context, label string) (string, error) {
+				return credentialSvc.Get(ctx, domain.LLMCredentialSource, label)
+			},
+		),
 		Application: appSvc,
 		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc),
 		Answers:     answerSvc,
 		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answerSvc, func() (ports.BrowserWorker, error) {
 			return &fakeBrowserWorker{}, nil
 		}, nil),
-		Credentials: services.NewCredentialService(credentialStore, &fakeCredentialNames{}),
+		Credentials: credentialSvc,
 		Activity:    services.NewAgentActivityService(runRepo, eventRepo),
 		AboutYou:    aboutYouSvc,
 	}
@@ -1039,6 +1057,24 @@ func TestClient_LLMSettingsRoundTrip(t *testing.T) {
 	saved, err := client.GetLLMSettings(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "custom", saved.Provider)
+
+	// A hosted model's key is stored under "llm", and the settings carry
+	// only its label (ADR-0030 §1).
+	_, err = client.SetCredential(ctx, domain.LLMCredentialSource, "openrouter", "sk-test")
+	require.NoError(t, err)
+	_, err = client.SaveLLMSettings(ctx, domain.LLMSettings{
+		Provider: "custom", BaseURL: "https://127.0.0.1:1/api/v1", Model: "m", APIKeyLabel: "openrouter",
+	})
+	require.NoError(t, err)
+	saved, err = client.GetLLMSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "openrouter", saved.APIKeyLabel)
+
+	// §3: never across a network in the clear.
+	_, err = client.SaveLLMSettings(ctx, domain.LLMSettings{
+		Provider: "custom", BaseURL: "http://models.example.com/v1", Model: "m", APIKeyLabel: "openrouter",
+	})
+	require.ErrorContains(t, err, "would send it unencrypted")
 }
 
 func TestClient_NotFoundSurfacesServerError(t *testing.T) {
@@ -1937,7 +1973,23 @@ func TestLLMHealth(t *testing.T) {
 
 	settingsRepo := newFakeSettingsRepository()
 	settingsSvc := services.NewSettingsService(settingsRepo)
-	ts := httptest.NewServer(NewHandler(Services{Settings: settingsSvc}))
+	keys := map[string]string{}
+	provider := llm.NewReloadingProvider(
+		func(ctx context.Context) (domain.LLMSettings, error) {
+			settings, err := settingsSvc.GetLLMSettings(ctx)
+			if err != nil {
+				return domain.LLMSettings{}, err
+			}
+			return *settings, nil
+		},
+		func(_ context.Context, label string) (string, error) {
+			if key, ok := keys[label]; ok {
+				return key, nil
+			}
+			return "", ports.ErrCredentialNotFound
+		},
+	)
+	ts := httptest.NewServer(NewHandler(Services{Settings: settingsSvc, LLM: provider}))
 	t.Cleanup(ts.Close)
 
 	health := func(t *testing.T) llmHealthResponse {
@@ -1983,6 +2035,34 @@ func TestLLMHealth(t *testing.T) {
 		require.True(t, got.Configured)
 		require.True(t, got.OK)
 		require.Empty(t, got.Error)
+	})
+
+	// ADR-0030 §2: a key the settings name and the keychain lacks is found
+	// before any work starts, and the key that is stored is the one sent.
+	t.Run("a hosted model and its key", func(t *testing.T) {
+		hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer sk-test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		}))
+		t.Cleanup(hosted.Close)
+		require.NoError(t, settingsSvc.SaveLLMSettings(context.Background(), &domain.LLMSettings{
+			Provider:    "custom",
+			BaseURL:     hosted.URL + "/v1",
+			Model:       "gpt-5",
+			APIKeyLabel: "openai",
+		}))
+
+		got := health(t)
+		require.True(t, got.Configured)
+		require.False(t, got.OK)
+		require.Contains(t, got.Error, `the AI model's API key "openai" is not stored`)
+
+		keys["openai"] = "sk-test"
+		got = health(t)
+		require.True(t, got.OK, got.Error)
 	})
 }
 

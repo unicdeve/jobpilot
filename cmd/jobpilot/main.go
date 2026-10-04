@@ -215,13 +215,20 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	// Resolved per request rather than once here: the daemon outlives both
 	// the desktop app and the CLI, so a provider fixed at startup would
 	// ignore settings the user saves later until they restarted it.
-	llmProv := llm.NewReloadingProvider(func(ctx context.Context) (domain.LLMSettings, error) {
-		settings, err := settingsSvc.GetLLMSettings(ctx)
-		if err != nil {
-			return domain.LLMSettings{}, err
-		}
-		return *settings, nil
-	})
+	// The API key the settings name is read from the keychain the same
+	// way, so the HTTP layer never handles it (ADR-0030 §2).
+	llmProv := llm.NewReloadingProvider(
+		func(ctx context.Context) (domain.LLMSettings, error) {
+			settings, err := settingsSvc.GetLLMSettings(ctx)
+			if err != nil {
+				return domain.LLMSettings{}, err
+			}
+			return *settings, nil
+		},
+		func(ctx context.Context, label string) (string, error) {
+			return credentialSvc.Get(ctx, domain.LLMCredentialSource, label)
+		},
+	)
 
 	// Every source here is a public API that needs no credentials, which
 	// is what keeps discovery working on a fresh install with nothing
@@ -309,6 +316,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 		Searches:      savedSearchSvc,
 		Matching:      matchingSvc,
 		Settings:      settingsSvc,
+		LLM:           llmProv,
 		Application:   applicationSvc,
 		CoverLetter:   coverLetterSvc,
 		Answers:       answerSvc,

@@ -3,6 +3,7 @@
 ## Status
 
 Accepted and implemented.
+Amended by ADR-0030: the model is given an API key, under the source `llm`, when it is a hosted one; "The cloud LLM credential belongs to Ollama" below holds for Ollama's own cloud models only.
 
 Both open questions were settled by the user when the proposal was read: the API is write-only, and a credential is identified by source **and** label.
 The second changed the design rather than just confirming it — see §1 and §6.

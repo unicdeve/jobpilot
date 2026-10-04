@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"path/filepath"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -51,19 +50,8 @@ func (s *SettingsService) GetLLMSettings(ctx context.Context) (*domain.LLMSettin
 
 // SaveLLMSettings validates and persists the configured LLM backend.
 func (s *SettingsService) SaveLLMSettings(ctx context.Context, settings *domain.LLMSettings) error {
-	if settings.Provider == "" {
-		return fmt.Errorf("provider is required")
-	}
-	if settings.Model == "" {
-		return fmt.Errorf("model is required")
-	}
-
-	parsed, err := url.ParseRequestURI(settings.BaseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return fmt.Errorf("base URL must be a valid absolute http(s) URL, got %q", settings.BaseURL)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("base URL must use http or https, got %q", settings.BaseURL)
+	if err := settings.Validate(); err != nil {
+		return err
 	}
 
 	value, err := json.Marshal(settings)

@@ -35,6 +35,11 @@ configuration is supported at a time. Saved settings apply to the
 running daemon immediately. The desktop's Settings screen offers the same
 presets and fills in the selected provider's default base URL.
 
+A hosted model is a custom endpoint (ADR-0030): its base URL as the provider publishes it, with the version (`https://openrouter.ai/api/v1`), its model, and an API key chosen from the model's keys or stored there and then.
+The key lives in the keychain under the source `llm`, the settings hold only its label, and a key is sent only over https or to this computer.
+Wherever the model is chosen, a base URL that is not this computer says that the profile, resume and job postings are sent to its host, including from a scout running on its own.
+Settings → API keys lists the model's keys as "AI model".
+
 Search preferences are implemented as named saved searches: see
 `docs/02_features/04_job_discovery.md` AC-001. They are managed from
 `jobpilot-cli search saved` and the desktop's Settings → Job searches, and

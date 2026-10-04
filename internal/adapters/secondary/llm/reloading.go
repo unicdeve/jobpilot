@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,11 @@ import (
 
 // SettingsLoader reads the user's currently configured LLM backend.
 type SettingsLoader func(ctx context.Context) (domain.LLMSettings, error)
+
+// KeyLoader reads the secret stored under label for the model (ADR-0030
+// §1). It answers ports.ErrCredentialNotFound for a label with nothing
+// stored.
+type KeyLoader func(ctx context.Context, label string) (string, error)
 
 // ReloadingProvider is an ports.LLMProvider that resolves the configured
 // backend at call time rather than at construction.
@@ -22,20 +28,27 @@ type SettingsLoader func(ctx context.Context) (domain.LLMSettings, error)
 // themselves. Resolving per call means saving settings takes effect on the
 // next request.
 //
-// The constructed provider is cached and only rebuilt when the settings
-// actually change, so this costs one settings read per generation.
+// The settings name the API key by its label, and the key itself is read
+// from the keychain on the same schedule, so a key replaced under the same
+// label is used from the next request on (ADR-0030 §2).
+//
+// The constructed provider is cached and only rebuilt when the settings or
+// the key actually change, so this costs one settings read, and one
+// keychain read when there is a key, per generation.
 type ReloadingProvider struct {
 	load SettingsLoader
+	keys KeyLoader
 
-	mu       sync.Mutex
-	cached   ports.LLMProvider
-	cachedOn domain.LLMSettings
+	mu          sync.Mutex
+	cached      ports.LLMProvider
+	cachedOn    domain.LLMSettings
+	cachedOnKey string
 }
 
 // NewReloadingProvider constructs a ReloadingProvider that reads settings
-// through load.
-func NewReloadingProvider(load SettingsLoader) *ReloadingProvider {
-	return &ReloadingProvider{load: load}
+// through load and API keys through keys.
+func NewReloadingProvider(load SettingsLoader, keys KeyLoader) *ReloadingProvider {
+	return &ReloadingProvider{load: load, keys: keys}
 }
 
 // current returns the provider described by the currently stored settings.
@@ -45,19 +58,40 @@ func (p *ReloadingProvider) current(ctx context.Context) (ports.LLMProvider, err
 		return nil, fmt.Errorf("loading LLM settings: %w", err)
 	}
 	resolved := ResolveSettings(settings)
+	key, err := p.key(ctx, resolved)
+	if err != nil {
+		return nil, err
+	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cached != nil && p.cachedOn == resolved {
+	if p.cached != nil && p.cachedOn == resolved && p.cachedOnKey == key {
 		return p.cached, nil
 	}
 
-	provider, err := NewProvider(resolved)
+	provider, err := NewProvider(resolved, key)
 	if err != nil {
 		return nil, fmt.Errorf("configuring LLM provider: %w", err)
 	}
-	p.cached, p.cachedOn = provider, resolved
+	p.cached, p.cachedOn, p.cachedOnKey = provider, resolved, key
 	return provider, nil
+}
+
+// key reads the API key the settings name, or none when they name none.
+func (p *ReloadingProvider) key(ctx context.Context, settings domain.LLMSettings) (string, error) {
+	if settings.APIKeyLabel == "" {
+		return "", nil
+	}
+	key, err := p.keys(ctx, settings.APIKeyLabel)
+	if errors.Is(err, ports.ErrCredentialNotFound) {
+		return "", fmt.Errorf(
+			"the AI model's API key %q is not stored — add it in Settings → AI model, or with 'jobpilot-cli settings set-llm'",
+			settings.APIKeyLabel)
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading the AI model's API key %q: %w", settings.APIKeyLabel, err)
+	}
+	return key, nil
 }
 
 // Generate delegates to the currently configured backend.

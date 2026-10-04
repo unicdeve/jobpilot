@@ -16,6 +16,7 @@ func goMigrations() []*goose.Migration {
 	return []*goose.Migration{
 		goose.NewGoMigration(14, &goose.GoFunc{RunTx: normalizeTimestamps}, nil),
 		goose.NewGoMigration(15, &goose.GoFunc{RunDB: installDeletionRules}, nil),
+		goose.NewGoMigration(24, &goose.GoFunc{RunTx: versionOpenAICompatBaseURL}, nil),
 	}
 }
 

@@ -385,6 +385,9 @@ export interface LLMSettings {
   provider: string;
   base_url: string;
   model: string;
+  /// The label of the model's API key, stored under the "llm" source in the
+  /// keychain; absent for none (ADR-0030 §1). Never the key itself.
+  api_key_label?: string;
 }
 
 /// LLMHealth reports whether a generation request would work right now.

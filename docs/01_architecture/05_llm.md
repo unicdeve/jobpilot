@@ -18,9 +18,15 @@ The exact interface should be refined during implementation.
 
 Ollama.
 
-## Future providers
+## Hosted models
 
-Cloud providers may be added through adapters.
+A hosted model is reached as a custom OpenAI-compatible endpoint with an API key (ADR-0030).
+The key is a credential under the source `llm` (ADR-0019), named in the settings by its label, read from the keychain by the daemon each time it builds a request, and sent as a bearer token, only over https or to this computer.
+
+The OpenAI-compatible adapter appends `/chat/completions` and `/models` to the base URL, which includes its version as every provider publishes it; Ollama's adapter is its own and takes the server's root.
+An error is written from the response status, never from the response body, which can quote the key.
+
+Only `Authorization: Bearer` is supported.
 
 The product intentionally keeps a single active provider configuration for the initial version.
 

@@ -6,6 +6,7 @@ import { SettingsHeading } from "./settings-heading";
 import { FormField } from "./form-field";
 import { useCredentials, useDeleteCredential, useSetCredential } from "../lib/queries";
 import { useToast } from "../lib/toast";
+import { llmCredentialSource } from "./llm-provider-fields";
 
 /// KNOWN_SOURCES are the job sources that can use a key, so the common case
 /// is a choice rather than a spelling test. The field stays free text
@@ -13,7 +14,13 @@ import { useToast } from "../lib/toast";
 /// changed to be configurable.
 const KNOWN_SOURCES = ["adzuna", "usajobs", "jooble"];
 
-/// CredentialSettings manages API keys for job sources.
+/// sourceName is how a credential's source reads in the list: the model's
+/// keys are filed under "llm" (ADR-0030 §1), which is not a word to show.
+function sourceName(source: string): string {
+  return source === llmCredentialSource ? "AI model" : source;
+}
+
+/// CredentialSettings manages API keys for job sources and the AI model.
 ///
 /// A key is stored in the operating system's keychain and never in
 /// JobPilot's database. There is no way to read one back: the daemon has no
@@ -41,7 +48,7 @@ export function CredentialSettings() {
   const store = useSetCredential({
     onSuccess: (ref) => {
       reset();
-      notify(`Stored the key for ${ref.source}. It cannot be shown again.`, "success");
+      notify(`Stored the key for ${sourceName(ref.source)}. It cannot be shown again.`, "success");
     },
     onError,
   });
@@ -56,7 +63,7 @@ export function CredentialSettings() {
     <>
       <SettingsHeading
         title="API keys"
-        description="Some job sources need an API key. Keys are kept in your operating system’s keychain, never in JobPilot’s database, and cannot be shown again once stored."
+        description="Some job sources and hosted AI models need an API key. Keys are kept in your operating system’s keychain, never in JobPilot’s database, and cannot be shown again once stored."
         actions={
           !adding && (
             <Button size="sm" onClick={() => setAdding(true)}>
@@ -141,7 +148,8 @@ export function CredentialSettings() {
           !adding && (
             <Panel className="px-4 py-6 text-center">
               <p className="text-sm text-muted-foreground">
-                No keys stored. Every job source JobPilot uses today works without one.
+                No keys stored. Every job source JobPilot uses today works without one, and so does a
+                model on this computer.
               </p>
             </Panel>
           )
@@ -150,10 +158,14 @@ export function CredentialSettings() {
             {credentials.map((ref) => (
               <div key={`${ref.source}/${ref.label}`} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p className="text-[13px] font-medium">{ref.source}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {ref.label} · stored in your keychain
+                  {/* The label is what tells two keys for one source apart,
+                      so it is in the title beside the source. */}
+                  <p className="text-[13px] font-medium">
+                    {sourceName(ref.source)}
+                    <span className="text-muted-foreground"> · </span>
+                    {ref.label}
                   </p>
+                  <p className="mt-1 text-xs text-muted-foreground">Stored in your keychain</p>
                 </div>
                 <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(ref)}>
                   Remove

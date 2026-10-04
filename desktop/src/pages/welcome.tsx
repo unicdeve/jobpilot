@@ -118,7 +118,8 @@ export function Welcome() {
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-10">
       <h1 className="text-xl font-semibold">Set up JobPilot</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Four things, none of them an account. Everything you enter stays on this machine.
+        Four things, none of them an account. Everything you enter stays on this machine, unless
+        you choose a hosted model.
       </p>
 
       <ol className="mt-5 flex flex-wrap gap-2" aria-label="Setup steps">
@@ -200,10 +201,10 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
   return (
     <>
       <div>
-        <h2 className="font-semibold">Point JobPilot at a local LLM</h2>
+        <h2 className="font-semibold">Choose the AI model</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Matching, cover letters and reading a resume all run on a model you host. Nothing is sent
-          to a hosted service.
+          Matching, cover letters and reading a resume all run on the model you choose. A model on
+          this computer keeps everything here; a hosted one is sent what it reads.
         </p>
       </div>
 

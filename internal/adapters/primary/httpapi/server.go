@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/llm"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/domain/geo"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -26,14 +25,18 @@ import (
 // mirrors exactly what cmd/jobpilot-cli wired directly before this package
 // existed — this is a transport change, not a behavior change.
 type Services struct {
-	Candidates    ports.CandidateRepository
-	Onboarding    *services.OnboardingService
-	Profile       *services.ProfileService
-	Resume        *services.ResumeService
-	Discovery     *services.JobDiscoveryService
-	Searches      *services.SavedSearchService
-	Matching      *services.MatchingService
-	Settings      *services.SettingsService
+	Candidates ports.CandidateRepository
+	Onboarding *services.OnboardingService
+	Profile    *services.ProfileService
+	Resume     *services.ResumeService
+	Discovery  *services.JobDiscoveryService
+	Searches   *services.SavedSearchService
+	Matching   *services.MatchingService
+	Settings   *services.SettingsService
+	// LLM is the configured model, resolved from the stored settings and
+	// the keychain on every call, so checking it here checks exactly what
+	// a generation would use (ADR-0030 §2).
+	LLM           ports.LLMProvider
 	Application   *services.ApplicationService
 	CoverLetter   *services.CoverLetterService
 	Answers       *services.AnswerService
@@ -109,8 +112,8 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("DELETE /v1/credentials/{source}/{label}", handleDeleteCredential(svc.Credentials))
 
 	mux.HandleFunc("GET /v1/settings/llm", handleGetLLMSettings(svc.Settings))
-	mux.HandleFunc("PUT /v1/settings/llm", handleSaveLLMSettings(svc.Settings))
-	mux.HandleFunc("GET /v1/settings/llm/health", handleLLMHealth(svc.Settings))
+	mux.HandleFunc("PUT /v1/settings/llm", handleSaveLLMSettings(svc))
+	mux.HandleFunc("GET /v1/settings/llm/health", handleLLMHealth(svc))
 	mux.HandleFunc("GET /v1/settings/discovery", handleGetDiscoverySettings(svc.Settings))
 	mux.HandleFunc("PUT /v1/settings/discovery", handleSaveDiscoverySettings(svc.Settings))
 
@@ -791,7 +794,7 @@ type saveLLMSettingsResponse struct {
 	ConnectivityError string             `json:"connectivity_error,omitempty"`
 }
 
-func handleSaveLLMSettings(svc *services.SettingsService) http.HandlerFunc {
+func handleSaveLLMSettings(svc Services) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var settings domain.LLMSettings
 		if err := readJSON(r, &settings); err != nil {
@@ -799,14 +802,12 @@ func handleSaveLLMSettings(svc *services.SettingsService) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.SaveLLMSettings(r.Context(), &settings); writeErrIfAny(w, err) {
+		if err := svc.Settings.SaveLLMSettings(r.Context(), &settings); writeErrIfAny(w, err) {
 			return
 		}
 
 		resp := saveLLMSettingsResponse{Settings: settings}
-		if provider, err := llm.NewProvider(settings); err != nil {
-			resp.ConnectivityError = err.Error()
-		} else if err := provider.TestConnectivity(r.Context()); err != nil {
+		if err := svc.LLM.TestConnectivity(r.Context()); err != nil {
 			resp.ConnectivityError = err.Error()
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -845,9 +846,9 @@ type llmHealthResponse struct {
 // handleLLMHealth lets a caller check the configured backend before starting
 // work that depends on it, rather than discovering the problem partway
 // through and leaving the user with half a result.
-func handleLLMHealth(svc *services.SettingsService) http.HandlerFunc {
+func handleLLMHealth(svc Services) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		settings, err := svc.GetLLMSettings(r.Context())
+		settings, err := svc.Settings.GetLLMSettings(r.Context())
 		if writeErrIfAny(w, err) {
 			return
 		}
@@ -864,11 +865,7 @@ func handleLLMHealth(svc *services.SettingsService) http.HandlerFunc {
 		defer cancel()
 
 		resp := llmHealthResponse{Configured: true}
-		provider, err := llm.NewProvider(*settings)
-		if err == nil {
-			err = provider.TestConnectivity(ctx)
-		}
-		if err != nil {
+		if err := svc.LLM.TestConnectivity(ctx); err != nil {
 			resp.Error = err.Error()
 		} else {
 			resp.OK = true
