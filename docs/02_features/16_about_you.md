@@ -145,6 +145,9 @@ A customizable prompt still has nothing personal to work with: customization cha
 And a custom prompt needs a stable, documented set of inputs to refer to; this spec defines them — the About you keys, the per-application answers, the sample.
 Building customization first would mean building it twice.
 
+It is now built: `docs/02_features/20_prompt_customization.md`, ADR-0031.
+The style rules above are the default guidance for letters and written answers, which the candidate may replace; the rules about grounding, the posting and never mentioning are not guidance, and stay.
+
 ## Decisions
 
 ### D1 — How answers are stored

@@ -54,6 +54,10 @@ scout runs, and the score a strong match needs, under Settings →
 Notifications and `jobpilot-cli settings notifications`
 (`docs/02_features/11_notifications.md`, ADR-0028).
 
-All other categories (prompt customization, application mode, data
-retention, storage location, browser settings, policies) remain
-unimplemented.
+Prompt customization is implemented: the guidance the matching, cover
+letter and written answer prompts are written under, under Settings →
+Prompts and `jobpilot-cli settings prompts`
+(`docs/02_features/20_prompt_customization.md`, ADR-0031).
+
+All other categories (application mode, data retention, storage location,
+browser settings, policies) remain unimplemented.

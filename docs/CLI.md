@@ -71,6 +71,10 @@ Every deletion first shows what it takes with it and asks. `--yes` skips the que
 
 ## Settings
 - `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured), the API key's label and whether it is stored, and, for a model that is not on this computer, where the candidate's data is sent.
+- `jobpilot-cli settings prompts`: Lists the prompts you can give guidance to — matching, cover letters and written answers — and whether each follows its default or your own guidance (ADR-0031). The rules that keep JobPilot to what you have told it are not guidance and cannot be changed.
+- `jobpilot-cli settings prompts show <key>`: Shows a prompt's guidance, and its default beside your own. For cover letters, also says that length and tone are your writing preferences.
+- `jobpilot-cli settings prompts edit <key>`: Replaces a prompt's guidance with your own, edited in `$VISUAL` or `$EDITOR` starting from what it is now. `--file <path>` reads it from a file, or `-` from standard input. Empty guidance, or more than 2,000 characters, is refused.
+- `jobpilot-cli settings prompts reset <key>`: Puts a prompt back on its default, which it then follows as later releases change it.
 - `jobpilot-cli settings notifications`: Shows whether JobPilot posts notifications about scout runs, and the score a strong match needs. `--on` / `--off` turn posting on or off; turned off, notifications still wait on the Dashboard and in `notifications`. `--strong-match <1-100>` sets the score.
 - `jobpilot-cli settings set-llm`: Interactively configure the LLM provider and model. Choose from known providers (Ollama, llama.cpp, LM Studio) or a custom OpenAI-compatible endpoint, confirm/edit the base URL, and enter the model name manually. For a custom endpoint — a hosted model such as OpenRouter, OpenAI or Groq — enter the base URL as the provider gives it, with its version, then choose an API key: none, one already stored for the model, or a new one, typed without echo and stored in the keychain (ADR-0030). Settings are saved even if the endpoint can't be reached at save time.
 

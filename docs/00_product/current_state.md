@@ -7,6 +7,7 @@ implemented — foundation, candidate profile, job discovery, matching,
 application generation, a desktop app, and a browser automation worker —
 with explicit gaps noted below.
 Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
+Phase 3's last item, prompt customization (PR-013, the last MVP requirement), is implemented by ADR-0031.
 Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
 Phase 10 (distribution) is decided by ADR-0029 and built; the first release has not been made (Next, item 1).
 Built: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
@@ -40,6 +41,10 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   A base URL that is not this computer shows, beside the field, that the profile, resume and job postings are sent to its host.
   Errors are written from the response status, never the body, which can quote the key.
   The OpenAI-compatible adapter now appends `/chat/completions` rather than `/v1/chat/completions`, and migration `00024` adds `/v1` to stored llama.cpp, LM Studio and custom base URLs so local servers keep working.
+- Prompt customization (ADR-0031, `docs/02_features/20_prompt_customization.md`): the user may replace the guidance — judgement and style — that matching, cover letters and written answers are written under, in Settings → Prompts and `jobpilot-cli settings prompts`.
+  The frame of each prompt (its role, the rules that protect the candidate, the reply's contract) is code's and cannot be changed; it follows the guidance in the system prompt and says it comes first, and the guidance is never sent beside a posting.
+  Guidance is one setting, `prompt_guidance`; a reset prompt follows its default as releases change it, and a default changed under the user's own guidance is pointed out.
+  Making matching's frame state that the posting is not evidence of the candidate cut skills the model claimed the candidate had by a third on `llama3.2:1b` (34 to 20, and 27 to 20, in two rounds of 20 runs).
 - Notifications (ADR-0028, `docs/02_features/11_notifications.md`): a scheduled scout run that created applications or failed, and any run that created an application for a strong match (80 by default), is recorded in a `notifications` table (migration `00023_notifications.sql`) and posted by the desktop app, which the daemon starts in a windowless delivery mode so the notification is JobPilot's own on every platform.
   The text is counts and the scout's name, written in core; a claim makes a notification post at most once; one never posted waits on the Dashboard under "While you were away".
   Settings → Notifications and `jobpilot-cli settings notifications` turn posting off and set the strong-match score; `jobpilot-cli notifications` lists what is new.
@@ -505,11 +510,11 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   title bar is drawn over the sidebar (`src-tauri/tauri.macos.conf.json`).
   Matches is no longer a screen of its own: a match is a job with a score,
   ranked under Jobs → Analyzed, and `/matches` redirects there.
-  Settings has appearance, the AI model, job searches, notifications, API
-  keys, data and About; the categories `docs/02_features/13_settings.md`
-  lists beyond those (prompt customization, application mode, data
-  retention, storage location, browser settings, policies) have no backend
-  yet.
+  Settings has appearance, the AI model, prompts, job searches,
+  notifications, API keys, data and About; the categories
+  `docs/02_features/13_settings.md` lists beyond those (application mode,
+  data retention, storage location, browser settings, policies) have no
+  backend yet.
 
 - Agent Activity (`docs/02_features/12_agent_activity.md`): the desktop's
   Activity screen lists every agent run — browser preparation and scout runs
@@ -622,19 +627,20 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 
 ## Known gaps within Phases 0–6
 
-- No settings/configuration system beyond LLM provider/model, job
+- No settings/configuration system beyond LLM provider/model, prompts, job
   searches and notifications (`docs/02_features/13_settings.md` — other
-  categories like prompt customization and data retention are unimplemented).
+  categories like data retention are unimplemented).
 - No job source that needs an API key is *built* yet, though credential
   storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
   USAJOBS and The Muse all refuse an unauthenticated request.
-- No user-configurable prompt customization for matching (Phase 3).
 - The desktop has no progress indicator for a long import or discovery
   beyond its button's label; a resume read by a slow model shows
   "Reading…" for as long as it takes.
+- Under guidance of the user's own (ADR-0031), a small local model often prefaces a cover letter with "Here is a tailored cover letter for…": three in four on `llama3.2:1b`. The candidate deletes it in review; the draft check does not flag it yet (`docs/02_features/20_prompt_customization.md`, "Measured").
 - Some core entities from `docs/01_architecture/04_database.md` are still
   not separate tables: `JobSource` (jobs reference their source only by
-  free-text ID) and `Prompt` (no schema home yet for prompt customization).
+  free-text ID). `Prompt` is deliberately a setting rather than a table
+  (ADR-0031 §5).
   The candidate half is done — `candidate_skills`, `candidate_experiences`,
   `candidate_links` and `candidate_work_authorizations` are real tables.
   `CandidateEducation` is deliberately not among them; see the education
@@ -712,7 +718,7 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 2. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
    Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
    Both wait on the first release's installers.
-3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings categories still open (prompt customization, data retention).
+3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings category still open (data retention).
    Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
 4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
 5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.

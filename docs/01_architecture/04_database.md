@@ -70,7 +70,7 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 - ApplicationStateTransition (durable history of Application state changes)
 - AgentRun
 - AgentEvent
-- Prompt
+- Prompt (the user's guidance for a prompt, kept as one setting under `prompt_guidance` rather than a table; ADR-0031 §5)
 - Notification (what the user was told about a scout run, or will be, with when it was posted and seen; ADR-0028)
 - UserSetting
 - Policy

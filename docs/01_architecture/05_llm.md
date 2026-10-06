@@ -70,3 +70,11 @@ The prompts say so, and a small model follows them only partly, so what it write
 ## Prompt customization
 
 Users can customize supported system prompts. Product prompts should have documented defaults and safe boundaries.
+
+ADR-0031 decides what that means.
+Three prompts can be changed — matching, the cover letter and the written answer — and of each only the guidance: the instructions about judgement and style.
+The frame, which holds the rules that protect the candidate and the reply's contract, is owned by code and comes after the guidance, saying it comes first.
+The guidance is the user's own instruction, so it is sent in the system prompt and never beside a job posting.
+
+What the guidance cannot do is enforced by code rather than by the frame: a score is validated, a Scout's eligibility is deterministic, and every draft is checked whatever the guidance said.
+The defaults are documented in `docs/02_features/20_prompt_customization.md`.
