@@ -696,6 +696,7 @@ func newMatchCmd(client *httpapi.Client) *cobra.Command {
 func newSettingsCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "settings", Short: "Manage JobPilot settings"}
 	cmd.AddCommand(newNotificationSettingsCmd(client))
+	cmd.AddCommand(newPromptSettingsCmd(client))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show",

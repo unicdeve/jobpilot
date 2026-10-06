@@ -1,5 +1,19 @@
 import { cn } from "cn";
-import { Bell, Database, Ellipsis, Info, KeyRound, Monitor, Moon, Palette, Plus, Search, Sparkles, Sun } from "lucide-react";
+import {
+  Bell,
+  Database,
+  Ellipsis,
+  Info,
+  KeyRound,
+  MessageSquareText,
+  Monitor,
+  Moon,
+  Palette,
+  Plus,
+  Search,
+  Sparkles,
+  Sun,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CompanySettings } from "../components/company-settings";
@@ -8,6 +22,7 @@ import { CredentialSettings } from "../components/credential-settings";
 import { DataSettings } from "../components/data-settings";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { Page, Panel } from "../components/page";
+import { PromptSettings } from "../components/prompt-settings";
 import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
 import { SearchTemplatePicker } from "../components/search-template-picker";
 import { SettingsHeading } from "../components/settings-heading";
@@ -45,6 +60,7 @@ import type { LLMSettings, SavedSearch, SearchCriteria } from "../lib/types";
 const SECTIONS = [
   { key: "appearance", label: "Appearance", icon: Palette },
   { key: "model", label: "AI model", icon: Sparkles },
+  { key: "prompts", label: "Prompts", icon: MessageSquareText },
   { key: "searches", label: "Job searches", icon: Search },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "keys", label: "API keys", icon: KeyRound },
@@ -85,6 +101,7 @@ export function Settings() {
           <div className="max-w-2xl">
             {section === "appearance" && <AppearanceSettings />}
             {section === "model" && <ModelSettings />}
+            {section === "prompts" && <PromptSettings />}
             {section === "searches" && <JobSearchSettings />}
             {section === "notifications" && <NotificationSettingsSection />}
             {section === "keys" && <CredentialSettings />}

@@ -29,6 +29,9 @@ import type {
   DiscoverySettings,
   Notification,
   NotificationSettings,
+  PromptGuidance,
+  PromptGuidanceList,
+  PromptKey,
   Job,
   JobMatch,
   JobListFilter,
@@ -196,6 +199,10 @@ export interface ApiClient {
   markNotificationsSeen(id?: string): Promise<void>;
   getNotificationSettings(): Promise<NotificationSettings>;
   saveNotificationSettings(settings: NotificationSettings): Promise<NotificationSettings>;
+  listPromptGuidance(): Promise<PromptGuidanceList>;
+  savePromptGuidance(key: PromptKey, text: string): Promise<PromptGuidance>;
+  /// resetPromptGuidance puts a prompt back on its default.
+  resetPromptGuidance(key: PromptKey): Promise<PromptGuidance>;
   getDiscoverySettings(): Promise<DiscoverySettings>;
   saveDiscoverySettings(settings: DiscoverySettings): Promise<DiscoverySettings>;
   checkLLMHealth(): Promise<LLMHealth>;
@@ -470,6 +477,11 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     getNotificationSettings: () => request<NotificationSettings>(daemon, "GET", "/v1/settings/notifications"),
     saveNotificationSettings: (settings) =>
       request<NotificationSettings>(daemon, "PUT", "/v1/settings/notifications", settings),
+    listPromptGuidance: () => request<PromptGuidanceList>(daemon, "GET", "/v1/settings/prompts"),
+    savePromptGuidance: (key, text) =>
+      request<PromptGuidance>(daemon, "PUT", `/v1/settings/prompts/${encodeURIComponent(key)}`, { text }),
+    resetPromptGuidance: (key) =>
+      request<PromptGuidance>(daemon, "DELETE", `/v1/settings/prompts/${encodeURIComponent(key)}`),
     getDiscoverySettings: () => request<DiscoverySettings>(daemon, "GET", "/v1/settings/discovery"),
     saveDiscoverySettings: (settings) =>
       request<DiscoverySettings>(daemon, "PUT", "/v1/settings/discovery", settings),

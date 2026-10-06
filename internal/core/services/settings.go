@@ -157,3 +157,116 @@ func (s *SettingsService) SaveDesktopExecutable(ctx context.Context, path string
 	}
 	return nil
 }
+
+// promptGuidanceKey is the user_settings key for PromptGuidanceSettings
+// (ADR-0031 §5).
+const promptGuidanceKey = "prompt_guidance"
+
+// ListPromptGuidance returns every prompt the user may give guidance to,
+// with what they gave it.
+func (s *SettingsService) ListPromptGuidance(ctx context.Context) ([]domain.PromptGuidance, error) {
+	settings, err := s.promptGuidanceSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	definitions := domain.PromptDefinitions()
+	guidance := make([]domain.PromptGuidance, 0, len(definitions))
+	for _, definition := range definitions {
+		guidance = append(guidance, domain.GuidanceOf(definition, settings))
+	}
+	return guidance, nil
+}
+
+// PromptGuidance returns one prompt's guidance. A key that is not one of
+// the prompts is ports.ErrNotFound.
+func (s *SettingsService) PromptGuidance(ctx context.Context, key domain.PromptKey) (domain.PromptGuidance, error) {
+	definition, err := promptDefinition(key)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	settings, err := s.promptGuidanceSettings(ctx)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	return domain.GuidanceOf(definition, settings), nil
+}
+
+// SavePromptGuidance replaces a prompt's guidance with the user's, and
+// records which default they were shown so a later change to it can be
+// pointed out (ADR-0031 §7).
+func (s *SettingsService) SavePromptGuidance(ctx context.Context, key domain.PromptKey, text string) (domain.PromptGuidance, error) {
+	definition, err := promptDefinition(key)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	text, err = domain.NormalizeGuidance(text)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	settings, err := s.promptGuidanceSettings(ctx)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	settings[key] = domain.StoredGuidance{Text: text, DefaultDigest: domain.GuidanceDigest(definition.Default)}
+	if err := s.savePromptGuidanceSettings(ctx, settings); err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	return domain.GuidanceOf(definition, settings), nil
+}
+
+// ResetPromptGuidance removes the user's guidance for a prompt, which then
+// follows its default, including as later releases change it.
+func (s *SettingsService) ResetPromptGuidance(ctx context.Context, key domain.PromptKey) (domain.PromptGuidance, error) {
+	definition, err := promptDefinition(key)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	settings, err := s.promptGuidanceSettings(ctx)
+	if err != nil {
+		return domain.PromptGuidance{}, err
+	}
+	if _, ok := settings[key]; ok {
+		delete(settings, key)
+		if err := s.savePromptGuidanceSettings(ctx, settings); err != nil {
+			return domain.PromptGuidance{}, err
+		}
+	}
+	return domain.GuidanceOf(definition, settings), nil
+}
+
+func promptDefinition(key domain.PromptKey) (domain.PromptDefinition, error) {
+	definition, ok := domain.PromptDefinitionFor(key)
+	if !ok {
+		return domain.PromptDefinition{}, fmt.Errorf("no prompt is called %q: %w", key, ports.ErrNotFound)
+	}
+	return definition, nil
+}
+
+func (s *SettingsService) promptGuidanceSettings(ctx context.Context) (domain.PromptGuidanceSettings, error) {
+	settings := domain.PromptGuidanceSettings{}
+	value, found, err := s.repo.Get(ctx, promptGuidanceKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prompt guidance: %w", err)
+	}
+	if !found {
+		return settings, nil
+	}
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return nil, fmt.Errorf("failed to parse stored prompt guidance: %w", err)
+	}
+	if settings == nil { // a stored "null"
+		settings = domain.PromptGuidanceSettings{}
+	}
+	return settings, nil
+}
+
+func (s *SettingsService) savePromptGuidanceSettings(ctx context.Context, settings domain.PromptGuidanceSettings) error {
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to encode prompt guidance: %w", err)
+	}
+	if err := s.repo.Set(ctx, promptGuidanceKey, string(value)); err != nil {
+		return fmt.Errorf("failed to save prompt guidance: %w", err)
+	}
+	return nil
+}

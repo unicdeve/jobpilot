@@ -295,12 +295,17 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter).
 		WithCandidates(candRepo)
-	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv)
+	// The three prompts the user may give guidance to read it from the
+	// settings on every request, as the model settings are (ADR-0031).
+	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv).
+		WithGuidance(settingsSvc)
 	applicationSvc := services.NewApplicationService(appRepo, jobRepo, candRepo, resRepo)
 	aboutYouSvc := services.NewAboutYouService(
 		sqlite.NewPersonalAnswerRepository(db.Conn()), candRepo, appRepo, jobRepo, questionRepo, llmProv)
-	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
-	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
+	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc).
+		WithGuidance(settingsSvc)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc).
+		WithGuidance(settingsSvc)
 	applyChooser := services.NewApplyControlChooser(llmProv)
 	scoutSvc := services.NewScoutService(
 		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),

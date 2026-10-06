@@ -638,6 +638,29 @@ export interface NotificationSettings {
   strong_match_score: number;
 }
 
+/// PromptKey names a prompt the user may give guidance to (ADR-0031 §1).
+export type PromptKey = "match" | "cover_letter" | "written_answer";
+
+/// PromptGuidance is one prompt's guidance: the default JobPilot ships, and
+/// the user's own when they have replaced it.
+export interface PromptGuidance {
+  key: PromptKey;
+  title: string;
+  used_for: string;
+  default: string;
+  /// custom is absent while the default is in use.
+  custom?: string;
+  /// default_changed is whether the default has changed since the user
+  /// saved custom.
+  default_changed: boolean;
+}
+
+export interface PromptGuidanceList {
+  prompts: PromptGuidance[];
+  /// max_length is the most characters core keeps in a guidance.
+  max_length: number;
+}
+
 export type ScoutSource = "local" | "sources";
 
 export type RunTrigger = "manual" | "schedule";

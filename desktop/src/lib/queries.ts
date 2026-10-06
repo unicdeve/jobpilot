@@ -56,6 +56,9 @@ import type {
   SaveLLMSettingsResult,
   Notification,
   NotificationSettings,
+  PromptGuidance,
+  PromptGuidanceList,
+  PromptKey,
   Scout,
   ScoutRunReport,
   CredentialRef,
@@ -100,6 +103,7 @@ export const keys = {
   scouts: ["scouts"] as const,
   notifications: ["notifications"] as const,
   notificationSettings: ["notification-settings"] as const,
+  promptGuidance: ["prompt-guidance"] as const,
   versions: ["versions"] as const,
   scoutRuns: ["scout-runs"] as const,
   activity: {
@@ -433,6 +437,48 @@ export function useSaveNotificationSettings(opts?: MutationOpts<NotificationSett
     onSuccess: (saved, ...rest) => {
       queryClient.setQueryData(keys.notificationSettings, saved);
       opts?.onSuccess?.(saved, ...rest);
+    },
+  });
+}
+
+/// usePromptGuidance loads the prompts the user may give guidance to
+/// (ADR-0031).
+export function usePromptGuidance() {
+  const api = useApi();
+  return useQuery<PromptGuidanceList>({
+    queryKey: keys.promptGuidance,
+    queryFn: () => api.listPromptGuidance(),
+  });
+}
+
+/// replacePrompt writes one prompt, as the daemon returned it, into the
+/// cached list.
+function replacePrompt(list: PromptGuidanceList | undefined, prompt: PromptGuidance) {
+  return list && { ...list, prompts: list.prompts.map((p) => (p.key === prompt.key ? prompt : p)) };
+}
+
+export function useSavePromptGuidance(opts?: MutationOpts<PromptGuidance, { key: PromptKey; text: string }>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, text }: { key: PromptKey; text: string }) => api.savePromptGuidance(key, text),
+    ...opts,
+    onSuccess: (saved, ...rest) => {
+      queryClient.setQueryData<PromptGuidanceList>(keys.promptGuidance, (list) => replacePrompt(list, saved));
+      opts?.onSuccess?.(saved, ...rest);
+    },
+  });
+}
+
+export function useResetPromptGuidance(opts?: MutationOpts<PromptGuidance, PromptKey>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (key: PromptKey) => api.resetPromptGuidance(key),
+    ...opts,
+    onSuccess: (reset, ...rest) => {
+      queryClient.setQueryData<PromptGuidanceList>(keys.promptGuidance, (list) => replacePrompt(list, reset));
+      opts?.onSuccess?.(reset, ...rest);
     },
   });
 }

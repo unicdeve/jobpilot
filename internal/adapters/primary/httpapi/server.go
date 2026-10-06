@@ -145,6 +145,7 @@ func NewHandler(svc Services) http.Handler {
 	registerAboutYou(mux, svc.AboutYou)
 	registerCompanies(mux, svc.Companies)
 	registerNotifications(mux, svc.Notifications)
+	registerPrompts(mux, svc.Settings)
 
 	return withCORS(mux)
 }
