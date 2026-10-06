@@ -1,4 +1,4 @@
-import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 
 /// lazyPage is a screen exported by name from a module that is loaded the
 /// first time the screen renders, so the window starts by parsing the app

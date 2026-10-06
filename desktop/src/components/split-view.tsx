@@ -28,10 +28,7 @@ export function SplitView({
         {list}
       </div>
       <div
-        className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-y-auto min-[1180px]:block",
-          hasSelection ? "block" : "hidden",
-        )}
+        className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto min-[1180px]:block", hasSelection ? "block" : "hidden")}
       >
         {detail}
       </div>

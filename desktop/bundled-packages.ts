@@ -23,7 +23,7 @@ export function bundledPackages(): Plugin {
         }
       }
       const list = [...packages].sort();
-      fs.writeFileSync(path.join(root, "bundled-packages.json"), JSON.stringify(list, null, 2) + "\n");
+      fs.writeFileSync(path.join(root, "bundled-packages.json"), `${JSON.stringify(list, null, 2)}\n`);
     },
   };
 }

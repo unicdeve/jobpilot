@@ -23,13 +23,12 @@ import { DataSettings } from "../components/data-settings";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { Page, Panel } from "../components/page";
 import { PromptSettings } from "../components/prompt-settings";
-import { SavedSearchForm, emptyCriteria } from "../components/saved-search-form";
+import { emptyCriteria, SavedSearchForm } from "../components/saved-search-form";
 import { SearchTemplatePicker } from "../components/search-template-picker";
 import { SettingsHeading } from "../components/settings-heading";
 import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import { Input } from "../components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,23 +36,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import { Input } from "../components/ui/input";
+import { dateTime, relativeTime } from "../lib/format";
 import {
+  useCountries,
   useCreateSavedSearch,
   useDeleteSavedSearch,
   useDiscoverySettings,
   useLLMSettings,
   useNotificationSettings,
-  useSaveNotificationSettings,
   useSaveDiscoverySettings,
-  useSaveLLMSettings,
   useSavedSearches,
-  useCountries,
+  useSaveLLMSettings,
+  useSaveNotificationSettings,
   useSetDefaultSavedSearch,
   useUpdateSavedSearch,
   useVersions,
 } from "../lib/queries";
-import { dateTime, relativeTime } from "../lib/format";
-import { useTheme, type ThemePreference } from "../lib/theme";
+import { type ThemePreference, useTheme } from "../lib/theme";
 import { useToast } from "../lib/toast";
 import type { LLMSettings, SavedSearch, SearchCriteria } from "../lib/types";
 
@@ -92,7 +92,10 @@ export function Settings() {
                 section === key ? "bg-accent font-medium" : "text-subtle-foreground hover:bg-accent/60",
               )}
             >
-              <Icon className={cn("size-4", section === key ? "text-primary" : "text-muted-foreground")} strokeWidth={1.75} />
+              <Icon
+                className={cn("size-4", section === key ? "text-primary" : "text-muted-foreground")}
+                strokeWidth={1.75}
+              />
               {label}
             </button>
           ))}
@@ -113,7 +116,6 @@ export function Settings() {
     </Page>
   );
 }
-
 
 /// AboutSection shows which JobPilot this is: the app's version and the
 /// daemon's, since an app uses a newer daemon it finds rather than
@@ -169,31 +171,41 @@ function AppearanceSettings() {
   const { preference, setPreference } = useTheme();
   return (
     <>
-      <SettingsHeading title="Appearance" description="System follows your computer’s light or dark setting as it changes." />
-      <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-3">
+      <SettingsHeading
+        title="Appearance"
+        description="System follows your computer’s light or dark setting as it changes."
+      />
+      {/* Native radios, hidden inside cards that show the choice: arrow keys
+          move between them as they do in any radio group. */}
+      <fieldset className="grid min-w-0 grid-cols-3 gap-3">
+        <legend className="sr-only">Theme</legend>
         {THEMES.map(({ value, label, icon: Icon }) => {
           const selected = preference === value;
           return (
-            <button
+            <label
               key={value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => setPreference(value)}
               className={cn(
-                "flex flex-col items-center gap-2 rounded-lg border bg-card p-3 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex flex-col items-center gap-2 rounded-lg border bg-card p-3 text-[13px] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
                 selected ? "border-primary ring-1 ring-primary" : "border-border hover:bg-accent/40",
               )}
             >
+              <input
+                type="radio"
+                name="theme"
+                value={value}
+                checked={selected}
+                onChange={() => setPreference(value)}
+                className="sr-only"
+              />
               <ThemePreview theme={value} />
               <span className="flex items-center gap-1.5">
                 <Icon className="size-3.5 text-muted-foreground" />
                 {label}
               </span>
-            </button>
+            </label>
           );
         })}
-      </div>
+      </fieldset>
     </>
   );
 }
@@ -267,8 +279,8 @@ function NotificationSettingsSection() {
           <span>
             <span className="block text-[13px] font-medium">Notify me about scout runs</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              When a scheduled scout finds jobs or can’t run, and when any run finds a strong match. Turned off,
-              they still wait for you on the Dashboard.
+              When a scheduled scout finds jobs or can’t run, and when any run finds a strong match. Turned off, they
+              still wait for you on the Dashboard.
             </span>
           </span>
         </label>
@@ -443,7 +455,10 @@ function JobSearchSettings() {
             onError={onError}
             onImported={(created) => {
               setBrowsing(false);
-              notify(created.length === 1 ? `Added "${created[0].name}".` : `Added ${created.length} searches.`, "success");
+              notify(
+                created.length === 1 ? `Added "${created[0].name}".` : `Added ${created.length} searches.`,
+                "success",
+              );
             }}
           />
         </Panel>
@@ -498,16 +513,23 @@ function JobSearchSettings() {
                       </span>
                     )}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{describeCriteria(search.criteria, countryName)}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {describeCriteria(search.criteria, countryName)}
+                  </p>
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground" title={dateTime(search.last_run_at ?? undefined)}>
+                <span
+                  className="shrink-0 text-xs text-muted-foreground"
+                  title={dateTime(search.last_run_at ?? undefined)}
+                >
                   {search.last_run_at ? `Searched ${relativeTime(search.last_run_at)}` : "Never searched"}
                 </span>
                 <Button size="sm" variant="ghost" onClick={() => setEditingId(search.id)}>
                   Edit
                 </Button>
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label={`More for ${search.name}`} />}>
+                  <DropdownMenuTrigger
+                    render={<Button size="icon-sm" variant="ghost" aria-label={`More for ${search.name}`} />}
+                  >
                     <Ellipsis />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">

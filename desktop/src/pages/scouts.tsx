@@ -1,6 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Ellipsis, LoaderCircle, Plus, Radar, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../components/confirm";
 import { EmptyState } from "../components/empty-state";
@@ -9,7 +9,14 @@ import { Page, Panel, Section } from "../components/page";
 import { StatusBadge } from "../components/status-badge";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "../components/ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +29,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { runDuration } from "../lib/activity";
 import type { ScoutInput } from "../lib/api";
 import { dateTime, relativeTime } from "../lib/format";
-import { alarmProblem, isMac, isScheduled, nextRunLabel, scheduleLabel } from "../lib/scouts";
 import {
   keys,
   useCreateScout,
@@ -33,6 +39,7 @@ import {
   useScouts,
   useUpdateScout,
 } from "../lib/queries";
+import { alarmProblem, isMac, isScheduled, nextRunLabel, scheduleLabel } from "../lib/scouts";
 import { useToast } from "../lib/toast";
 import type { SavedSearch, ScheduleKind, Scout, ScoutRunReport, ScoutSchedule, ScoutSource } from "../lib/types";
 
@@ -139,8 +146,8 @@ export function Scouts() {
       }
     >
       <p className="max-w-2xl text-sm text-muted-foreground">
-        A scout runs one of your saved searches, scores what it finds against your profile, and creates applications
-        for you to review, when you ask or on a schedule. It never contacts an employer and never submits.
+        A scout runs one of your saved searches, scores what it finds against your profile, and creates applications for
+        you to review, when you ask or on a schedule. It never contacts an employer and never submits.
       </p>
 
       <Section title="Your scouts" className="mt-6">
@@ -436,10 +443,14 @@ function ScoutEditor({
 /// hours, or a time of day.
 function scheduleValid(schedule: ScoutSchedule): boolean {
   switch (schedule.kind) {
-    case "every":
-      return Number.isInteger(schedule.every_hours) && schedule.every_hours! >= 1 && schedule.every_hours! <= 24;
-    case "daily":
-      return Number.isInteger(schedule.daily_at) && schedule.daily_at! >= 0 && schedule.daily_at! < 24 * 60;
+    case "every": {
+      const hours = schedule.every_hours;
+      return hours !== undefined && Number.isInteger(hours) && hours >= 1 && hours <= 24;
+    }
+    case "daily": {
+      const minute = schedule.daily_at;
+      return minute !== undefined && Number.isInteger(minute) && minute >= 0 && minute < 24 * 60;
+    }
     default:
       return true;
   }

@@ -2,12 +2,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "cn";
 import { Ellipsis, Plus } from "lucide-react";
 import { useState } from "react";
-import { Panel } from "./page";
-import { SettingsHeading } from "./settings-heading";
-import { ErrorLine, Loading } from "./status-line";
-import { Button } from "./ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Input } from "./ui/input";
 import { dateTime, relativeTime } from "../lib/format";
 import {
   useCompanies,
@@ -18,6 +12,18 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { BoardProvider, StarterCompany, WatchedCompany } from "../lib/types";
+import { Panel } from "./page";
+import { SettingsHeading } from "./settings-heading";
+import { ErrorLine, Loading } from "./status-line";
+import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { Input } from "./ui/input";
 
 const PROVIDER_NAMES: Record<BoardProvider, string> = {
   greenhouse: "Greenhouse",
@@ -188,7 +194,9 @@ function CompanyRow({ company }: { company: WatchedCompany }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium">
           {company.name}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">{PROVIDER_NAMES[company.board.provider]}</span>
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {PROVIDER_NAMES[company.board.provider]}
+          </span>
         </p>
         <p
           className={cn("mt-0.5 truncate text-xs", check.problem ? "text-warning" : "text-muted-foreground")}
@@ -205,7 +213,11 @@ function CompanyRow({ company }: { company: WatchedCompany }) {
           <DropdownMenuItem onClick={() => void openUrl(company.url)}>Open hiring page</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" disabled={unwatch.isPending} onClick={() => unwatch.mutate(company.id)}>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={unwatch.isPending}
+            onClick={() => unwatch.mutate(company.id)}
+          >
             Stop watching
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -224,7 +236,10 @@ function describeCheck(company: WatchedCompany): { text: string; problem: boolea
     case "ok":
       return { text: `${openRoles(company.open_roles)} · checked ${when}`, problem: false };
     case "gone":
-      return { text: `Its hiring page was gone ${when}. The company may have moved to another provider.`, problem: true };
+      return {
+        text: `Its hiring page was gone ${when}. The company may have moved to another provider.`,
+        problem: true,
+      };
     case "unreachable":
       return { text: `Couldn’t be reached ${when}`, problem: true };
     default:
@@ -244,7 +259,8 @@ function Suggestions() {
   const { data: suggestions } = useCompanySuggestions();
   const [all, setAll] = useState(false);
   const watch = useWatchCompany({
-    onSuccess: (company) => notify(`Watching ${company.name}. Your searches now look at its hiring page too.`, "success"),
+    onSuccess: (company) =>
+      notify(`Watching ${company.name}. Your searches now look at its hiring page too.`, "success"),
     onError: (err) => notify(err.message),
   });
 
@@ -297,7 +313,9 @@ function Suggestions() {
 /// describeMeasurement is what earned a suggestion its place, as measured.
 function describeMeasurement(suggestion: StarterCompany, listMeasuredOn: string): string {
   const counted = `${suggestion.qualifying_roles} of ${openRoles(suggestion.open_roles)}`;
-  return suggestion.measured_on === listMeasuredOn ? counted : `${counted}, measured ${formatDay(suggestion.measured_on)}`;
+  return suggestion.measured_on === listMeasuredOn
+    ? counted
+    : `${counted}, measured ${formatDay(suggestion.measured_on)}`;
 }
 
 /// formatDay reads a YYYY-MM-DD day as the day it is wherever the reader

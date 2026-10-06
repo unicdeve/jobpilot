@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { createApiClient, type ApiClient } from "./api";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { type ApiClient, createApiClient } from "./api";
 
 interface DaemonState {
   status: "connecting" | "ready" | "error";

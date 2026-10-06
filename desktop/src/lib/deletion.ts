@@ -71,7 +71,8 @@ export function totalDeleted(reach: DeletionReach): number {
 export function sentNote(reach: DeletionReach): string | undefined {
   const sent = reach.sent_applications;
   if (sent === 1) return "1 of those applications was sent to an employer. Deleting it here withdraws nothing there.";
-  if (sent > 1) return `${sent} of those applications were sent to employers. Deleting them here withdraws nothing there.`;
+  if (sent > 1)
+    return `${sent} of those applications were sent to employers. Deleting them here withdraws nothing there.`;
   return undefined;
 }
 

@@ -1,9 +1,10 @@
 # Checks every change on the three platforms JobPilot ships for (ADR-0029 §8).
 #
-# Linux runs `make check`, which already vets and lints the Go code as every
-# platform. macOS and Windows run the tests, which is what only a real
+# Linux runs `make check-go`, which already vets and lints the Go code as
+# every platform. macOS and Windows run the tests, which is what only a real
 # machine of each can do. The desktop is built, linted and tested on all
-# three, since its Rust differs per platform.
+# three, since its Rust differs per platform; its TypeScript is formatted and
+# linted by Biome.
 name: CI
 
 on:
@@ -31,7 +32,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - run: make check
+      - run: make check-go
 
   go-test:
     name: Go tests (${{ matrix.os }})
@@ -81,6 +82,9 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # Formatting, lint and import order, as desktop/biome.json says.
+      - name: Biome
+        run: bunx biome ci .
       # Type-checks the frontend, and writes the dist/ that the Rust build
       # embeds and cannot compile without.
       - run: bun run build

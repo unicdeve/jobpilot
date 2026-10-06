@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { Page, Panel, Section } from "../components/page";
 import { ErrorLine, Loading } from "../components/status-line";
@@ -30,7 +30,8 @@ function changes(about: AboutYou, draft: Draft): AboutYouUpdate {
   const update: AboutYouUpdate = {};
   const answers: Record<PersonalAnswerKey, string> = {};
   for (const question of about.questions) {
-    if ((draft.answers[question.key] ?? "") !== question.answer) answers[question.key] = draft.answers[question.key] ?? "";
+    if ((draft.answers[question.key] ?? "") !== question.answer)
+      answers[question.key] = draft.answers[question.key] ?? "";
   }
   if (Object.keys(answers).length > 0) update.answers = answers;
   if (draft.writing_sample !== about.writing_sample) update.writing_sample = draft.writing_sample;
@@ -100,8 +101,8 @@ export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
       {tabs}
 
       <p className="text-sm text-muted-foreground">
-        Cover letters and written answers are built from what you say here, in your words, and nothing is made up in
-        its place. Every question is optional, and it all stays on this machine.
+        Cover letters and written answers are built from what you say here, in your words, and nothing is made up in its
+        place. Every question is optional, and it all stays on this machine.
       </p>
 
       {about.questions.map((question) => (

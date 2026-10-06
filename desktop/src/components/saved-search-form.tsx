@@ -1,19 +1,13 @@
 import { useMemo, useState } from "react";
-import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Input } from "./ui/input";
-import { FormField } from "./form-field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { Link } from "react-router-dom";
 import { timeZoneLabel } from "../lib/format";
 import { useCountries, useProfile } from "../lib/queries";
 import type { SearchCriteria } from "../lib/types";
+import { FormField } from "./form-field";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const REMOTE_LABELS: Record<string, string> = {
   "": "Any",
@@ -50,7 +44,10 @@ export function hasCriterion(criteria: SearchCriteria): boolean {
 /// SHIFT_LABELS are how far a candidate would move their working day for a
 /// job's hours, up to twelve, which reaches every zone.
 const SHIFT_LABELS: Record<string, string> = Object.fromEntries(
-  Array.from({ length: 13 }, (_, hours) => [String(hours), hours === 0 ? "0 hours" : hours === 1 ? "1 hour" : `${hours} hours`]),
+  Array.from({ length: 13 }, (_, hours) => [
+    String(hours),
+    hours === 0 ? "0 hours" : hours === 1 ? "1 hour" : `${hours} hours`,
+  ]),
 );
 
 /// NO_COUNTRY is the "I can work from" choice for no preference, which a
@@ -256,8 +253,8 @@ export function SavedSearchForm({
               Also include jobs elsewhere that offer relocation or visa sponsorship
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              Jobs that only mention it are included too, with the sentence that says so. A job that refuses
-              sponsorship is left out unless your profile says you can already work there.
+              Jobs that only mention it are included too, with the sentence that says so. A job that refuses sponsorship
+              is left out unless your profile says you can already work there.
             </span>
           </span>
         </label>
@@ -312,9 +309,9 @@ export function SavedSearchForm({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Jobs must match every criterion you set. Keywords and title match each word in any order.
-        Salary bounds keep jobs that do not advertise one, since most boards publish no salary, and
-        “I can work from” keeps jobs that do not say where they can be done from.
+        Jobs must match every criterion you set. Keywords and title match each word in any order. Salary bounds keep
+        jobs that do not advertise one, since most boards publish no salary, and “I can work from” keeps jobs that do
+        not say where they can be done from.
       </p>
 
       <div className="flex items-center gap-2">
@@ -327,9 +324,7 @@ export function SavedSearchForm({
           </Button>
         )}
         {!usable && (
-          <span className="text-xs text-muted-foreground">
-            A search needs a name and at least one criterion.
-          </span>
+          <span className="text-xs text-muted-foreground">A search needs a name and at least one criterion.</span>
         )}
       </div>
     </div>

@@ -71,12 +71,8 @@ const components: Components = {
   ),
   hr: () => <hr className="border-border" />,
 
-  code: ({ children }) => (
-    <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
-  ),
-  pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">{children}</pre>
-  ),
+  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>,
+  pre: ({ children }) => <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">{children}</pre>,
 
   // Job descriptions converted from HTML often carry salary or benefit
   // tables, which need to scroll rather than widen the page.
@@ -85,8 +81,6 @@ const components: Components = {
       <table className="w-full border-collapse text-left text-xs">{children}</table>
     </div>
   ),
-  th: ({ children }) => (
-    <th className="border-b border-border py-1 pr-3 font-medium text-foreground">{children}</th>
-  ),
+  th: ({ children }) => <th className="border-b border-border py-1 pr-3 font-medium text-foreground">{children}</th>,
   td: ({ children }) => <td className="border-b border-border py-1 pr-3">{children}</td>,
 };

@@ -31,18 +31,12 @@ export function EmptyState({
 }) {
   return (
     <div
-      className={cn(
-        "flex flex-col items-center justify-center px-6 text-center",
-        fillsContentArea,
-        className,
-      )}
+      className={cn("flex flex-col items-center justify-center px-6 text-center", fillsContentArea, className)}
       data-slot="empty-state"
     >
       <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       {description && <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>}
-      {actionLabel && actionTo && (
-        <Button className="mt-5" render={<Link to={actionTo}>{actionLabel}</Link>} />
-      )}
+      {actionLabel && actionTo && <Button className="mt-5" render={<Link to={actionTo}>{actionLabel}</Link>} />}
     </div>
   );
 }

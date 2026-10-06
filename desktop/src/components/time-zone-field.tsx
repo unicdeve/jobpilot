@@ -1,7 +1,16 @@
 import { useMemo } from "react";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 import { timeZoneLabel } from "../lib/format";
 import type { Countries, TimeZone } from "../lib/types";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 /// NO_ZONE is "not set", which a Select cannot hold as an empty string.
 const NO_ZONE = "none";
@@ -64,7 +73,11 @@ export function TimeZoneField({
   const countryName = countries?.countries.find((c) => c.code === code)?.name;
 
   return (
-    <Select items={items} value={value || NO_ZONE} onValueChange={(next) => onChange(next && next !== NO_ZONE ? next : "")}>
+    <Select
+      items={items}
+      value={value || NO_ZONE}
+      onValueChange={(next) => onChange(next && next !== NO_ZONE ? next : "")}
+    >
       <SelectTrigger id={id} className="w-full">
         <SelectValue />
       </SelectTrigger>

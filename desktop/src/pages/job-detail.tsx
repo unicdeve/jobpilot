@@ -1,10 +1,22 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Briefcase, Building2, Check, CircleAlert, CircleCheck, Ellipsis, EyeOff, ExternalLink, Sparkles, Undo2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  Briefcase,
+  Building2,
+  Check,
+  CircleAlert,
+  CircleCheck,
+  Ellipsis,
+  ExternalLink,
+  EyeOff,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
-import { RecordGone } from "../components/list-pane";
 import { FormField } from "../components/form-field";
+import { RecordGone } from "../components/list-pane";
 import { Markdown } from "../components/markdown";
 import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
@@ -25,27 +37,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { isNotFound } from "../lib/api";
 import {
   dateTime,
   employmentLabel,
+  hoursShiftFor,
+  hoursWindow,
   jobLocation,
+  jobSource,
   offerLabel,
   placesLabel,
   relativeTime,
   remoteLabel,
   salaryLabel,
   scoreTone,
-  jobSource,
-  hoursShiftFor,
-  hoursWindow,
 } from "../lib/format";
 import {
   useAnalyzeMatch,
@@ -124,7 +130,9 @@ export function JobDetail() {
               </Button>
             )}
             {candidateId && <AnalyzeButton candidateId={candidateId} jobId={job.id} analyzed={!!match} />}
-            {candidateId && <StartApplicationButton candidateId={candidateId} jobId={job.id} again={existing.length > 0} />}
+            {candidateId && (
+              <StartApplicationButton candidateId={candidateId} jobId={job.id} again={existing.length > 0} />
+            )}
             <InterestButton job={job} applications={existing.length} />
             <JobMenu job={job} />
           </>
@@ -208,7 +216,9 @@ function JobMenu({ job }: { job: Job }) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}>
+        <DropdownMenuTrigger
+          render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}
+        >
           <Ellipsis />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -246,8 +256,8 @@ function RuledOutBanner({ job }: { job: Job }) {
       <EyeOff className="size-4 shrink-0 text-muted-foreground" />
       <span>
         You marked this job not interested{" "}
-        <span title={dateTime(job.not_interested_at)}>{relativeTime(job.not_interested_at)}</span>. It is hidden from your
-        lists, and scouts pass it over.
+        <span title={dateTime(job.not_interested_at)}>{relativeTime(job.not_interested_at)}</span>. It is hidden from
+        your lists, and scouts pass it over.
       </span>
     </p>
   );
@@ -520,7 +530,9 @@ function MatchSection({ candidateId, match }: { candidateId: string | null; matc
   return (
     <DetailSection title="Match">
       <div className="flex items-start gap-4">
-        <div className={`flex size-14 shrink-0 flex-col items-center justify-center rounded-xl ${scoreTone(match.score)}`}>
+        <div
+          className={`flex size-14 shrink-0 flex-col items-center justify-center rounded-xl ${scoreTone(match.score)}`}
+        >
           <span className="text-xl leading-none font-semibold tabular-nums">{match.score}</span>
           <span className="mt-0.5 text-[10px] font-medium opacity-80">of 100</span>
         </div>
@@ -547,6 +559,7 @@ function FindingList({ title, items, icon }: { title: string; items: string[] | 
       <p className="mb-2 text-xs font-semibold text-subtle-foreground">{title}</p>
       <ul className="space-y-2">
         {items.map((item, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: an analysis's reasons are shown as written, never reordered, and can repeat
           <li key={i} className="flex gap-2 text-[13px] leading-snug text-subtle-foreground select-text">
             <span className="mt-0.5 shrink-0 [&_svg]:size-3.5">{icon}</span>
             {item}

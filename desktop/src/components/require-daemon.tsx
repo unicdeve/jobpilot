@@ -11,7 +11,11 @@ export function RequireDaemon({ children }: { children: React.ReactNode }) {
   const { status, error, waiting, retry } = useDaemon();
 
   if (status === "connecting") {
-    return <Loading label={waiting ? "Waiting for the previous version of JobPilot to finish…" : "Connecting to JobPilot…"} />;
+    return (
+      <Loading
+        label={waiting ? "Waiting for the previous version of JobPilot to finish…" : "Connecting to JobPilot…"}
+      />
+    );
   }
 
   if (status === "error") {

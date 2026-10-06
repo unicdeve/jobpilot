@@ -1,4 +1,14 @@
-import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, LoaderCircle, Plus, Send, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  BookmarkPlus,
+  ChevronRight,
+  Ellipsis,
+  Globe,
+  LoaderCircle,
+  Plus,
+  Send,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
@@ -11,12 +21,6 @@ import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
-import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -24,14 +28,14 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { runDuration } from "../lib/activity";
 import { isNotFound } from "../lib/api";
@@ -198,7 +202,9 @@ function ApplicationMenu({ applicationId, title }: { applicationId: string; titl
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}>
+        <DropdownMenuTrigger
+          render={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions" />}
+        >
           <Ellipsis />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -586,7 +592,9 @@ function CoverLetterSection({
             </p>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            {current.user_edited ? "Edited by you" : `Written${current.model_name ? ` with ${current.model_name}` : ""}`}{" "}
+            {current.user_edited
+              ? "Edited by you"
+              : `Written${current.model_name ? ` with ${current.model_name}` : ""}`}{" "}
             {relativeTime(current.created_at)}
             {earlier.length > 0 && (
               <>
@@ -674,10 +682,7 @@ function LetterQuestionsDialog({
 
   const idOf = (question: PersonalAnswer) => question.id || question.key;
   const aboutEmpty =
-    about != null &&
-    about.questions.every((question) => !question.answer) &&
-    !about.writing_sample &&
-    !about.writing_preferences;
+    about?.questions.every((question) => !question.answer) && !about.writing_sample && !about.writing_preferences;
 
   const write = async (withAnswers: boolean) => {
     const changed: ApplicationAnswer[] = withAnswers
@@ -705,7 +710,11 @@ function LetterQuestionsDialog({
         {aboutEmpty && (
           <p className="mt-3 rounded-md bg-muted px-3 py-2 text-[13px] text-subtle-foreground">
             Letters stay generic until you tell JobPilot about yourself — about five minutes.{" "}
-            <Link to="/profile?tab=about" className="font-medium text-foreground underline" onClick={() => onOpenChange(false)}>
+            <Link
+              to="/profile?tab=about"
+              className="font-medium text-foreground underline"
+              onClick={() => onOpenChange(false)}
+            >
               Tell JobPilot about you
             </Link>
           </p>
@@ -781,8 +790,7 @@ function BrowserSection({ applicationId, runs }: { applicationId: string; runs: 
                     <p className="text-[13px]">
                       <span title={dateTime(run.started_at)}>{relativeTime(run.started_at)}</span>
                       <span className="text-muted-foreground">
-                        {duration && <> · took {duration}</>} · {events.length}{" "}
-                        {events.length === 1 ? "step" : "steps"}
+                        {duration && <> · took {duration}</>} · {events.length} {events.length === 1 ? "step" : "steps"}
                       </span>
                     </p>
                     {run.error && <p className="mt-0.5 text-[13px] text-destructive">{run.error}</p>}

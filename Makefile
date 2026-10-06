@@ -56,7 +56,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build dist sidecars bundle set-version version-check notices notices-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools \
+.PHONY: all build dist sidecars bundle set-version version-check notices notices-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools desktop-deps desktop-check check-go \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -230,8 +230,9 @@ migrate-create:
 	@if [ -z "$(NAME)" ]; then echo "Usage: make migrate-create NAME=migration_name"; exit 1; fi
 	go run ./cmd/migrate create $(NAME)
 
-fmt:
+fmt: desktop-deps
 	gofmt -w .
+	cd desktop && bun run format
 
 fmt-check:
 	@test -z "$$(gofmt -l .)" || (echo "Not gofmt'd:"; gofmt -l .; exit 1)
@@ -282,8 +283,21 @@ lint-integration: tools
 		GOOS=$$goos ./$(GOLANGCI_LINT) run --build-tags=integration ./... || exit 1; \
 	done
 
-lint-fix: tools
+lint-fix: tools desktop-deps
 	./$(GOLANGCI_LINT) run --fix ./...
+	cd desktop && bun run fix
+
+# desktop-deps installs the desktop's packages when they are missing, so the
+# desktop targets run the Biome that bun.lock pins rather than failing, or
+# fetching whichever version is newest.
+desktop-deps:
+	@test -d desktop/node_modules || (cd desktop && bun install --frozen-lockfile)
+
+# The desktop's TypeScript, CSS and JSON, formatted, linted and with imports
+# ordered as desktop/biome.json says. It writes nothing; `make lint-fix`
+# applies what can be fixed.
+desktop-check: desktop-deps
+	cd desktop && bun run check
 
 tidy:
 	go mod tidy
@@ -307,4 +321,8 @@ starter-list:
 	go generate ./internal/core/domain/
 
 # Formatting/linting/static checks + tests passing, per docs/08_development/definition_of_done.md.
-check: fmt-check vet vet-integration lint lint-integration test test-integration
+check: check-go desktop-check
+
+# check-go is check without the desktop, for CI's Go job, which has no Bun;
+# CI's desktop job runs Biome itself.
+check-go: fmt-check vet vet-integration lint lint-integration test test-integration

@@ -8,20 +8,21 @@
 // states exactly which cached data it invalidates.
 
 import {
+  type Query,
+  type QueryClient,
+  skipToken,
+  type UseMutationOptions,
   useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
   useQueryClient,
-  type Query,
-  type QueryClient,
-  type UseMutationOptions,
 } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo } from "react";
+import type { ScoutInput } from "./api";
 import { useApi } from "./daemon";
 import { since, type TimeRange } from "./job-filters";
-import type { ScoutInput } from "./api";
 import type {
   AboutYou,
   AboutYouUpdate,
@@ -38,36 +39,36 @@ import type {
   Candidate,
   Countries,
   CoverLetter,
+  CredentialRef,
   DeletionReach,
   DeletionResult,
   DeletionTarget,
   DiscoveryResult,
   DiscoverySettings,
   Job,
+  JobCompany,
   JobMatch,
   JobPage,
   LLMHealth,
   LLMSettings,
+  Notification,
+  NotificationSettings,
   PersonalAnswer,
   ProfileDraft,
+  PromptGuidance,
+  PromptGuidanceList,
+  PromptKey,
   QuestionType,
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
-  Notification,
-  NotificationSettings,
-  PromptGuidance,
-  PromptGuidanceList,
-  PromptKey,
   Scout,
   ScoutRunReport,
-  CredentialRef,
   SearchCriteria,
   SearchTemplateGroup,
   SourceInfo,
   StarterCompany,
   WatchedCompany,
-  JobCompany,
 } from "./types";
 
 /// keys centralizes every cache key. Invalidating a prefix invalidates
@@ -108,8 +109,7 @@ export const keys = {
   scoutRuns: ["scout-runs"] as const,
   activity: {
     all: ["activity"] as const,
-    infinite: (filter: AgentRunFilter, pageSize: number) =>
-      ["activity", "infinite", { ...filter, pageSize }] as const,
+    infinite: (filter: AgentRunFilter, pageSize: number) => ["activity", "infinite", { ...filter, pageSize }] as const,
     detail: (id: string) => ["activity", "detail", id] as const,
   },
   resumes: (candidateId: string) => ["resumes", candidateId] as const,
@@ -236,8 +236,7 @@ export function useActivityRun(id: string | undefined) {
   const api = useApi();
   return useQuery<AgentRunDetail>({
     queryKey: keys.activity.detail(id ?? ""),
-    queryFn: () => api.getActivityRun(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.getActivityRun(id) : skipToken,
   });
 }
 
@@ -248,8 +247,7 @@ export function useJob(id: string | undefined) {
   const api = useApi();
   return useQuery<Job>({
     queryKey: keys.jobs.detail(id ?? ""),
-    queryFn: () => api.getJob(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.getJob(id) : skipToken,
     staleTime: 5 * 60_000,
   });
 }
@@ -298,8 +296,7 @@ export function useResumes(candidateId: string | null) {
   const api = useApi();
   return useQuery<Resume[]>({
     queryKey: keys.resumes(candidateId ?? ""),
-    queryFn: () => api.listResumes(candidateId!),
-    enabled: candidateId !== null,
+    queryFn: candidateId !== null ? () => api.listResumes(candidateId) : skipToken,
   });
 }
 
@@ -307,8 +304,7 @@ export function useMatches(candidateId: string | null) {
   const api = useApi();
   return useQuery<JobMatch[]>({
     queryKey: keys.matches(candidateId ?? ""),
-    queryFn: () => api.listMatches(candidateId!),
-    enabled: candidateId !== null,
+    queryFn: candidateId !== null ? () => api.listMatches(candidateId) : skipToken,
   });
 }
 
@@ -316,8 +312,7 @@ export function useApplications(candidateId: string | null) {
   const api = useApi();
   return useQuery<Application[]>({
     queryKey: keys.applications.list(candidateId ?? ""),
-    queryFn: () => api.listApplications(candidateId!),
-    enabled: candidateId !== null,
+    queryFn: candidateId !== null ? () => api.listApplications(candidateId) : skipToken,
   });
 }
 
@@ -325,8 +320,7 @@ export function useApplication(id: string | undefined) {
   const api = useApi();
   return useQuery<Application>({
     queryKey: keys.applications.detail(id ?? ""),
-    queryFn: () => api.getApplication(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.getApplication(id) : skipToken,
   });
 }
 
@@ -334,8 +328,7 @@ export function useApplicationHistory(id: string | undefined) {
   const api = useApi();
   return useQuery<ApplicationStateTransition[]>({
     queryKey: keys.applications.history(id ?? ""),
-    queryFn: () => api.listApplicationHistory(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.listApplicationHistory(id) : skipToken,
   });
 }
 
@@ -347,8 +340,7 @@ export function useAllowedTransitions(id: string | undefined) {
   const api = useApi();
   return useQuery<ApplicationState[]>({
     queryKey: keys.applications.transitions(id ?? ""),
-    queryFn: () => api.listAllowedTransitions(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.listAllowedTransitions(id) : skipToken,
   });
 }
 
@@ -356,8 +348,7 @@ export function useCoverLetters(id: string | undefined) {
   const api = useApi();
   return useQuery<CoverLetter[]>({
     queryKey: keys.applications.coverLetters(id ?? ""),
-    queryFn: () => api.listCoverLetterVersions(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.listCoverLetterVersions(id) : skipToken,
   });
 }
 
@@ -365,8 +356,7 @@ export function useQuestions(id: string | undefined) {
   const api = useApi();
   return useQuery<ApplicationQuestion[]>({
     queryKey: keys.applications.questions(id ?? ""),
-    queryFn: () => api.listQuestions(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.listQuestions(id) : skipToken,
   });
 }
 
@@ -374,8 +364,7 @@ export function useAgentRuns(id: string | undefined) {
   const api = useApi();
   return useQuery<AgentRunWithEvents[]>({
     queryKey: keys.applications.agentRuns(id ?? ""),
-    queryFn: () => api.listAgentRuns(id!),
-    enabled: !!id,
+    queryFn: id ? () => api.listAgentRuns(id) : skipToken,
   });
 }
 
@@ -518,10 +507,7 @@ export function useLLMSettings() {
 /// MutationOpts is the per-call slice of mutation options a screen supplies
 /// (onSuccess/onError for toasts and navigation). Each hook below owns its
 /// own cache invalidation, so callers never have to remember it.
-type MutationOpts<TData, TVars> = Omit<
-  UseMutationOptions<TData, Error, TVars>,
-  "mutationFn"
->;
+type MutationOpts<TData, TVars> = Omit<UseMutationOptions<TData, Error, TVars>, "mutationFn">;
 
 export function useImportJob(opts?: MutationOpts<Job, string>) {
   const api = useApi();
@@ -536,9 +522,7 @@ export function useImportJob(opts?: MutationOpts<Job, string>) {
   });
 }
 
-export function useCreateSavedSearch(
-  opts?: MutationOpts<SavedSearch, { name: string; criteria: SearchCriteria }>,
-) {
+export function useCreateSavedSearch(opts?: MutationOpts<SavedSearch, { name: string; criteria: SearchCriteria }>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
@@ -752,9 +736,7 @@ export function useInitializeProfile(opts?: MutationOpts<Candidate, Partial<Cand
   });
 }
 
-export function useImportResume(
-  opts?: MutationOpts<Resume, { candidateId: string; filePath: string }>,
-) {
+export function useImportResume(opts?: MutationOpts<Resume, { candidateId: string; filePath: string }>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
@@ -775,8 +757,7 @@ export function useJobMatch(jobId: string | undefined) {
   const api = useApi();
   return useQuery<JobMatch | null>({
     queryKey: keys.jobMatch(jobId ?? ""),
-    queryFn: () => api.getJobMatch(jobId!),
-    enabled: !!jobId,
+    queryFn: jobId ? () => api.getJobMatch(jobId) : skipToken,
   });
 }
 
@@ -787,8 +768,7 @@ export function useDeletionPreview(target: DeletionTarget | null, id?: string) {
   const api = useApi();
   return useQuery<DeletionReach>({
     queryKey: ["deletion", target, id ?? ""],
-    queryFn: () => api.previewDeletion(target!, id),
-    enabled: target !== null,
+    queryFn: target !== null ? () => api.previewDeletion(target, id) : skipToken,
     staleTime: 0,
     gcTime: 0,
     retry: false,
@@ -883,7 +863,8 @@ export function useSetJobInterest(opts?: MutationOpts<Job, { id: string; notInte
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, notInterested }: { id: string; notInterested: boolean }) => api.setJobInterest(id, notInterested),
+    mutationFn: ({ id, notInterested }: { id: string; notInterested: boolean }) =>
+      api.setJobInterest(id, notInterested),
     ...opts,
     onSuccess: (job, variables, ...rest) => {
       queryClient.setQueryData(keys.jobs.detail(job.id), job);
@@ -904,9 +885,7 @@ export function useProposeProfileDraft(opts?: MutationOpts<ProfileDraft, string>
   });
 }
 
-export function useAnalyzeMatch(
-  opts?: MutationOpts<JobMatch, { candidateId: string; jobId: string }>,
-) {
+export function useAnalyzeMatch(opts?: MutationOpts<JobMatch, { candidateId: string; jobId: string }>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
@@ -979,8 +958,7 @@ export function useTransitionApplication(opts?: MutationOpts<Application, Transi
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, toState, reason }: TransitionVars) =>
-      api.transitionApplication(id, toState, reason),
+    mutationFn: ({ id, toState, reason }: TransitionVars) => api.transitionApplication(id, toState, reason),
     ...opts,
     onSuccess: (application, variables, ...rest) => {
       queryClient.setQueryData(keys.applications.detail(variables.id), application);
@@ -1114,8 +1092,7 @@ export function useEditCoverLetter(opts?: MutationOpts<CoverLetter, EditCoverLet
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ coverLetterId, content }: EditCoverLetterVars) =>
-      api.editCoverLetter(coverLetterId, content),
+    mutationFn: ({ coverLetterId, content }: EditCoverLetterVars) => api.editCoverLetter(coverLetterId, content),
     ...opts,
     onSuccess: (letter, variables, ...rest) => {
       void queryClient.invalidateQueries({
@@ -1169,9 +1146,7 @@ export function useResolveQuestion(opts?: MutationOpts<ApplicationQuestion, Ques
   });
 }
 
-export function useSetQuestionAnswer(
-  opts?: MutationOpts<ApplicationQuestion, QuestionVars & { answer: string }>,
-) {
+export function useSetQuestionAnswer(opts?: MutationOpts<ApplicationQuestion, QuestionVars & { answer: string }>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
@@ -1207,7 +1182,6 @@ export function usePrepareInBrowser(opts?: MutationOpts<Application, string>) {
     },
   });
 }
-
 
 /// useScouts loads the standing instructions that shortlist jobs for
 /// review. An empty list is where every installation starts.

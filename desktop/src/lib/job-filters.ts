@@ -5,8 +5,8 @@
 // request. "Analyzed" holds every match already, so its filters — the score
 // and when the job was analyzed among them — are applied here.
 
-import type { Job, JobMatch } from "./types";
 import { REMOTE_LABELS, SOURCE_LABELS } from "./format";
+import type { Job, JobMatch } from "./types";
 
 /// TIME_RANGES are the windows a date filter offers, keyed by how they
 /// appear in the URL.
@@ -67,6 +67,7 @@ export const VIEW_FILTERS = {
 export type JobsView = keyof typeof VIEW_FILTERS;
 
 const pick = <T extends string>(options: Record<T, unknown>, value: string | null): T | "" =>
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn arrived in Safari 15.4, and the app supports macOS 12.0
   value !== null && Object.prototype.hasOwnProperty.call(options, value) ? (value as T) : "";
 
 /// readJobFilters reads the filters from the URL. A value the screen does not

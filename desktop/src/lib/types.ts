@@ -7,22 +7,9 @@
 // email and phone were one `contact` string until a real form's phone field
 // was filled with an email address, and links were one string until
 // LinkedIn, Portfolio and Website each received all of them.
-export type LinkKind =
-  | "linkedin"
-  | "github"
-  | "portfolio"
-  | "website"
-  | "twitter"
-  | "other";
+export type LinkKind = "linkedin" | "github" | "portfolio" | "website" | "twitter" | "other";
 
-export const LINK_KINDS: LinkKind[] = [
-  "linkedin",
-  "github",
-  "portfolio",
-  "website",
-  "twitter",
-  "other",
-];
+export const LINK_KINDS: LinkKind[] = ["linkedin", "github", "portfolio", "website", "twitter", "other"];
 
 export interface CandidateLink {
   id: string;
@@ -468,12 +455,7 @@ export interface CoverLetter {
 
 export type QuestionType = "factual" | "narrative";
 
-export type AnswerCategory =
-  | "profile_fact"
-  | "derived"
-  | "generated"
-  | "needs_user_input"
-  | "";
+export type AnswerCategory = "profile_fact" | "derived" | "generated" | "needs_user_input" | "";
 
 export type QuestionStatus = "pending" | "answered";
 

@@ -2,8 +2,8 @@ import { cn } from "cn";
 import { Briefcase, ChevronDown, EyeOff, Link2, ListFilter, Search, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useMatch, useNavigate, useSearchParams } from "react-router-dom";
-import { FILTER_ALL, FilterSelect } from "../components/filter-select";
 import { useDiscover, useDiscoveryRuns } from "../components/discovery-activity";
+import { FILTER_ALL, FilterSelect } from "../components/filter-select";
 import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pane";
 import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
@@ -29,15 +29,15 @@ import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
-  jobLocation,
-  relativeTime,
-  REMOTE_LABELS,
-  remoteLabel,
-  scoreTone,
-  SOURCE_LABELS,
-  jobSource,
   hoursShiftFor,
   hoursWindow,
+  jobLocation,
+  jobSource,
+  REMOTE_LABELS,
+  relativeTime,
+  remoteLabel,
+  SOURCE_LABELS,
+  scoreTone,
   workableLabel,
 } from "../lib/format";
 import {
@@ -59,8 +59,8 @@ import {
   useJobsByID,
   useMatches,
   useProfile,
-  useSetJobInterest,
   useSavedSearches,
+  useSetJobInterest,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import type { Job } from "../lib/types";
@@ -128,7 +128,12 @@ export function Jobs() {
           {view === "analyzed" ? (
             <AnalyzedJobs query={query} filters={filters} onClearFilters={clearFilters} />
           ) : (
-            <AllJobs query={query} filters={filters} onClearFilters={clearFilters} notInterested={view === "not_interested"} />
+            <AllJobs
+              query={query}
+              filters={filters}
+              onClearFilters={clearFilters}
+              notInterested={view === "not_interested"}
+            />
           )}
         </ListPane>
       }
@@ -138,7 +143,13 @@ export function Jobs() {
 }
 
 export function NoJobSelected() {
-  return <NoSelection icon={<Briefcase />} title="No job selected" description="Choose a job to see its details and match." />;
+  return (
+    <NoSelection
+      icon={<Briefcase />}
+      title="No job selected"
+      description="Choose a job to see its details and match."
+    />
+  );
 }
 
 /// SearchField filters as the user types. The request waits for a pause, so
@@ -361,7 +372,9 @@ const TIME_ITEMS = {
 /// filterFields are the choices behind each filter, the first meaning "not
 /// filtered". The order of VIEW_FILTERS decides the order they are shown in.
 /// "Where" names the profile's country, so it is built with it.
-function filterFields(country: string | undefined): Record<keyof JobFilters, { label: string; items: Record<string, string> }> {
+function filterFields(
+  country: string | undefined,
+): Record<keyof JobFilters, { label: string; items: Record<string, string> }> {
   return {
     where: {
       label: "Where you can work",
@@ -405,7 +418,10 @@ function FilterMenu({
       >
         <ListFilter />
         {count > 0 && (
-          <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background" />
+          <span
+            aria-hidden
+            className="absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background"
+          />
         )}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 gap-3 p-3">
@@ -490,7 +506,11 @@ function RowInterestButton({ job }: { job: Job }) {
       const kept = applications?.filter((a) => a.job_id === updated.id).length ?? 0;
       notify(
         `“${updated.title}” marked not interested.` +
-          (kept === 0 ? "" : kept === 1 ? " Its application is unchanged." : ` Its ${kept} applications are unchanged.`),
+          (kept === 0
+            ? ""
+            : kept === 1
+              ? " Its application is unchanged."
+              : ` Its ${kept} applications are unchanged.`),
         "success",
       );
     },
@@ -563,7 +583,11 @@ function JobMarks({ job }: { job: Job }) {
           title={hours.evidence}
           className={cn(
             "rounded px-1.5 py-px text-[11px] font-medium",
-            fits === undefined ? "bg-muted text-subtle-foreground" : fits ? "bg-success/12 text-success" : "bg-warning/14 text-warning",
+            fits === undefined
+              ? "bg-muted text-subtle-foreground"
+              : fits
+                ? "bg-success/12 text-success"
+                : "bg-warning/14 text-warning",
           )}
         >
           Hours {hoursWindow(hours)}
@@ -634,7 +658,9 @@ function DiscoverMenu() {
               {search.is_default && <span className="text-xs text-muted-foreground">Default</span>}
             </DropdownMenuItem>
           ))}
-          {searches?.length === 0 && <DropdownMenuLabel className="font-normal">No saved searches yet.</DropdownMenuLabel>}
+          {searches?.length === 0 && (
+            <DropdownMenuLabel className="font-normal">No saved searches yet.</DropdownMenuLabel>
+          )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link to="/settings?section=searches" />}>Manage searches…</DropdownMenuItem>
@@ -680,8 +706,8 @@ function AddByUrlButton() {
         <form onSubmit={submit}>
           <DialogTitle>Add a job by URL</DialogTitle>
           <DialogDescription>
-            Paste the link to a job posting. If it isn’t from a job board JobPilot knows, a browser window opens briefly to
-            read the page.
+            Paste the link to a job posting. If it isn’t from a job board JobPilot knows, a browser window opens briefly
+            to read the page.
           </DialogDescription>
           <Input
             autoFocus

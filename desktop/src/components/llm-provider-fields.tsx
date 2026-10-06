@@ -1,17 +1,11 @@
-import { useRef, useState } from "react";
 import { Globe } from "lucide-react";
-import { Button } from "./ui/button";
-import { FormField } from "./form-field";
-import { Input } from "./ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { useRef, useState } from "react";
 import { useCredentials, useSetCredential } from "../lib/queries";
 import type { LLMSettings } from "../lib/types";
+import { FormField } from "./form-field";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /// Mirrors llm.Presets in internal/adapters/secondary/llm/presets.go, which
 /// the daemon and CLI use for the same choice. An OpenAI-compatible base URL
@@ -136,8 +130,7 @@ export function LLMProviderFields({
             data goes, which is about the choice rather than the spelling. */}
         {custom && (
           <p className="mt-1.5 text-xs text-muted-foreground">
-            As your provider gives it, including the version — for example
-            https://openrouter.ai/api/v1.
+            As your provider gives it, including the version — for example https://openrouter.ai/api/v1.
           </p>
         )}
         {host && (
@@ -147,8 +140,8 @@ export function LLMProviderFields({
             <Globe aria-hidden className="mt-px size-3.5 shrink-0" />
             <span>
               Your profile, resume and the job postings JobPilot reads are sent to{" "}
-              <span className="font-medium text-foreground">{host}</span> whenever it reads, scores
-              or writes, including when a scout runs on its own.
+              <span className="font-medium text-foreground">{host}</span> whenever it reads, scores or writes, including
+              when a scout runs on its own.
             </span>
           </p>
         )}
@@ -174,13 +167,7 @@ export function LLMProviderFields({
 /// It is rendered inside the caller's form, so adding a key is a group of
 /// fields with its own button rather than a nested form, and Enter in the
 /// key field stores the key instead of submitting the settings.
-function APIKeyField({
-  settings,
-  onChange,
-}: {
-  settings: LLMSettings;
-  onChange: (settings: LLMSettings) => void;
-}) {
+function APIKeyField({ settings, onChange }: { settings: LLMSettings; onChange: (settings: LLMSettings) => void }) {
   const { data: credentials } = useCredentials();
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("");
@@ -200,9 +187,7 @@ function APIKeyField({
     },
   });
 
-  const labels = (credentials ?? [])
-    .filter((ref) => ref.source === llmCredentialSource)
-    .map((ref) => ref.label);
+  const labels = (credentials ?? []).filter((ref) => ref.source === llmCredentialSource).map((ref) => ref.label);
   const selected = settings.api_key_label ?? "";
   // A key the settings name and the keychain no longer lists is shown as
   // such, rather than silently reading as "No key".
@@ -227,9 +212,7 @@ function APIKeyField({
       // While a key is being added, the panel says all there is to say.
       hint={
         adding ? undefined : missing ? (
-          <span className="text-warning">
-            This key is no longer in your keychain. Add it again, or choose another.
-          </span>
+          <span className="text-warning">This key is no longer in your keychain. Add it again, or choose another.</span>
         ) : (
           "Kept in your operating system’s keychain, never in JobPilot’s database."
         )
@@ -291,8 +274,7 @@ function APIKeyField({
             </FormField>
           </div>
           <p className="text-xs text-muted-foreground">
-            You will not be able to view this key again. Lower-case letters, digits and hyphens for
-            the name.
+            You will not be able to view this key again. Lower-case letters, digits and hyphens for the name.
           </p>
           {store.error && <p className="text-xs text-destructive">{String(store.error.message)}</p>}
           <div className="flex items-center gap-2">

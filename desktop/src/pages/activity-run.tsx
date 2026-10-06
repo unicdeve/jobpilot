@@ -6,14 +6,7 @@ import { splitBackClass } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
-import {
-  actionLabel,
-  formatDuration,
-  runDuration,
-  runKind,
-  runSubject,
-  stepOutput,
-} from "../lib/activity";
+import { actionLabel, formatDuration, runDuration, runKind, runSubject, stepOutput } from "../lib/activity";
 import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
 import { useActivityRun } from "../lib/queries";
@@ -60,11 +53,7 @@ export function ActivityRun() {
 
   return (
     <div className="min-h-full">
-      <Toolbar
-        className="px-5"
-        leading={back}
-        actions={<SubjectLink run={run} />}
-      />
+      <Toolbar className="px-5" leading={back} actions={<SubjectLink run={run} />} />
 
       <article className="max-w-3xl px-8 pt-6 pb-12">
         <header>
@@ -136,7 +125,9 @@ function Step({ event }: { event: AgentEvent }) {
           )}
         </p>
         {output && (
-          <p className={`mt-0.5 text-[13px] break-words select-text ${failed ? "text-destructive" : "text-muted-foreground"}`}>
+          <p
+            className={`mt-0.5 text-[13px] break-words select-text ${failed ? "text-destructive" : "text-muted-foreground"}`}
+          >
             {output}
           </p>
         )}

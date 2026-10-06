@@ -121,7 +121,9 @@ export function formatOffset(offset: number): string {
 
 /// hoursWindow writes a job's working hours: "UTC−2 to UTC+4", or one zone.
 export function hoursWindow(hours: Pick<WorkingHours, "from" | "to">): string {
-  return hours.from === hours.to ? formatOffset(hours.from) : `${formatOffset(hours.from)} to ${formatOffset(hours.to)}`;
+  return hours.from === hours.to
+    ? formatOffset(hours.from)
+    : `${formatOffset(hours.from)} to ${formatOffset(hours.to)}`;
 }
 
 /// hoursShiftFor is how many hours a candidate at offset would move their
@@ -144,7 +146,9 @@ export function timeZoneLabel(zone: TimeZone): string {
 
 /// salaryLabel renders a salary range only when the source gave one, in its
 /// own currency and period; nothing here converts or estimates.
-export function salaryLabel(job: Pick<Job, "salary_min" | "salary_max" | "salary_currency" | "salary_period">): string | undefined {
+export function salaryLabel(
+  job: Pick<Job, "salary_min" | "salary_max" | "salary_currency" | "salary_period">,
+): string | undefined {
   const { salary_min: min, salary_max: max, salary_currency: currency, salary_period: period } = job;
   if (!min && !max) return undefined;
   const format = (n: number) =>
@@ -204,10 +208,7 @@ export function scoreTone(score: number): string {
 /// how many of them are new, and which sources were not heard from, since a
 /// thin result from a source that did not answer is not a thin market. It
 /// names the search, since several can finish one after another.
-export function discoverySummary(
-  result: DiscoveryResult,
-  searchName: string,
-): { message: string; complete: boolean } {
+export function discoverySummary(result: DiscoveryResult, searchName: string): { message: string; complete: boolean } {
   const found = result.jobs.length;
   const sentences = [
     found === 0

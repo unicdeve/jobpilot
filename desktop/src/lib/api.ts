@@ -4,17 +4,15 @@
 
 import type {
   AboutYou,
-  DaemonHealth,
-  JobCompany,
-  StarterCompany,
-  WatchedCompany,
   AboutYouUpdate,
-  ApplicationAnswer,
+  AgentEvent,
+  AgentRun,
   AgentRunDetail,
   AgentRunFilter,
   AgentRunPage,
   AgentRunWithEvents,
   Application,
+  ApplicationAnswer,
   ApplicationMode,
   ApplicationQuestion,
   ApplicationState,
@@ -22,36 +20,38 @@ import type {
   Candidate,
   Countries,
   CoverLetter,
+  CredentialRef,
+  DaemonHealth,
   DeletionReach,
   DeletionResult,
   DeletionTarget,
   DiscoveryResult,
   DiscoverySettings,
-  Notification,
-  NotificationSettings,
-  PromptGuidance,
-  PromptGuidanceList,
-  PromptKey,
   Job,
-  JobMatch,
+  JobCompany,
   JobListFilter,
+  JobMatch,
   JobPage,
   LLMHealth,
   LLMSettings,
+  Notification,
+  NotificationSettings,
   PersonalAnswer,
   ProfileDraft,
+  PromptGuidance,
+  PromptGuidanceList,
+  PromptKey,
   QuestionType,
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
-  CredentialRef,
+  Scout,
+  ScoutRunReport,
   SearchCriteria,
   SearchTemplateGroup,
   SourceInfo,
-  Scout,
-  ScoutRunReport,
-  AgentRun,
-  AgentEvent,
+  StarterCompany,
+  WatchedCompany,
 } from "./types";
 
 /**
@@ -60,14 +60,7 @@ import type {
  */
 export type ScoutInput = Omit<
   Scout,
-  | "id"
-  | "last_run_at"
-  | "created_at"
-  | "updated_at"
-  | "schedule_set_at"
-  | "next_run_at"
-  | "alarm"
-  | "activity"
+  "id" | "last_run_at" | "created_at" | "updated_at" | "schedule_set_at" | "next_run_at" | "alarm" | "activity"
 >;
 
 /// ApiError is a failed daemon request. status is the HTTP status, absent
@@ -208,19 +201,10 @@ export interface ApiClient {
   checkLLMHealth(): Promise<LLMHealth>;
   saveLLMSettings(settings: LLMSettings): Promise<SaveLLMSettingsResult>;
 
-  createApplication(
-    jobId: string,
-    candidateId: string,
-    resumeId: string,
-    mode: ApplicationMode,
-  ): Promise<Application>;
+  createApplication(jobId: string, candidateId: string, resumeId: string, mode: ApplicationMode): Promise<Application>;
   listApplications(candidateId: string): Promise<Application[]>;
   getApplication(id: string): Promise<Application>;
-  transitionApplication(
-    id: string,
-    toState: ApplicationState,
-    reason: string,
-  ): Promise<Application>;
+  transitionApplication(id: string, toState: ApplicationState, reason: string): Promise<Application>;
   listApplicationHistory(id: string): Promise<ApplicationStateTransition[]>;
   /// listAllowedTransitions asks the daemon which states this application
   /// may move to next, so the UI offers only actions that will work.
@@ -253,10 +237,7 @@ export interface ApiClient {
   ): Promise<ApplicationQuestion>;
   listQuestions(applicationId: string): Promise<ApplicationQuestion[]>;
   resolveQuestion(questionId: string): Promise<ApplicationQuestion>;
-  setQuestionAnswer(
-    questionId: string,
-    answer: string,
-  ): Promise<ApplicationQuestion>;
+  setQuestionAnswer(questionId: string, answer: string): Promise<ApplicationQuestion>;
 
   prepareInBrowser(applicationId: string): Promise<Application>;
   listAgentRuns(applicationId: string): Promise<AgentRunWithEvents[]>;
@@ -269,12 +250,7 @@ interface Daemon {
   onUnreachable?: () => void;
 }
 
-async function request<T>(
-  daemon: Daemon,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+async function request<T>(daemon: Daemon, method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${daemon.baseUrl}${path}`, {
     method,
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
@@ -333,7 +309,7 @@ function deletionPath(target: DeletionTarget, id?: string): string {
 /// daemon that stopped or restarted on another port is noticed.
 export function createApiClient(port: number, onUnreachable?: () => void): ApiClient {
   const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable };
-  const q = (params: Record<string, string>) => "?" + new URLSearchParams(params).toString();
+  const q = (params: Record<string, string>) => `?${new URLSearchParams(params).toString()}`;
   const credentialPath = (source: string, label: string) =>
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
@@ -346,17 +322,15 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         throw err;
       }),
     updateProfile: (profile) => request<Candidate>(daemon, "PUT", "/v1/profile", profile),
-    initializeProfile: (profile) =>
-      request<Candidate>(daemon, "POST", "/v1/onboarding/profile", profile),
+    initializeProfile: (profile) => request<Candidate>(daemon, "POST", "/v1/onboarding/profile", profile),
 
     importResume: (candidateId, filePath) =>
       request<Resume>(daemon, "POST", "/v1/resumes", {
         candidate_id: candidateId,
         file_path: filePath,
       }),
-    listResumes: (candidateId) =>
-      request<Resume[]>(daemon, "GET", "/v1/resumes" + q({ candidate_id: candidateId })),
-    previewDeletion: (target, id) => request<DeletionReach>(daemon, "GET", deletionPath(target, id) + "/deletion"),
+    listResumes: (candidateId) => request<Resume[]>(daemon, "GET", `/v1/resumes${q({ candidate_id: candidateId })}`),
+    previewDeletion: (target, id) => request<DeletionReach>(daemon, "GET", `${deletionPath(target, id)}/deletion`),
     deleteRecords: (target, id, token) =>
       request<DeletionResult>(daemon, "DELETE", deletionPath(target, id) + q({ token })),
     getJobMatch: (jobId) =>
@@ -383,7 +357,7 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
-      return request<JobPage>(daemon, "GET", "/v1/jobs" + (query ? `?${query}` : ""));
+      return request<JobPage>(daemon, "GET", `/v1/jobs${query ? `?${query}` : ""}`);
     },
     getJob: (id) => request<Job>(daemon, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
     searchJobs: (criteria) => request<DiscoveryResult>(daemon, "POST", "/v1/jobs/search", criteria),
@@ -391,22 +365,18 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
 
     listSavedSearches: () => request<SavedSearch[]>(daemon, "GET", "/v1/searches"),
     staleSavedSearches: () => request<SavedSearch[]>(daemon, "GET", "/v1/searches/stale"),
-    createSavedSearch: (name, criteria) =>
-      request<SavedSearch>(daemon, "POST", "/v1/searches", { name, criteria }),
+    createSavedSearch: (name, criteria) => request<SavedSearch>(daemon, "POST", "/v1/searches", { name, criteria }),
     updateSavedSearch: (id, name, criteria) =>
       request<SavedSearch>(daemon, "PUT", `/v1/searches/${encodeURIComponent(id)}`, {
         name,
         criteria,
       }),
-    deleteSavedSearch: (id) =>
-      request<void>(daemon, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
-    listSearchTemplates: () =>
-      request<SearchTemplateGroup[]>(daemon, "GET", "/v1/search-templates"),
+    deleteSavedSearch: (id) => request<void>(daemon, "DELETE", `/v1/searches/${encodeURIComponent(id)}`),
+    listSearchTemplates: () => request<SearchTemplateGroup[]>(daemon, "GET", "/v1/search-templates"),
     listCredentials: () => request<CredentialRef[]>(daemon, "GET", "/v1/credentials"),
     setCredential: (source, label, secret) =>
       request<CredentialRef>(daemon, "PUT", credentialPath(source, label), { secret }),
-    deleteCredential: (source, label) =>
-      request<void>(daemon, "DELETE", credentialPath(source, label)),
+    deleteCredential: (source, label) => request<void>(daemon, "DELETE", credentialPath(source, label)),
     importSearchTemplates: (templateIds, workFrom) =>
       request<SavedSearch[]>(daemon, "POST", "/v1/search-templates/import", {
         template_ids: templateIds,
@@ -426,13 +396,10 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     jobCompany: (jobId) => request<JobCompany>(daemon, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/company`),
     listScouts: () => request<Scout[]>(daemon, "GET", "/v1/scouts"),
     createScout: (scout) => request<Scout>(daemon, "POST", "/v1/scouts", scout),
-    updateScout: (id, scout) =>
-      request<Scout>(daemon, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
+    updateScout: (id, scout) => request<Scout>(daemon, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
     deleteScout: (id) => request<void>(daemon, "DELETE", `/v1/scouts/${encodeURIComponent(id)}`),
-    runScout: (id) =>
-      request<ScoutRunReport>(daemon, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
-    listScoutRuns: (limit) =>
-      request<AgentRun[]>(daemon, "GET", `/v1/scout-runs?limit=${limit}`),
+    runScout: (id) => request<ScoutRunReport>(daemon, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
+    listScoutRuns: (limit) => request<AgentRun[]>(daemon, "GET", `/v1/scout-runs?limit=${limit}`),
     listScoutRunEvents: (runId) =>
       request<AgentEvent[]>(daemon, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
 
@@ -443,15 +410,13 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       if (limit > 0) params.limit = String(limit);
       if (offset > 0) params.offset = String(offset);
       const query = new URLSearchParams(params).toString();
-      return request<AgentRunPage>(daemon, "GET", "/v1/agent-runs" + (query ? `?${query}` : ""));
+      return request<AgentRunPage>(daemon, "GET", `/v1/agent-runs${query ? `?${query}` : ""}`);
     },
-    getActivityRun: (id) =>
-      request<AgentRunDetail>(daemon, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
+    getActivityRun: (id) => request<AgentRunDetail>(daemon, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
 
     setDefaultSavedSearch: (id) =>
       request<SavedSearch>(daemon, "POST", `/v1/searches/${encodeURIComponent(id)}/default`),
-    runSavedSearch: (id) =>
-      request<DiscoveryResult>(daemon, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
+    runSavedSearch: (id) => request<DiscoveryResult>(daemon, "POST", `/v1/searches/${encodeURIComponent(id)}/run`),
     importJob: (url) => request<Job>(daemon, "POST", "/v1/jobs/import", { url }),
 
     analyzeMatch: (candidateId, jobId) =>
@@ -459,8 +424,7 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         candidate_id: candidateId,
         job_id: jobId,
       }),
-    listMatches: (candidateId) =>
-      request<JobMatch[]>(daemon, "GET", "/v1/matches" + q({ candidate_id: candidateId })),
+    listMatches: (candidateId) => request<JobMatch[]>(daemon, "GET", `/v1/matches${q({ candidate_id: candidateId })}`),
 
     getLLMSettings: () => request<LLMSettings>(daemon, "GET", "/v1/settings/llm"),
     listNotifications: async (unseen) =>
@@ -483,11 +447,9 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     resetPromptGuidance: (key) =>
       request<PromptGuidance>(daemon, "DELETE", `/v1/settings/prompts/${encodeURIComponent(key)}`),
     getDiscoverySettings: () => request<DiscoverySettings>(daemon, "GET", "/v1/settings/discovery"),
-    saveDiscoverySettings: (settings) =>
-      request<DiscoverySettings>(daemon, "PUT", "/v1/settings/discovery", settings),
+    saveDiscoverySettings: (settings) => request<DiscoverySettings>(daemon, "PUT", "/v1/settings/discovery", settings),
     checkLLMHealth: () => request<LLMHealth>(daemon, "GET", "/v1/settings/llm/health"),
-    saveLLMSettings: (settings) =>
-      request<SaveLLMSettingsResult>(daemon, "PUT", "/v1/settings/llm", settings),
+    saveLLMSettings: (settings) => request<SaveLLMSettingsResult>(daemon, "PUT", "/v1/settings/llm", settings),
 
     createApplication: (jobId, candidateId, resumeId, mode) =>
       request<Application>(daemon, "POST", "/v1/applications", {
@@ -497,26 +459,17 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         mode,
       }),
     listApplications: (candidateId) =>
-      request<Application[]>(daemon, "GET", "/v1/applications" + q({ candidate_id: candidateId })),
-    getApplication: (id) =>
-      request<Application>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}`),
+      request<Application[]>(daemon, "GET", `/v1/applications${q({ candidate_id: candidateId })}`),
+    getApplication: (id) => request<Application>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}`),
     transitionApplication: (id, toState, reason) =>
       request<Application>(daemon, "POST", `/v1/applications/${encodeURIComponent(id)}/transition`, {
         to_state: toState,
         reason,
       }),
     listApplicationHistory: (id) =>
-      request<ApplicationStateTransition[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(id)}/history`,
-      ),
+      request<ApplicationStateTransition[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}/history`),
     listAllowedTransitions: (id) =>
-      request<ApplicationState[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(id)}/transitions`,
-      ),
+      request<ApplicationState[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}/transitions`),
 
     getAboutYou: () =>
       request<AboutYou>(daemon, "GET", "/v1/profile/about").catch((err: unknown) => {
@@ -528,7 +481,11 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
     keepAnswer: (questionId) =>
       request<PersonalAnswer>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/keep`),
     listPersonalQuestions: (applicationId) =>
-      request<PersonalAnswer[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`),
+      request<PersonalAnswer[]>(
+        daemon,
+        "GET",
+        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`,
+      ),
     preparePersonalQuestions: (applicationId) =>
       request<PersonalAnswer[]>(
         daemon,
@@ -543,35 +500,22 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
         { answers },
       ),
     generateCoverLetter: (applicationId) =>
-      request<CoverLetter>(
-        daemon,
-        "POST",
-        `/v1/applications/${encodeURIComponent(applicationId)}/cover-letter`,
-      ),
+      request<CoverLetter>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/cover-letter`),
     listCoverLetterVersions: (applicationId) =>
-      request<CoverLetter[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(applicationId)}/cover-letters`,
-      ),
+      request<CoverLetter[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/cover-letters`),
     editCoverLetter: (coverLetterId, content) =>
       request<CoverLetter>(daemon, "PUT", `/v1/cover-letters/${encodeURIComponent(coverLetterId)}`, {
         content,
       }),
 
     addQuestion: (applicationId, label, type, required) =>
-      request<ApplicationQuestion>(
-        daemon,
-        "POST",
-        `/v1/applications/${encodeURIComponent(applicationId)}/questions`,
-        { label, type, required },
-      ),
+      request<ApplicationQuestion>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/questions`, {
+        label,
+        type,
+        required,
+      }),
     listQuestions: (applicationId) =>
-      request<ApplicationQuestion[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(applicationId)}/questions`,
-      ),
+      request<ApplicationQuestion[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/questions`),
     resolveQuestion: (questionId) =>
       request<ApplicationQuestion>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/resolve`),
     setQuestionAnswer: (questionId, answer) =>
@@ -580,16 +524,8 @@ export function createApiClient(port: number, onUnreachable?: () => void): ApiCl
       }),
 
     prepareInBrowser: (applicationId) =>
-      request<Application>(
-        daemon,
-        "POST",
-        `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`,
-      ),
+      request<Application>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`),
     listAgentRuns: (applicationId) =>
-      request<AgentRunWithEvents[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`,
-      ),
+      request<AgentRunWithEvents[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`),
   };
 }

@@ -3,9 +3,10 @@ import { LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
 import { ApiError } from "../lib/api";
 import { useApi, useDaemon } from "../lib/daemon";
-import { discoverySummary, refreshSummary, type RefreshFailure } from "../lib/format";
-import { keys, useJobSources, useRunSavedSearch, type DiscoveryRun } from "../lib/queries";
+import { discoverySummary, type RefreshFailure, refreshSummary } from "../lib/format";
+import { type DiscoveryRun, keys, useJobSources, useRunSavedSearch } from "../lib/queries";
 import { ToastActivity, useToast } from "../lib/toast";
+import type { SavedSearch } from "../lib/types";
 
 /// useDiscover runs a saved search against the job sources and says how it
 /// went once it has. Runs are queued and outlive the screen that started
@@ -101,7 +102,7 @@ function Refresh() {
     refreshed = true;
 
     void (async () => {
-      let stale;
+      let stale: SavedSearch[];
       try {
         const settings = await api.getDiscoverySettings();
         if (!settings.refresh_on_launch) return;

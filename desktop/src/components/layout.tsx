@@ -4,26 +4,20 @@ import {
   FileText,
   History,
   House,
+  type LucideIcon,
   Radar,
   Send,
   Settings as SettingsIcon,
   UserRound,
-  type LucideIcon,
 } from "lucide-react";
 import { Activity, Suspense, useEffect, useRef, useState } from "react";
-import { Link, Navigate, Routes, useLocation, useNavigate, type Location } from "react-router-dom";
+import { Link, type Location, Navigate, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useDaemon } from "../lib/daemon";
-import { PortalContainer } from "../lib/portal-container";
 import { isMac, modLabel } from "../lib/platform";
-import {
-  useApplications,
-  useCandidateId,
-  useLLMSettings,
-  useProfile,
-  useSavedSearches,
-} from "../lib/queries";
+import { PortalContainer } from "../lib/portal-container";
+import { useApplications, useCandidateId, useLLMSettings, useProfile, useSavedSearches } from "../lib/queries";
 import { setupSkipped } from "../lib/setup-skip";
-import { SECTIONS, preloadSections, sectionFor, type Section } from "../sections";
+import { preloadSections, SECTIONS, type Section, sectionFor } from "../sections";
 import { ErrorBoundary } from "./error-boundary";
 import { RequireDaemon } from "./require-daemon";
 import { Button } from "./ui/button";
@@ -245,7 +239,7 @@ function SidebarLink({
 /// reachable. The sidebar is drawn while the connection is still being made,
 /// and anything that queries the daemon before then would throw.
 function WhenConnected({ children }: { children: React.ReactNode }) {
-  return useDaemon().status === "ready" ? <>{children}</> : null;
+  return useDaemon().status === "ready" ? children : null;
 }
 
 /// WaitingCount is the number of applications that JobPilot has finished

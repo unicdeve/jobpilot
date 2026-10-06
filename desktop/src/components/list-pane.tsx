@@ -20,10 +20,7 @@ export function ListPane({
 }) {
   return (
     <>
-      <header
-        data-tauri-drag-region
-        className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4"
-      >
+      <header data-tauri-drag-region className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
         <h1 data-tauri-drag-region className="min-w-0 flex-1 truncate text-[15px] font-semibold">
           {title}
         </h1>

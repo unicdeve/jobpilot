@@ -29,7 +29,13 @@ export function nextRunLabel(iso: string): string {
   const days = Math.round((startOfDay(at) - startOfDay(new Date())) / 86_400_000);
   if (days <= 0) return `today at ${time}`;
   if (days === 1) return `tomorrow at ${time}`;
-  return at.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return at.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function startOfDay(date: Date): number {

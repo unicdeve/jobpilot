@@ -1,6 +1,9 @@
-import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { cn } from "cn";
+import { type ReactNode, useState } from "react";
+import { Link } from "react-router-dom";
+import { usePromptGuidance, useResetPromptGuidance, useSavePromptGuidance } from "../lib/queries";
+import { useToast } from "../lib/toast";
+import type { PromptGuidance } from "../lib/types";
 import { ConfirmDialog } from "./confirm";
 import { Panel } from "./page";
 import { SettingsHeading } from "./settings-heading";
@@ -8,9 +11,6 @@ import { ErrorLine, Loading } from "./status-line";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { usePromptGuidance, useResetPromptGuidance, useSavePromptGuidance } from "../lib/queries";
-import { useToast } from "../lib/toast";
-import type { PromptGuidance } from "../lib/types";
 
 /// PromptSettings is where the user changes the guidance JobPilot judges a
 /// fit and writes under (ADR-0031). Only the guidance is offered: the rules

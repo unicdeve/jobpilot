@@ -1,5 +1,5 @@
 import { LoaderCircle, TriangleAlert } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../lib/api";
 import { countedKinds, keptNote, sentNote, totalDeleted } from "../lib/deletion";
 import { useDeleteRecords, useDeletionPreview } from "../lib/queries";
@@ -147,9 +147,7 @@ function ReachSummary({ reach }: { reach: DeletionReach }) {
     <>
       {deleted.length > 0 && <Section heading="This deletes" lines={deleted} />}
       {sent && <p className="text-[13px] text-warning">{sent}</p>}
-      {detached.length > 0 && (
-        <Section heading="These stay, but lose their link to what is deleted" lines={detached} />
-      )}
+      {detached.length > 0 && <Section heading="These stay, but lose their link to what is deleted" lines={detached} />}
       {kept && <p className="text-muted-foreground">{kept}</p>}
       {outside.length > 0 && <Section heading="Outside the database, it also removes" lines={outside} />}
       {(reach.environment_credentials ?? []).map((name) => (

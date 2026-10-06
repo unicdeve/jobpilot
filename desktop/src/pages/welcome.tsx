@@ -20,10 +20,10 @@ import {
   useSaveLLMSettings,
   useUpdateProfile,
 } from "../lib/queries";
-import { useToast } from "../lib/toast";
-import type { Candidate, LLMSettings, SavedSearch } from "../lib/types";
 import { pickResumeFile } from "../lib/resume-file";
 import { rememberSkip } from "../lib/setup-skip";
+import { useToast } from "../lib/toast";
+import type { Candidate, LLMSettings, SavedSearch } from "../lib/types";
 
 const steps = ["AI provider", "Your profile", "Resume", "Job search"] as const;
 
@@ -92,8 +92,8 @@ export function Welcome() {
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-10">
       <h1 className="text-xl font-semibold">Set up JobPilot</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Four things, none of them an account. Everything you enter stays on this machine, unless
-        you choose a hosted model.
+        Four things, none of them an account. Everything you enter stays on this machine, unless you choose a hosted
+        model.
       </p>
 
       <ol className="mt-5 flex flex-wrap gap-2" aria-label="Setup steps">
@@ -126,20 +126,11 @@ export function Welcome() {
       <Card className="mt-4">
         <CardContent className="space-y-4">
           {current === 0 && <ProviderStep settings={llm} onNext={() => setStep(1)} />}
-          {current === 1 && (
-            <ProfileStep profile={profile} exists={done.profile} onNext={() => setStep(2)} />
-          )}
+          {current === 1 && <ProfileStep profile={profile} exists={done.profile} onNext={() => setStep(2)} />}
           {current === 2 && (
-            <ResumeStep
-              profile={profile}
-              llmConfigured={done.llm}
-              imported={done.resume}
-              onNext={() => setStep(3)}
-            />
+            <ResumeStep profile={profile} llmConfigured={done.llm} imported={done.resume} onNext={() => setStep(3)} />
           )}
-          {current === 3 && (
-            <SearchStep hasSearch={done.search} onDone={finish} onBack={() => setStep(2)} />
-          )}
+          {current === 3 && <SearchStep hasSearch={done.search} onDone={finish} onBack={() => setStep(2)} />}
         </CardContent>
       </Card>
 
@@ -177,28 +168,21 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
       <div>
         <h2 className="font-semibold">Choose the AI model</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Matching, cover letters and reading a resume all run on the model you choose. A model on
-          this computer keeps everything here; a hosted one is sent what it reads.
+          Matching, cover letters and reading a resume all run on the model you choose. A model on this computer keeps
+          everything here; a hosted one is sent what it reads.
         </p>
       </div>
 
       <LLMProviderFields settings={draft} onChange={setDraft} />
 
       {result && (
-        <p
-          data-slot="connectivity"
-          className={`text-sm ${result.ok ? "text-success" : "text-warning"}`}
-        >
+        <p data-slot="connectivity" className={`text-sm ${result.ok ? "text-success" : "text-warning"}`}>
           {result.ok ? result.message : `Saved, but could not connect: ${result.message}`}
         </p>
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={() => save.mutate(draft)}
-          disabled={save.isPending || !draft.model.trim()}
-        >
+        <Button variant="outline" onClick={() => save.mutate(draft)} disabled={save.isPending || !draft.model.trim()}>
           {save.isPending ? "Saving…" : "Save and test"}
         </Button>
         <Button onClick={onNext} disabled={!result}>
@@ -220,15 +204,7 @@ function ProviderStep({ settings, onNext }: { settings?: LLMSettings; onNext: ()
 /// ProfileStep creates the candidate. It asks for the same four fields the
 /// CLI's onboard prompts for, and no more: the rest of the profile is
 /// better filled from a resume or edited later on the Profile screen.
-function ProfileStep({
-  profile,
-  exists,
-  onNext,
-}: {
-  profile?: Candidate;
-  exists: boolean;
-  onNext: () => void;
-}) {
+function ProfileStep({ profile, exists, onNext }: { profile?: Candidate; exists: boolean; onNext: () => void }) {
   const { notify } = useToast();
   const [draft, setDraft] = useState({
     first_name: profile?.first_name ?? "",
@@ -250,10 +226,12 @@ function ProfileStep({
         <div>
           <h2 className="font-semibold">Profile created</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
-              "Your candidate profile"}{" "}
-            is saved. The <Link className="underline" to="/profile">Profile screen</Link> has the
-            rest of the fields whenever you want them.
+            {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Your candidate profile"} is saved.
+            The{" "}
+            <Link className="underline" to="/profile">
+              Profile screen
+            </Link>{" "}
+            has the rest of the fields whenever you want them.
           </p>
         </div>
         <Button onClick={onNext}>Continue</Button>
@@ -261,55 +239,33 @@ function ProfileStep({
     );
   }
 
-  const set = (key: keyof typeof draft, value: string) =>
-    setDraft((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof draft, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 
   return (
     <>
       <div>
         <h2 className="font-semibold">Who are you applying as?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          JobPilot matches jobs against this and fills applications from it. It never invents
-          details you have not given it.
+          JobPilot matches jobs against this and fills applications from it. It never invents details you have not given
+          it.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="First name" htmlFor="welcome-first">
-          <Input
-            id="welcome-first"
-            value={draft.first_name}
-            onChange={(e) => set("first_name", e.target.value)}
-          />
+          <Input id="welcome-first" value={draft.first_name} onChange={(e) => set("first_name", e.target.value)} />
         </FormField>
         <FormField label="Last name" htmlFor="welcome-last">
-          <Input
-            id="welcome-last"
-            value={draft.last_name}
-            onChange={(e) => set("last_name", e.target.value)}
-          />
+          <Input id="welcome-last" value={draft.last_name} onChange={(e) => set("last_name", e.target.value)} />
         </FormField>
         <FormField label="Email" htmlFor="welcome-email">
-          <Input
-            id="welcome-email"
-            type="email"
-            value={draft.email}
-            onChange={(e) => set("email", e.target.value)}
-          />
+          <Input id="welcome-email" type="email" value={draft.email} onChange={(e) => set("email", e.target.value)} />
         </FormField>
         <FormField label="Phone" htmlFor="welcome-phone">
-          <Input
-            id="welcome-phone"
-            value={draft.phone}
-            onChange={(e) => set("phone", e.target.value)}
-          />
+          <Input id="welcome-phone" value={draft.phone} onChange={(e) => set("phone", e.target.value)} />
         </FormField>
         <FormField label="City" htmlFor="welcome-city">
-          <Input
-            id="welcome-city"
-            value={draft.location_city}
-            onChange={(e) => set("location_city", e.target.value)}
-          />
+          <Input id="welcome-city" value={draft.location_city} onChange={(e) => set("location_city", e.target.value)} />
         </FormField>
         <FormField label="Country" htmlFor="welcome-country">
           <Input
@@ -321,15 +277,10 @@ function ProfileStep({
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          onClick={() => create.mutate(draft)}
-          disabled={create.isPending || !draft.first_name.trim()}
-        >
+        <Button onClick={() => create.mutate(draft)} disabled={create.isPending || !draft.first_name.trim()}>
           {create.isPending ? "Creating…" : "Create profile"}
         </Button>
-        {!draft.first_name.trim() && (
-          <span className="text-xs text-muted-foreground">A first name is required.</span>
-        )}
+        {!draft.first_name.trim() && <span className="text-xs text-muted-foreground">A first name is required.</span>}
       </div>
     </>
   );
@@ -429,8 +380,8 @@ function ResumeStep({
       <div>
         <h2 className="font-semibold">Import a resume</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Optional. JobPilot converts it to text, keeps it for applications, and reads your details
-          out of it so you do not have to type them again.
+          Optional. JobPilot converts it to text, keeps it for applications, and reads your details out of it so you do
+          not have to type them again.
         </p>
       </div>
 
@@ -438,8 +389,8 @@ function ResumeStep({
 
       {!llmConfigured && (
         <p className="text-sm text-warning">
-          Reading details out of a resume needs the AI provider, which is not set up yet. You can
-          still import the file — it just will not prefill anything.
+          Reading details out of a resume needs the AI provider, which is not set up yet. You can still import the file
+          — it just will not prefill anything.
         </p>
       )}
 
@@ -503,8 +454,8 @@ function SearchStep({
       <div>
         <h2 className="font-semibold">What jobs are you looking for?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          JobPilot only looks for what you ask it to. The job boards do no filtering of their own,
-          so without a search it would import every posting on them — it refuses to run instead.
+          JobPilot only looks for what you ask it to. The job boards do no filtering of their own, so without a search
+          it would import every posting on them — it refuses to run instead.
         </p>
       </div>
 
@@ -526,11 +477,7 @@ function SearchStep({
         </>
       ) : (
         <>
-          <SearchTemplatePicker
-            onCancel={onBack}
-            onError={(message) => notify(message)}
-            onImported={runAndFinish}
-          />
+          <SearchTemplatePicker onCancel={onBack} onError={(message) => notify(message)} onImported={runAndFinish} />
           <button
             type="button"
             onClick={() => setWritingOwn(true)}

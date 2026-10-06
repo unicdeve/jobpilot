@@ -58,6 +58,7 @@ export function DraftFlags({ flags }: { flags?: DraftFlag[] }) {
       </p>
       <ul className="mt-1.5 space-y-1">
         {flags.map((flag, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the flags are recomputed whole and never reordered, and two can be alike
           <li key={i} className="text-[13px] text-subtle-foreground">
             {flag.excerpt && <span className="font-medium text-foreground">“{flag.excerpt}”</span>}
             {flag.excerpt && " — "}

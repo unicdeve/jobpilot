@@ -1,9 +1,9 @@
 import { History } from "lucide-react";
 import { Outlet, useMatch, useSearchParams } from "react-router-dom";
+import { FILTER_ALL as ALL, FilterSelect } from "../components/filter-select";
 import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pane";
 import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
-import { FILTER_ALL as ALL, FilterSelect } from "../components/filter-select";
 import { StatusBadge } from "../components/status-badge";
 import { runDuration, runKind, runSubject, TASK_LABELS } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";

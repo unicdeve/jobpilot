@@ -33,7 +33,8 @@ const DATA_ACTIONS: DataAction[] = [
   {
     target: "jobs",
     title: "Clear jobs",
-    description: "Every stored job no application uses. Jobs you marked not interested are kept, so they are not offered again.",
+    description:
+      "Every stored job no application uses. Jobs you marked not interested are kept, so they are not offered again.",
     button: "Clear jobs…",
     dialogTitle: "Clear unused jobs?",
     confirmLabel: "Clear jobs",

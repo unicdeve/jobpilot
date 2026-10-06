@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 /// ThemePreference is what the user chose. "system" follows the operating
 /// system, and keeps following it when it changes.
@@ -88,11 +88,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPreferenceState(next);
   };
 
-  return (
-    <ThemeContext.Provider value={{ preference, resolved, setPreference }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ preference, resolved, setPreference }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme(): ThemeState {

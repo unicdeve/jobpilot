@@ -1,9 +1,10 @@
 import path from "node:path";
 import process from "node:process";
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 import { bundledPackages } from "./bundled-packages";
+
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/

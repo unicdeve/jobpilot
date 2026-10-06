@@ -103,11 +103,7 @@ export function Section({
 /// settings. Content inside it is divided by hairlines rather than nested
 /// boxes.
 export function Panel({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>{children}</div>;
 }
 
 /// DetailSection is a titled part of a detail pane, divided from the one

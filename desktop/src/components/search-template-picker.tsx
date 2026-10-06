@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
+import { useImportSearchTemplates, useSearchTemplates } from "../lib/queries";
+import type { SavedSearch, SearchCriteria, SearchTemplate } from "../lib/types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { useImportSearchTemplates, useSearchTemplates } from "../lib/queries";
-import type { SavedSearch, SearchCriteria, SearchTemplate } from "../lib/types";
 
 /// describeTemplateCriteria shows what a template actually searches on, so
 /// the user adopts criteria they can see rather than a name they have to
@@ -82,9 +82,9 @@ export function SearchTemplatePicker({
       <div>
         <h3 className="font-medium">Start from a template</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          A search matches only jobs containing every word you set, so a narrow one finds almost
-          nothing. These criteria were measured against live postings from every source. Adopt
-          several — a copy becomes yours to edit, and nothing links it back here.
+          A search matches only jobs containing every word you set, so a narrow one finds almost nothing. These criteria
+          were measured against live postings from every source. Adopt several — a copy becomes yours to edit, and
+          nothing links it back here.
         </p>
       </div>
 
@@ -135,9 +135,7 @@ export function SearchTemplatePicker({
                       {describeTemplateCriteria(template.criteria)}
                     </Badge>
                   </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {template.summary}
-                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{template.summary}</span>
                 </span>
               </label>
             </li>
@@ -160,9 +158,7 @@ export function SearchTemplatePicker({
           Cancel
         </Button>
         {selected.size > 0 && (
-          <span className="text-xs text-muted-foreground">
-            Selected across all groups, not just this one.
-          </span>
+          <span className="text-xs text-muted-foreground">Selected across all groups, not just this one.</span>
         )}
       </div>
     </div>

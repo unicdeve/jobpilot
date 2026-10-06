@@ -89,6 +89,6 @@ export const SECTIONS: Section[] = [
 /// sectionFor is the section a path belongs to, by its first segment, or
 /// undefined for a path no section holds.
 export function sectionFor(pathname: string): Section | undefined {
-  const root = "/" + (pathname.split("/")[1] ?? "");
+  const root = `/${pathname.split("/")[1] ?? ""}`;
   return SECTIONS.find((section) => section.root === root);
 }

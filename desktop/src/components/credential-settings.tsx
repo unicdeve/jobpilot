@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Panel } from "./page";
-import { SettingsHeading } from "./settings-heading";
-import { FormField } from "./form-field";
 import { useCredentials, useDeleteCredential, useSetCredential } from "../lib/queries";
 import { useToast } from "../lib/toast";
+import { FormField } from "./form-field";
 import { llmCredentialSource } from "./llm-provider-fields";
+import { Panel } from "./page";
+import { SettingsHeading } from "./settings-heading";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 /// KNOWN_SOURCES are the job sources that can use a key, so the common case
 /// is a choice rather than a spelling test. The field stays free text
@@ -73,107 +73,107 @@ export function CredentialSettings() {
         }
       />
 
-        {adding && (
-          // A form rather than a div: it gives the key field Enter-to-submit,
-          // and it is what the browser asks for around a password input.
-          <form
-            className="mb-4 space-y-3 rounded-lg border border-border bg-card p-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (usable && !store.isPending) {
-                store.mutate({ source: source.trim(), label: label.trim(), secret });
-              }
-            }}
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Source" htmlFor="credential-source">
-                <Input
-                  id="credential-source"
-                  list="credential-sources"
-                  placeholder="adzuna"
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                />
-                <datalist id="credential-sources">
-                  {KNOWN_SOURCES.map((known) => (
-                    <option key={known} value={known} />
-                  ))}
-                </datalist>
-              </FormField>
-              <FormField label="Label (optional)" htmlFor="credential-label">
-                <Input
-                  id="credential-label"
-                  placeholder="default"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                />
-              </FormField>
-            </div>
-
-            <FormField label="API key" htmlFor="credential-secret">
+      {adding && (
+        // A form rather than a div: it gives the key field Enter-to-submit,
+        // and it is what the browser asks for around a password input.
+        <form
+          className="mb-4 space-y-3 rounded-lg border border-border bg-card p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (usable && !store.isPending) {
+              store.mutate({ source: source.trim(), label: label.trim(), secret });
+            }
+          }}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Source" htmlFor="credential-source">
               <Input
-                id="credential-secret"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
+                id="credential-source"
+                list="credential-sources"
+                placeholder="adzuna"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              />
+              <datalist id="credential-sources">
+                {KNOWN_SOURCES.map((known) => (
+                  <option key={known} value={known} />
+                ))}
+              </datalist>
+            </FormField>
+            <FormField label="Label (optional)" htmlFor="credential-label">
+              <Input
+                id="credential-label"
+                placeholder="default"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
               />
             </FormField>
+          </div>
 
-            <p className="text-xs text-muted-foreground">
-              You will not be able to view this key again. Keep your own copy if you need one —
-              to change it later, enter it here again.
+          <FormField label="API key" htmlFor="credential-secret">
+            <Input
+              id="credential-secret"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+            />
+          </FormField>
+
+          <p className="text-xs text-muted-foreground">
+            You will not be able to view this key again. Keep your own copy if you need one — to change it later, enter
+            it here again.
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button type="submit" disabled={!usable || store.isPending}>
+              {store.isPending ? "Storing…" : "Store in keychain"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={reset}>
+              Cancel
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Lower-case letters, digits and hyphens for the source and label.
+            </span>
+          </div>
+        </form>
+      )}
+
+      {error ? (
+        <p className="text-sm text-destructive">{String(error.message)}</p>
+      ) : isPending ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : credentials.length === 0 ? (
+        !adding && (
+          <Panel className="px-4 py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              No keys stored. Every job source JobPilot uses today works without one, and so does a model on this
+              computer.
             </p>
-
-            <div className="flex items-center gap-2">
-              <Button type="submit" disabled={!usable || store.isPending}>
-                {store.isPending ? "Storing…" : "Store in keychain"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={reset}>
-                Cancel
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Lower-case letters, digits and hyphens for the source and label.
-              </span>
-            </div>
-          </form>
-        )}
-
-        {error ? (
-          <p className="text-sm text-destructive">{String(error.message)}</p>
-        ) : isPending ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : credentials.length === 0 ? (
-          !adding && (
-            <Panel className="px-4 py-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                No keys stored. Every job source JobPilot uses today works without one, and so does a
-                model on this computer.
-              </p>
-            </Panel>
-          )
-        ) : (
-          <Panel className="divide-y divide-border">
-            {credentials.map((ref) => (
-              <div key={`${ref.source}/${ref.label}`} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div>
-                  {/* The label is what tells two keys for one source apart,
-                      so it is in the title beside the source. */}
-                  <p className="text-[13px] font-medium">
-                    {sourceName(ref.source)}
-                    <span className="text-muted-foreground"> · </span>
-                    {ref.label}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">Stored in your keychain</p>
-                </div>
-                <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(ref)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
           </Panel>
-        )}
+        )
+      ) : (
+        <Panel className="divide-y divide-border">
+          {credentials.map((ref) => (
+            <div key={`${ref.source}/${ref.label}`} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div>
+                {/* The label is what tells two keys for one source apart,
+                      so it is in the title beside the source. */}
+                <p className="text-[13px] font-medium">
+                  {sourceName(ref.source)}
+                  <span className="text-muted-foreground"> · </span>
+                  {ref.label}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Stored in your keychain</p>
+              </div>
+              <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(ref)}>
+                Remove
+              </Button>
+            </div>
+          ))}
+        </Panel>
+      )}
     </>
   );
 }

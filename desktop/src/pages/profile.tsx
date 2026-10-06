@@ -1,10 +1,10 @@
 import { Upload } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { Page, Panel, Section } from "../components/page";
 import { Loading } from "../components/status-line";
-import { TimeZoneField, suggestedTimeZone } from "../components/time-zone-field";
+import { suggestedTimeZone, TimeZoneField } from "../components/time-zone-field";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -20,18 +20,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import {
-  useCountries,
   useCheckLLMHealth,
+  useCountries,
   useImportResume,
   useInitializeProfile,
   useProfile,
   useProposeProfileDraft,
   useUpdateProfile,
 } from "../lib/queries";
-import { useToast } from "../lib/toast";
-import { LINK_KINDS } from "../lib/types";
 import { pickResumeFile } from "../lib/resume-file";
-import { AboutYouPage } from "./profile-about";
+import { useToast } from "../lib/toast";
 import type {
   Candidate,
   CandidateExperience,
@@ -39,10 +37,12 @@ import type {
   CandidateSkill,
   LinkKind,
   LLMHealth,
-  RemotePreference,
   ProfileDraft,
+  RemotePreference,
   WorkAuthorization,
 } from "../lib/types";
+import { LINK_KINDS } from "../lib/types";
+import { AboutYouPage } from "./profile-about";
 
 const emptyProfile: Candidate = {
   id: "",
@@ -163,8 +163,7 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
   // computer's (ADR-0025 §2), and saves it.
   const timeZone = profile.time_zone || suggestedTimeZone(countries, profile.location_country);
 
-  const set = <K extends keyof Candidate>(key: K, value: Candidate[K]) =>
-    setDraft({ ...profile, [key]: value });
+  const set = <K extends keyof Candidate>(key: K, value: Candidate[K]) => setDraft({ ...profile, [key]: value });
 
   const save = () => {
     if (exists) {
@@ -362,7 +361,11 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
       <Section title="Location">
         <div className="grid gap-4 sm:grid-cols-3">
           <FormField label="City" htmlFor="location_city">
-            <Input id="location_city" value={profile.location_city} onChange={(e) => set("location_city", e.target.value)} />
+            <Input
+              id="location_city"
+              value={profile.location_city}
+              onChange={(e) => set("location_city", e.target.value)}
+            />
           </FormField>
           <FormField label="State / region" htmlFor="location_region">
             <Input
@@ -474,13 +477,7 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
 /// a page with a LinkedIn field and a GitHub field wants a different URL in
 /// each (ADR-0015). Every kind is shown, so an empty GitHub box is visibly
 /// empty rather than silently missing.
-function LinksEditor({
-  links,
-  onChange,
-}: {
-  links: CandidateLink[];
-  onChange: (links: CandidateLink[]) => void;
-}) {
+function LinksEditor({ links, onChange }: { links: CandidateLink[]; onChange: (links: CandidateLink[]) => void }) {
   const urlFor = (kind: LinkKind) => links.find((link) => link.kind === kind)?.url ?? "";
 
   const setURL = (kind: LinkKind, url: string) => {
@@ -494,14 +491,7 @@ function LinksEditor({
   };
 
   return (
-    <Section
-      title="Links"
-      description={
-        <>
-          Application forms ask for these one at a time, so each has its own box.
-        </>
-      }
-    >
+    <Section title="Links" description={<>Application forms ask for these one at a time, so each has its own box.</>}>
       <div className="grid gap-4 sm:grid-cols-2">
         {LINK_KINDS.map((kind) => (
           <FormField key={kind} label={LINK_LABELS[kind]} htmlFor={`link-${kind}`}>
@@ -544,17 +534,20 @@ function WorkAuthorizationsEditor({
       title="Work authorization"
       description={
         <>
-          Per country, matched against where a job is. A country you leave out is one JobPilot will not answer for — it asks you instead.
+          Per country, matched against where a job is. A country you leave out is one JobPilot will not answer for — it
+          asks you instead.
         </>
       }
     >
-
       {authorizations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No countries added yet.</p>
       ) : (
         <ul className="space-y-3">
           {authorizations.map((auth, index) => (
-            <li key={auth.id || index} className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-3">
+            <li
+              key={auth.id || index}
+              className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-3"
+            >
               <Input
                 aria-label="Country"
                 className="w-48"
@@ -636,11 +629,11 @@ function SkillsEditor({
       title="Skills"
       description={
         <>
-          Years are optional. A skill without them is never used to answer a "how many years" question — you are asked instead.
+          Years are optional. A skill without them is never used to answer a "how many years" question — you are asked
+          instead.
         </>
       }
     >
-
       {skills.length === 0 ? (
         <p className="text-sm text-muted-foreground">No skills added yet.</p>
       ) : (
@@ -707,20 +700,17 @@ function ExperiencesEditor({
       title="Work history"
       description={
         <>
-          Dates are what let JobPilot answer "Current company" and count your years of experience. An entry without them is still kept, it just is not counted.
+          Dates are what let JobPilot answer "Current company" and count your years of experience. An entry without them
+          is still kept, it just is not counted.
         </>
       }
     >
-
       {experiences.length === 0 ? (
         <p className="text-sm text-muted-foreground">No roles added yet.</p>
       ) : (
         <ul className="space-y-4">
           {experiences.map((experience, index) => (
-            <li
-              key={experience.id || index}
-              className="space-y-3 rounded-lg border border-border bg-card p-4"
-            >
+            <li key={experience.id || index} className="space-y-3 rounded-lg border border-border bg-card p-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="Title" htmlFor={`experience-title-${index}`}>
                   <Input
@@ -780,11 +770,7 @@ function ExperiencesEditor({
                 />
               </FormField>
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onChange(experiences.filter((_, i) => i !== index))}
-              >
+              <Button size="sm" variant="ghost" onClick={() => onChange(experiences.filter((_, i) => i !== index))}>
                 Remove this role
               </Button>
             </li>
