@@ -179,3 +179,46 @@ func TestCheckDraft_MeasuredLetter(t *testing.T) {
 	assert.Len(t, flagsOf(FlagStockPhrase, flags), 3, "the repeated opening is flagged once")
 	assert.Len(t, flagsOf(FlagUnsupportedClaim, flags), 1)
 }
+
+// AC-009.
+func TestCheckDraft_Preamble(t *testing.T) {
+	t.Parallel()
+
+	for text, want := range map[string]string{
+		"Here is a tailored cover letter for the Senior Backend Engineer position at CertiK:\n\nDear Hiring Manager,": "Here is a tailored cover letter for the Senior Backend Engineer position at CertiK:",
+		"Here's a tailored cover letter for the role:\nI rebuilt Acme's billing pipeline.":                            "Here's a tailored cover letter for the role:",
+		"  Sure! Here is your cover letter:\n\nDear Hiring Manager,":                                                  "Sure! Here is your cover letter:",
+		"Certainly, here’s a draft answer to the question:\nI have run Go services for four years.":                   "Certainly, here’s a draft answer to the question:",
+		"Here is the letter: Dear Hiring Manager,":                                                                    "Here is the letter:",
+	} {
+		t.Run(want, func(t *testing.T) {
+			t.Parallel()
+			got := flagsOf(FlagPreamble, CheckDraft(text, basisWith()))
+			require.Len(t, got, 1)
+			assert.Equal(t, want, got[0].Excerpt)
+			assert.Equal(t, "The model's note to you, not part of what you send.", got[0].Reason)
+		})
+	}
+
+	for _, text := range []string{
+		"Here is my cover letter for the Senior Backend Engineer role.",
+		"Here is what I would bring to your team: a billing pipeline rebuilt in Go.",
+		"Here is the thing: I wrote the letter myself.",
+		"Dear Hiring Manager,\n\nHere is a tailored cover letter for the role:",
+	} {
+		t.Run(text, func(t *testing.T) {
+			t.Parallel()
+			assert.Empty(t, flagsOf(FlagPreamble, CheckDraft(text, basisWith())))
+		})
+	}
+
+	t.Run("is not counted in the letter's length", func(t *testing.T) {
+		t.Parallel()
+		basis := basisWith()
+		basis.WordLimit = DefaultLetterWords
+		text := "Here is a tailored cover letter for the role:\n\n" + strings.TrimSpace(strings.Repeat("word ", DefaultLetterWords))
+		flags := CheckDraft(text, basis)
+		assert.Len(t, flagsOf(FlagPreamble, flags), 1)
+		assert.Empty(t, flagsOf(FlagLength, flags))
+	})
+}

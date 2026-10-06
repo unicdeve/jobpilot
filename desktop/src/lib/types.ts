@@ -436,7 +436,7 @@ export interface ApplicationStateTransition {
 /// should look at, worked out from its text each time it is read
 /// (docs/02_features/19_draft_checks.md).
 export interface DraftFlag {
-  kind: "stock_phrase" | "length" | "unsupported_claim";
+  kind: "preamble" | "stock_phrase" | "length" | "unsupported_claim";
   /// The flagged words as the text has them; a length flag has none.
   excerpt?: string;
   reason: string;

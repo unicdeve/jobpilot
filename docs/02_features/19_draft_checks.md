@@ -4,11 +4,12 @@
 
 Decided, and implemented.
 D1 to D4 were decided on 2026-10-02, each as recommended.
+D5, the preamble, was added on 2026-10-06.
 It is the follow-up `docs/02_features/16_about_you.md` names in "What the model makes of it".
 
 ## Purpose
 
-Point out to the candidate, while they review a cover letter or a written answer, what the model was told not to do and did anyway: a stock phrase, a letter past the length asked for, a number of years the candidate never gave.
+Point out to the candidate, while they review a cover letter or a written answer, what the model was told not to do and did anyway: a line presenting the letter instead of writing it, a stock phrase, a letter past the length asked for, a number of years the candidate never gave.
 
 The prompts already ask for none of these.
 A small local model follows them only partly — measured on `llama3.2:1b`, letters still opened with stock phrases, ran past the length, and one in two claimed years of experience taken from the posting.
@@ -30,6 +31,7 @@ A rule a model may ignore needs a check that does not depend on the model.
 
 | Check | Letters | Generated answers |
 | --- | --- | --- |
+| Preamble | Yes | Yes |
 | Stock phrases | Yes | Yes |
 | Length | Yes | No: an answer is "as brief as the question calls for", which no number captures |
 | Years of experience | Yes | Yes |
@@ -87,6 +89,35 @@ A reasoning model run locally, measured with `deepseek-r1`, does not finish a le
   A stalled server would only be noticed at the limit.
 - **C. A limit per provider in the LLM settings.**
 
+### D5. A note from the model before the draft
+
+The system prompt asks for the letter alone, with no commentary around it.
+A small model often writes one anyway, as the draft's first line: "Here is a tailored cover letter for the Senior Backend Engineer position at CertiK:".
+Asking it not to in the prompt made it worse, not better (`20_prompt_customization.md`, "Measured"), so it is caught here instead.
+
+Measured on `llama3.2:1b` on 2026-10-06 through `CoverLetterService.Generate`, eight letters in each of four conditions, for a posting of about 30 lines and a candidate with two jobs:
+
+| Guidance | Resume | Opened with a preamble |
+| --- | --- | --- |
+| Default | None | 4 of 8 |
+| Default | With a contact line and headings | 0 of 8 |
+| The candidate's own | None | 8 of 8 |
+| The candidate's own | With a contact line and headings | 5 of 8 |
+
+Every one was "Here is" or "Here's" a tailored cover letter — for the role, for "the job", for "the candidate" or for "the job and candidate" — on a line of its own ending in a colon.
+None closed with commentary, such as an offer to revise.
+Under the default guidance with a resume, five letters in eight were not letters at all but resumes with `###` headings, which is why that row has none.
+
+- **A. The first line only, as a flag of its own.** (implemented)
+  A draft whose first line presents a letter, answer, response or draft — "Here is", "Here's" or "Below is", then "a", "an", "the" or "your", optionally after "Sure", "Certainly", "Of course" or "Okay" — is flagged, quoting the line up to its colon.
+  "Here is my letter" is in the candidate's voice and is not flagged.
+  The rest of the draft is checked without the line, so it does not count towards the letter's length.
+  Its reason is not a stock phrase's: it is not weak writing but no part of what is sent.
+- **B. As a stock phrase.**
+  The reason would be wrong, and the line would count towards the length.
+- **C. Opening and closing.**
+  No measured letter closed with commentary, and a closing such as "Let me know if you have any questions" is one a candidate writes.
+
 ## How a claim is read
 
 A claim is a number of years — in digits or words up to twenty, with or without "+", "over" or "more than" — in a sentence that speaks in the first person or mentions experience.
@@ -123,6 +154,9 @@ Given a letter the candidate edits, when it is read again, then its flags are th
 ### AC-008
 Given a model that writes for longer than 30 seconds while still producing output, when it generates, then the letter is returned; given a server that stops sending for 60 seconds, or sends nothing for five minutes, then the request fails saying so.
 
+### AC-009
+Given a letter or generated answer whose first line presents it — "Here is a tailored cover letter for the role:" — when it is read, then it carries a preamble flag quoting that line, and the line is not counted in the letter's length; given the same line anywhere but first, or in the candidate's own voice ("Here is my cover letter"), then it is not flagged.
+
 ## Out of scope
 
 - Anything listed under "Never mention".
@@ -130,3 +164,4 @@ Given a model that writes for longer than 30 seconds while still producing outpu
 - Claims other than years: an employer, a tool or an accomplishment the material does not contain.
   Telling those apart from the posting's own words needs more than a pattern.
 - Rewriting anything a flag points at.
+- Commentary after the draft, until a model is measured writing it.

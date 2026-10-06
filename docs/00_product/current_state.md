@@ -333,7 +333,7 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
   Stored in `personal_answers` (migration `00018`), which also took `application_preferences` from the candidate.
   Desktop: Profile → About you, and a questions step before "Write one" and "Rewrite". CLI: `profile about`, `cover-letter generate` asks first, `question keep`.
   A rewritten letter now replaces the old one on screen straight away; it used to show until the application refetched.
-- Checking what the model wrote (`docs/02_features/19_draft_checks.md`): every cover letter and generated answer the API returns carries flags for the reviewer — stock phrases, a letter over the length its writing preferences give (or 250 words), and numbers of years the candidate never gave.
+- Checking what the model wrote (`docs/02_features/19_draft_checks.md`): every cover letter and generated answer the API returns carries flags for the reviewer — a first line in which the model presents the draft instead of writing it ("Here is a tailored cover letter for…"), stock phrases, a letter over the length its writing preferences give (or 250 words), and numbers of years the candidate never gave.
   `domain.CheckDraft` is deterministic and involves no model; a claim naming a skill is held to the duration the candidate gave it, one naming none to their dated work history, and either stands when the candidate's own words — resume, profile, About you — say it.
   Flags are worked out on every read and never stored, so an edit is re-checked at once, and they block nothing.
   Desktop: the flagged words are marked in the letter and answer, with a "To review" list beneath. CLI: the same list after `cover-letter generate`, `list` and `edit`, and `question resolve`, `answer` and `list`.
@@ -636,7 +636,6 @@ Not yet run: the release workflow, which needs a tag pushed (`docs/08_developmen
 - The desktop has no progress indicator for a long import or discovery
   beyond its button's label; a resume read by a slow model shows
   "Reading…" for as long as it takes.
-- Under guidance of the user's own (ADR-0031), a small local model often prefaces a cover letter with "Here is a tailored cover letter for…": three in four on `llama3.2:1b`. The candidate deletes it in review; the draft check does not flag it yet (`docs/02_features/20_prompt_customization.md`, "Measured").
 - Some core entities from `docs/01_architecture/04_database.md` are still
   not separate tables: `JobSource` (jobs reference their source only by
   free-text ID). `Prompt` is deliberately a setting rather than a table

@@ -120,4 +120,4 @@ What the build took from it:
 
 - The system prompt labels its parts in plain words, not markdown headings.
 - The reminder at the end of the message asks for nothing beyond what it asked before guidance existed: a line asking for the letter alone made every letter open with exactly the preamble it named.
-- Under guidance of the user's own, the reminder no longer repeats the default's style, and three letters in four opened "Here is a tailored cover letter for…". That line is the candidate's to delete when they review the draft; flagging it is a draft check's job (`docs/02_features/19_draft_checks.md`), not a further instruction's.
+- Under guidance of the user's own, the reminder no longer repeats the default's style, and three letters in four opened "Here is a tailored cover letter for…". That line is the candidate's to delete when they review the draft; flagging it is a draft check's job, not a further instruction's, and the draft check does (`docs/02_features/19_draft_checks.md` D5).

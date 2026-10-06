@@ -16,6 +16,7 @@ type DraftFlagKind string
 
 // The kinds of flag a draft can carry.
 const (
+	FlagPreamble         DraftFlagKind = "preamble"
 	FlagStockPhrase      DraftFlagKind = "stock_phrase"
 	FlagLength           DraftFlagKind = "length"
 	FlagUnsupportedClaim DraftFlagKind = "unsupported_claim"
@@ -92,11 +93,22 @@ func LetterWordLimit(preferences string) (limit int, theirs bool) {
 }
 
 // CheckDraft returns what a reviewer should look at in a letter or written
-// answer: stock phrases, a length past the limit, and claims of years the
-// basis does not support. It involves no model; the same text and basis
-// always give the same flags.
+// answer: a preamble, stock phrases, a length past the limit, and claims of
+// years the basis does not support. It involves no model; the same text and
+// basis always give the same flags.
 func CheckDraft(text string, basis DraftBasis) []DraftFlag {
 	flags := make([]DraftFlag, 0)
+	// A preamble is not part of the draft, so the rest is checked without
+	// it: it would otherwise count towards the letter's length.
+	if m := preamble.FindStringSubmatchIndex(text); m != nil {
+		flags = append(flags, DraftFlag{
+			Kind:    FlagPreamble,
+			Excerpt: strings.TrimSpace(text[m[2]:m[3]]),
+			Reason:  "The model's note to you, not part of what you send.",
+		})
+		text = text[m[1]:]
+	}
+
 	if basis.WordLimit > 0 {
 		if words := len(strings.Fields(text)); words > basis.WordLimit {
 			whose := "a letter is kept to"
@@ -139,6 +151,16 @@ func CheckDraft(text string, basis DraftBasis) []DraftFlag {
 	}
 	return flags
 }
+
+// preamble is a first line in which the model presents what it wrote
+// instead of writing it: "Here is a tailored cover letter for the Senior
+// Backend Engineer position at CertiK:". Measured on llama3.2:1b under
+// guidance of the candidate's own, five letters in sixteen opened so
+// (docs/02_features/19_draft_checks.md D5). "Here is my letter" is the
+// candidate's own voice and is not one.
+var preamble = regexp.MustCompile(`(?i)^\s*((?:(?:sure|certainly|of course|okay)[,!.]?\s+)?` +
+	`(?:here(?:['’]s|\s+is)|below\s+is)\s+(?:a|an|the|your)\b` +
+	`[^\n:]*?\b(?:letter|answer|response|draft)\b[^\n:]*:?)`)
 
 // iAm and its kind match a phrase whether or not it is contracted.
 const (
