@@ -4,27 +4,16 @@
 
 A job and an application are separate entities.
 
-Application states:
-
-DISCOVERED
-→ MATCHED
-→ PREPARING
-→ READY_FOR_REVIEW
-→ APPROVED
-→ SUBMITTED
-→ INTERVIEWING
-→ OFFERED
-→ NO_RESPONSE
-→ REJECTED
-→ WITHDRAWN
-→ FAILED
-
-Not every job must progress through every state.
+The preparation path is DISCOVERED → MATCHED → PREPARING → READY_FOR_REVIEW → APPROVED.
+The user can then record an external submission as SUBMITTED.
+Outcomes branch from there; they are not a single sequence.
+The transition table in `internal/core/services/application.go` is authoritative, and the API exposes allowed next states to clients.
 
 ### Before submission
 
-The states up to and including SUBMITTED are what the application does for the user: find, match, prepare, review, approve, send.
-SUBMITTED is reachable only from APPROVED, and only through an explicit user action.
+JobPilot finds, matches, prepares and records review/approval.
+It never sends an application to an employer.
+SUBMITTED is reachable only from APPROVED, when the user explicitly records that they submitted externally.
 
 ### After submission
 
@@ -42,8 +31,8 @@ A late reply reopens a closed-out application: NO_RESPONSE can move to INTERVIEW
 
 ### Withdrawing after submission
 
-WITHDRAWN becomes reachable from SUBMITTED, INTERVIEWING and OFFERED. It is
-currently not reachable from any of them, which is wrong in an obvious way: a person can withdraw an application they have sent, decline an interview, and turn down an offer, and today the model offers them no way to say so.
+WITHDRAWN is reachable from SUBMITTED, INTERVIEWING and OFFERED.
+Recording it does not contact the employer; the user handles any external withdrawal or offer response themselves.
 
 ## Acceptance Criteria
 
@@ -66,4 +55,5 @@ A job cannot silently become marked as submitted.
 Post-submission outcomes are recorded through the same validated transitions, and appear in the application's history like any other.
 
 ### AC-007
-No outcome is inferred. Every state after SUBMITTED is entered by an explicit user action, never by elapsed time or by any other event.
+No outcome is inferred.
+Every state after SUBMITTED is entered by an explicit user action, never by elapsed time or by any other event.

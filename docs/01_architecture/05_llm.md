@@ -4,15 +4,16 @@
 
 The application must not couple domain logic directly to Ollama.
 
-Use a provider interface such as:
+Core uses `ports.LLMProvider`, whose generation method is:
 
 ```go
-type Provider interface {
+type LLMProvider interface {
     Generate(ctx context.Context, request Request) (Response, error)
 }
 ```
 
-The exact interface should be refined during implementation.
+The interface also exposes provider health, model listing and provider identity.
+See `internal/core/ports/llm.go` for the complete contract.
 
 ## Initial provider
 

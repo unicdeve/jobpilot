@@ -18,4 +18,6 @@ A feature is complete when:
 
 MVP prioritizes tests for core business logic, schemas, state transitions, policy evaluation, matching normalization, and deterministic data handling.
 
-UI/browser end-to-end testing is not a core MVP requirement.
+Verify affected UI workflows visually and exercise browser changes with the relevant fixtures.
+Real-browser integration tests require installed Chrome and may skip when it is unavailable.
+For desktop changes, also run the frontend build and Rust checks from [Testing strategy](testing.md); `make check` covers Biome but not these checks.

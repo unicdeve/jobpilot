@@ -2,6 +2,10 @@
 
 Confidence should be explicit for AI-generated decisions.
 
+The following is proposed guidance, not a shared runtime policy.
+Current scoring and answer resolution use their documented service-specific validation rules.
+A confidence value never authorizes submission or overrides deterministic rules.
+
 Suggested behavior:
 
 - High confidence: proceed according to policy.

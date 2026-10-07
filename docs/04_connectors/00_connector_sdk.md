@@ -1,90 +1,62 @@
 # Connector Architecture
 
-## Purpose
+## Scope and interface
 
-Provide a common interface for job discovery and, later, application integration.
-
-## Job source interface
-
-Conceptually:
+Built-in connectors provide job discovery through [`ports.JobSource`](../../internal/core/ports/discovery.go).
+Browser form preparation is a separate worker; connectors have no submission capability.
+JobPilot never submits applications (ADR-0014).
+An external connector SDK and versioned plugin contract remain deferred.
 
 ```go
 type JobSource interface {
     ID() string
     Name() string
     Capabilities() SourceCapabilities
-    Search(ctx context.Context, criteria SearchCriteria) ([]Job, error)
-    GetJob(ctx context.Context, url string) (*Job, error)
+    Search(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Job, error)
+    GetJob(ctx context.Context, url string) (*domain.Job, error)
 }
 ```
 
-The final API should be idiomatic Go and versioned when external SDK support begins.
+`SourceCapabilities` contains `CanSearch`, `FiltersServerSide`, `CanGetJob` and `CanAuthenticate`.
+A connector declares only what it supports.
+Discovery skips sources whose `CanSearch` is false.
 
-## Capabilities
+## Filtering
 
-Possible capabilities:
-- search
-- server-side filtering
-- get job
-- authenticated search
-- application form discovery
-- application form filling
-- submission
+When `FiltersServerSide` is false, the connector returns the source's results and `JobDiscoveryService` applies `SearchCriteria.Matches` before storing them.
+This is the current public sources' contract, including sources that use query parameters to narrow their fetched data.
+Set `FiltersServerSide` true only when the source genuinely honours the complete criteria; the service then accepts its results as-is.
+Keeping filtering in core gives every connector the same deterministic matching rule.
 
-A connector must declare only capabilities it actually supports.
+## Locations
 
-### Filtering is the discovery service's guarantee
+A connector writes the source's own words into `Job.Locations`; core interprets them (ADR-0023).
+For a remote job, these describe where the candidate may work; for an onsite or hybrid job, where the office is.
 
-`Search` receives the full `SearchCriteria`, but a connector is not required
-to apply it. Most public boards cannot: Arbeitnow and Remotive both accept
-query parameters and act on none of them, returning their entire listing
-whatever is asked for.
+- Himalayas' empty `locationRestrictions` means worldwide and is stored as `Worldwide`, rather than as an unstated location.
+- We Work Remotely's employer-supplied `country` takes precedence over its broader `region` label.
+- Ashby's `address` and Lever's `country` name offices or hiring entities and are omitted when they do not describe where the candidate may work (ADR-0024).
 
-A connector therefore declares `FiltersServerSide`:
+## Failures and partial answers
 
-- **false** — return whatever the source gives you, unfiltered.
-  `JobDiscoveryService` applies `SearchCriteria.Matches` to the results
-  before any of them are stored.
-- **true** — the source genuinely honoured the criteria. Its results are
-  taken as-is, because it knows more about its own data than a local
-  substring rule does.
+A source that gives no answer—connection failure, name-resolution failure or timeout—wraps its HTTP transport error with `ports.ErrSourceUnreachable`.
+An error status or unreadable response body is an ordinary source failure: the source was reached.
+Discovery asks sources concurrently and treats a connector panic as a source failure.
 
-Filtering lives in the service rather than in each connector so that the
-matching rule is defined once, and so that a new connector cannot import an
-entire job board by forgetting to filter. This was not always so: the same
-filter loop was previously copy-pasted into every connector, sharing a
-helper that lived in the mock source.
+When all sources are unreachable, discovery returns `ErrSourcesUnreachable` and explains that fresh discovery needs internet access.
+When all fail but at least one was reached, discovery reports source failure instead.
+Successful sources still contribute jobs when another fails.
 
-Note the distinction between the two flags. `CanSearch: false` means the
-source is skipped entirely and contributes nothing — it does not mean "can
-search but cannot filter", which is `FiltersServerSide: false`.
+Connector error text is never returned to clients: a transport error can expose a URL containing a key.
+Clients receive source names and statuses.
+Logs must still avoid exposing secrets.
 
-### What a job's locations mean
+A source composed of several boards can return `ports.PartialAnswer` alongside successful results.
+`Failing` identifies boards that did not answer; `Err` is nil if another board answered, or carries the overall failure otherwise.
 
-A connector writes the source's own words into `Job.Locations` and does not interpret them; core reads them (ADR-0023 §1).
-What they mean follows `RemoteType`: for a remote job, where the candidate may be; for an onsite or hybrid job, where the office is.
-A source that says "worldwide" by saying nothing — Himalayas' empty `locationRestrictions` — writes it out as "Worldwide", since an absence reads as not stated.
-Where a source has both a board's label and the employer's own list, the connector writes the narrower: We Work Remotely's `country` over its `region`.
-A field that names an office or a hiring entity is not a location, however structured: Ashby's `address` and Lever's `country` are left out, since a role open anywhere carries one (ADR-0024 §6).
+## Watched company boards
 
-### Unreachable is not the same as failed
-
-A connector's `Search` error is reported to the user, so it has to say which of two things happened.
-
-- **Unreachable** — the source gave no answer: no connection, no name resolution, or no response before the timeout.
-  The connector wraps the error from its HTTP client's `Do` with `ports.ErrSourceUnreachable`, and nothing else.
-- **Failed** — the source answered, but not with jobs: an error status, or a body the connector could not read.
-  The connector returns an ordinary error.
-
-The difference is what lets discovery tell the user they are offline.
-When every source is unreachable the search fails with `ErrSourcesUnreachable`, which says that finding new jobs needs internet access; when any of them was reached, the failure is the source's rather than the connection's.
-
-A connector's error text never reaches a client.
-Transport errors name the URL they requested, and a source that needs a key can carry it in the query string, so the daemon logs the detail and reports only the source and its status.
-
-A connector need not be safe against its own panics.
-Discovery asks every source at once, each in its own goroutine, and treats a panic as that source failing.
-
-## Initial strategy
-
-Prioritize stable/public sources and ATS platforms rather than making scraping the foundation.
+[`ports.BoardReader`](../../internal/core/ports/discovery.go) reads boards independently of who watches them.
+The company-pages discovery service coordinates the watched companies, applies criteria and reports partial failures.
+Supported providers and deferred sources are listed in [Source priorities](01_source_priorities.md).
+See [Company watchlists](../02_features/17_company_watchlists.md), ADR-0024 and ADR-0026 for board-address resolution, caching, location interpretation and description fetching.

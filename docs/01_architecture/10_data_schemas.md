@@ -43,7 +43,7 @@ Job
 ```text
 WatchedCompany
 - id
-- board { provider: greenhouse | lever | ashby, region: "" | eu, name }
+- board { provider: greenhouse | lever | ashby | workable | smartrecruiters, region: "" | eu, name }
 - name
 - url
 - added_from
@@ -62,21 +62,27 @@ Candidate
 - id
 - first_name
 - last_name
-- contact
-- location
+- email
+- phone
+- location_city
+- location_region
+- location_country
 - time_zone
 - summary
-- work_preferences
-- salary_preferences
-- work_authorization
+- remote_preference
+- notice_period_days
+- earliest_start_date
+- work_authorizations[]
 - skills[]
 - experiences[]
-- education[]
-- certifications[]
 - links[]
 - created_at
 - updated_at
 ```
+
+Salary bounds belong to saved-search criteria, not the candidate profile.
+Education and certifications are not stored (ADR-0015).
+Work-history and availability dates use `YYYY-MM-DD` calendar dates.
 
 ## Resume
 
@@ -196,6 +202,9 @@ AC-003).
 ```text
 AgentRun
 - id
+- application_id
+- scout_id
+- trigger
 - task_type
 - status
 - started_at

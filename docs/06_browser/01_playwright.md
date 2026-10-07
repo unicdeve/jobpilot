@@ -3,7 +3,7 @@
 ## Requirements
 
 - Go Playwright
-- User-installed Chrome/Chromium
+- User-installed Google Chrome
 - Cross-platform operation
 - Explicit browser lifecycle
 - Cancellation support

@@ -66,7 +66,7 @@ Match explanations contain structured strengths/gaps/concerns.
 Review is the default mode.
 
 ### AC-G-018
-Review mode cannot submit without explicit user approval.
+Review mode leaves the prepared browser window open for the user to review and submit themselves.
 
 ### AC-G-019
 JobPilot never submits an application to an external system, in any mode, under any configuration.
@@ -92,3 +92,5 @@ LLM output cannot escalate tool permissions.
 
 ### AC-G-025
 Browser automation stops safely on CAPTCHA or ambiguous required fields.
+Unresolved factual questions are left blank for the user; a preparation result does not imply every required field was filled.
+CAPTCHA detection and unreadable-field reporting have known limitations; see [current state](current_state.md).

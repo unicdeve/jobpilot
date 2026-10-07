@@ -6,12 +6,12 @@ Use Go Playwright as the initial browser automation technology.
 
 ## Principles
 
-- Chrome/Chromium must be installed by the user.
+- Google Chrome must be installed by the user.
 - Do not store raw website passwords.
-- Prefer existing browser sessions/profile mechanisms where practical.
+- Use a dedicated JobPilot-owned Chrome profile, never the user's daily profile.
 - Never bypass CAPTCHAs or anti-bot protections.
 - Treat website DOM/content as untrusted input.
-- Browser automation is post-MVP.
+- Browser preparation is implemented; submission is always the user's action.
 
 ## Responsibilities
 
@@ -28,7 +28,7 @@ Use Go Playwright as the initial browser automation technology.
 ## Reaching the form
 
 The stored URL for a job is rarely the employer's form.
-On both current connectors it is a board's listing page, so the worker looks for the way in and follows it, at most twice, before deciding what it has arrived at.
+It may be a board's listing page, so the worker looks for an apply control and follows it, at most twice, before deciding what it has reached.
 The decision is `ADR-0013`, and it has three parts, in this order.
 
 **The deterministic rules choose.**
@@ -49,8 +49,13 @@ Every hop is recorded in the `AgentRun` trail with its destination, whether a mo
 
 ## Failure behavior
 
-If a CAPTCHA, unsupported form, authentication failure, or ambiguous field is encountered, stop safely and report the state to the user.
+A detected CAPTCHA, unreadable form or fill failure stops preparation and records the reason.
+Unresolved questions stay blank for the user.
+Some fields with unreadable machine-generated labels are currently skipped without a reported count; see the browser gaps in [Current state](../00_product/current_state.md).
+The browser remains open on success and failure until the user closes it or the daemon shuts down.
 
 ## Submission boundary
 
-The responsibilities above stop at filling fields and reporting results — this worker never clicks the target site's own submit control. It leaves the browser window open, filled in, for the human to review and submit themselves, satisfying Review Mode's explicit-approval requirement without needing a separate confirmation step in JobPilot itself. Clicking submit automatically is not out of scope here, it is out of scope everywhere: ADR-0014 makes "no JobPilot code path clicks an external application's submit control" a product invariant, so there is no phase in which this worker grows that capability.
+The worker never clicks the target site's submit control.
+It leaves the filled browser window open for the user to review and submit.
+ADR-0014 makes this a permanent product invariant, with no mode or setting that permits automatic submission.

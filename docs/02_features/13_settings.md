@@ -1,16 +1,36 @@
 # Feature: Settings
 
-## Categories
+Settings persist locally and require no hosted application account.
+Saving model or prompt settings takes effect on the running daemon without a restart.
 
-- LLM provider/model
-- prompt customization
-- search preferences
-- application mode
-- notification settings
-- data retention
-- storage location where supported
-- browser settings post-MVP
-- policies post-MVP
+## Implemented categories
+
+| Category | Desktop | CLI / specification |
+| --- | --- | --- |
+| Appearance | System, light or dark theme | Desktop-local preference |
+| AI model | Provider, base URL, model and optional credential label | `settings show`, `settings set-llm`; [LLM architecture](../01_architecture/05_llm.md) |
+| Prompts | Guidance for matching, letters and written answers | `settings prompts`; [prompt customization](20_prompt_customization.md) |
+| Job searches | Saved searches, templates, launch refresh and watched companies | `search saved`, `search templates`, `company`; [discovery](04_job_discovery.md) |
+| Notifications | Posting toggle and strong-match score | `settings notifications`; [notifications](11_notifications.md) |
+| API keys | Named credentials, without displaying stored values | `credentials`; [ADR-0019](../09_decisions/0019-storing-a-credential.md) |
+| Data | Deletion previews and confirmed cleanup | `data`; [data deletion](15_data_deletion.md) |
+| About | App and daemon versions | `--version` on the respective binaries |
+
+Only one model configuration is active at a time.
+Ollama, llama.cpp and LM Studio are local presets; Custom accepts an OpenAI-compatible endpoint.
+A hosted model uses its published base URL, model name and optional API key ([ADR-0030](../09_decisions/0030-a-cloud-model.md)).
+The key is stored in the OS keystore under source `llm`; settings retain only its label.
+Keys are sent only over HTTPS or to this computer.
+A nonlocal base URL shows that candidate profile, resume and job content are sent to that host, including model calls in a Scout.
+
+Prompt customization changes guidance, not the code-owned safety frame or response contract.
+Saved-search criteria cannot be empty; onboarding configures at least one search.
+
+## Remaining categories
+
+A global application-mode setting, retention policy, storage-location changes, browser configuration and additional policies remain unimplemented.
+Application mode is already chosen per application, and Scout eligibility is configured on each Scout and its saved search.
+These are distinct from a global settings category.
 
 ## Acceptance Criteria
 
@@ -22,42 +42,3 @@ Changing a setting does not require a hosted account.
 
 ### AC-003
 Invalid configuration produces actionable validation errors.
-
-## Implementation status
-
-LLM provider/model is implemented via `jobpilot-cli settings show` /
-`settings set-llm` (see `docs/CLI.md`), persisted locally in SQLite's
-`user_settings` table. Known local providers (Ollama, llama.cpp, LM Studio)
-are offered as presets with a manually-entered model name; a "Custom"
-option accepts any OpenAI-compatible endpoint. Per
-`docs/01_architecture/05_llm.md`, only a single active provider
-configuration is supported at a time. Saved settings apply to the
-running daemon immediately. The desktop's Settings screen offers the same
-presets and fills in the selected provider's default base URL.
-
-A hosted model is a custom endpoint (ADR-0030): its base URL as the provider publishes it, with the version (`https://openrouter.ai/api/v1`), its model, and an API key chosen from the model's keys or stored there and then.
-The key lives in the keychain under the source `llm`, the settings hold only its label, and a key is sent only over https or to this computer.
-Wherever the model is chosen, a base URL that is not this computer says that the profile, resume and job postings are sent to its host, including from a scout running on its own.
-Settings → API keys lists the model's keys as "AI model".
-
-Search preferences are implemented as named saved searches: see
-`docs/02_features/04_job_discovery.md` AC-001. They are managed from
-`jobpilot-cli search saved` and the desktop's Settings → Job searches, and
-one is created during onboarding. They are not optional in the way other
-settings are — discovery refuses to run without one.
-
-"Use a template" alongside them offers measured criteria to adopt and edit,
-rather than a blank form (`docs/02_features/14_search_templates.md`).
-
-Notification settings are implemented: whether to post notifications about
-scout runs, and the score a strong match needs, under Settings →
-Notifications and `jobpilot-cli settings notifications`
-(`docs/02_features/11_notifications.md`, ADR-0028).
-
-Prompt customization is implemented: the guidance the matching, cover
-letter and written answer prompts are written under, under Settings →
-Prompts and `jobpilot-cli settings prompts`
-(`docs/02_features/20_prompt_customization.md`, ADR-0031).
-
-All other categories (application mode, data retention, storage location,
-browser settings, policies) remain unimplemented.

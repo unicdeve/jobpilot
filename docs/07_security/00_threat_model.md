@@ -9,7 +9,7 @@
 - generated application content
 - LLM API keys
 - browser sessions
-- plugin permissions
+- plugin permissions if external plugins are introduced
 
 ## Threats
 
@@ -36,9 +36,10 @@ Mitigation:
   than navigated to in the webview, which would otherwise replace the
   application with the job board
 
-### Malicious plugin
+### Malicious plugin (future extension loading)
 
-Mitigation:
+External plugin loading is not implemented.
+Any future runtime must provide these mitigations:
 - explicit permissions
 - process isolation
 - user approval
@@ -54,9 +55,12 @@ Mitigation:
 ### Unauthorized application submission
 
 Mitigation:
-- application modes
-- deterministic policy engine
-- explicit Review approval
+- no JobPilot code path clicks an external application's submit control (ADR-0014)
+- browser preparation leaves the window open for the user to review and submit
+- Assist mode cannot prepare external application forms
+- Scouts stop before the browser
+
+Review approval authorizes preparation, never automatic submission.
 
 ### Local data loss
 

@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Provide user control before consequential application submission.
+Let the user inspect generated content and a prepared browser form before they submit it themselves.
+JobPilot never clicks an external application's submit control ([ADR-0014](../09_decisions/0014-scouts-and-no-unattended-submission.md)).
 
 ## Requirements
 
@@ -11,7 +12,9 @@ Provide user control before consequential application submission.
 - Show match analysis.
 - Show job details.
 - Show proposed external actions.
-- Require explicit approval before submission.
+- Record explicit approval of the application review.
+- Leave the prepared browser window open for the user.
+- Record submission only when the user says they submitted it externally.
 
 ## Acceptance Criteria
 
@@ -22,7 +25,8 @@ New installations default to Review mode.
 The user can inspect generated content before submission.
 
 ### AC-003
-Submission cannot occur from Review mode without explicit approval.
+JobPilot never submits the application, including after approval.
+The user submits it in the browser.
 
 ### AC-004
 Approval is recorded with the application action history.

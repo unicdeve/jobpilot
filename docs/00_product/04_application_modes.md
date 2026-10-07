@@ -2,23 +2,19 @@
 
 ## Assist
 
-The agent discovers and analyzes jobs and generates application content. It does not interact with external application forms.
+The agent discovers and analyzes jobs and generates application content.
+It does not interact with external application forms.
 
 ## Review - Default
 
-The agent can prepare and, post-MVP, fill an application form, but submission requires explicit user approval.
+The agent prepares and fills an application form, then leaves the browser window open for the user to review and submit themselves.
+Approval in JobPilot records the review decision; it never sends an application to an employer.
 
 ## Autopilot - removed
 
-Autopilot was a third mode in which the agent submitted applications automatically when configured policy rules permitted it.
-It was removed in `docs/09_decisions/0014-scouts-and-no-unattended-submission.md`.
-
-Two things were wrong with it.
-It fused unattended work with automatic submission, which have different value and completely different risk.
-And it was modelled as a property of one application, when "watch my saved searches and bring me things worth applying to" is a standing instruction that produces applications.
-
-Unattended work survives as a Scout (`docs/02_features/10_scouts.md`).
-Automatic submission was declined outright.
+Autopilot was removed by [ADR-0014](../09_decisions/0014-scouts-and-no-unattended-submission.md).
+Unattended discovery and matching are implemented as [Scouts](../02_features/10_scouts.md), separate from application modes.
+Automatic submission was declined and was never implemented.
 
 ## Invariants
 

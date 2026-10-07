@@ -1,725 +1,167 @@
 # Current Development State
 
+This page summarizes implementation and verification status.
+Feature specifications define behavior, and [ADRs](../09_decisions/) retain the decisions and measurements behind it.
+The [roadmap](roadmap.md) records the original phase scope.
+
 ## Phase
 
-Roadmap Phases 0–6 (`docs/00_product/roadmap.md`) are substantially
-implemented — foundation, candidate profile, job discovery, matching,
-application generation, a desktop app, and a browser automation worker —
-with explicit gaps noted below.
-Phase 7 (review mode) is complete: application review state and approval UI came with Phases 4 and 5, browser handoff with Phase 6, and submission tracking is described below.
-Phase 3's last item, prompt customization (PR-013, the last MVP requirement), is implemented by ADR-0031.
-Phase 8 (scouts and eligibility rules) is implemented: scouts run from the desktop or the CLI, or on a schedule the operating system's scheduler keeps (ADR-0027).
-Phase 10 (distribution) is decided by ADR-0029 and built; the first release has not been made (Next, item 1).
-Built: CI on every push and pull request (`.github/workflows/ci.yml`), which runs `make check` on Linux, both test suites on macOS and Windows, and builds and lints the desktop on all three; `make check` now vets and lints the Go code as each of the three platforms.
-Also: the `io.github.unicdeve.jobpilot` identifier, versions, alarms that remove themselves, the installers' configuration, and the release workflow (below).
-The README says how to install, open an unsigned build, update and uninstall, and how to put the CLI on `PATH`.
-Not yet run: the release workflow, which needs a tag pushed (`docs/08_development/packaging.md`).
+| Phase | Status |
+| --- | --- |
+| 0–6: foundation through browser preparation | Substantially implemented; limitations below |
+| 7: Review mode | Implemented, including approval, browser handoff and user-reported submission/outcomes |
+| 8: Scouts | Implemented, including deterministic eligibility, OS schedules and desktop notifications |
+| 9: Extensibility | Deferred; the plugin protocol remains proposed |
+| 10: Distribution | Packaging and release automation built; first release and installed-build verification outstanding |
 
-## Implemented
+Prompt customization (PR-013, ADR-0031) closes the last originally outstanding MVP requirement.
+Implemented does not mean verified on every target platform or guaranteed to work with every job site.
 
-### Decisions agreed
+## Architecture and boundaries
 
-- Product concept agreed
-- Local-first architecture agreed
-- Go as primary runtime agreed
-- CLI + desktop agreed
-- SQLite agreed
-- Ollama as initial local LLM agreed
-- Tauri + React desktop direction agreed
-- Go Playwright direction agreed
-- Go MarkItDown direction agreed, narrowed by ADR-0016: PDFs are extracted by JobPilot, everything else stays with MarkItDown
-- Assist/Review modes agreed; Autopilot removed by ADR-0014, with unattended work moved to a Scout
-- Review is default
-- Cross-platform target agreed
+- Go daemon owns core services and SQLite; the Go CLI and Tauri 2 + React + TypeScript desktop are clients of its loopback HTTP API (ADR-0012).
+- Data stays local by default, with no application account or mandatory hosted backend.
+- Ollama is the default local model; llama.cpp, LM Studio and custom OpenAI-compatible endpoints are supported.
+- Hosted model use sends candidate context and job content to the configured host, with a notice when configured (ADR-0030).
+- Review is the default mode; Assist never prepares external forms.
+- JobPilot never submits applications, in any mode or configuration; the user submits in the browser (ADR-0014).
+- Scouts stop before the browser and create applications for review.
+- Candidate facts, eligibility rules, answer derivation and draft checks remain deterministic where required; external content is untrusted.
+- Go Playwright uses installed Chrome and a dedicated JobPilot profile; document conversion uses a port, with JobPilot's PDF extraction and Go MarkItDown for other supported formats (ADR-0016).
 
-### Features implemented (CLI unless noted; see gaps below)
+## Implemented workflows
 
-- Saved-search default changes and deletion with replacement promotion are transactional, preserving the previous state on failure.
-  Criteria edits preserve a concurrently changed default.
-- A hosted model (ADR-0030, amending ADR-0019): "Custom" takes a provider's base URL as published (`https://openrouter.ai/api/v1`), a model, and an API key chosen from the model's keys or stored there and then, in Settings → AI model, the first-run wizard and `jobpilot-cli settings set-llm`.
-  The key is a credential under the source `llm`; the settings hold its label, the daemon reads the key from the keychain each time it builds a request and sends it as a bearer token, and a key is refused for plain http to anything but this computer.
-  A base URL that is not this computer shows, beside the field, that the profile, resume and job postings are sent to its host.
-  Errors are written from the response status, never the body, which can quote the key.
-  The OpenAI-compatible adapter now appends `/chat/completions` rather than `/v1/chat/completions`, and migration `00024` adds `/v1` to stored llama.cpp, LM Studio and custom base URLs so local servers keep working.
-- Prompt customization (ADR-0031, `docs/02_features/20_prompt_customization.md`): the user may replace the guidance — judgement and style — that matching, cover letters and written answers are written under, in Settings → Prompts and `jobpilot-cli settings prompts`.
-  The frame of each prompt (its role, the rules that protect the candidate, the reply's contract) is code's and cannot be changed; it follows the guidance in the system prompt and says it comes first, and the guidance is never sent beside a posting.
-  Guidance is one setting, `prompt_guidance`; a reset prompt follows its default as releases change it, and a default changed under the user's own guidance is pointed out.
-  Making matching's frame state that the posting is not evidence of the candidate cut skills the model claimed the candidate had by a third on `llama3.2:1b` (34 to 20, and 27 to 20, in two rounds of 20 runs).
-- Notifications (ADR-0028, `docs/02_features/11_notifications.md`): a scheduled scout run that created applications or failed, and any run that created an application for a strong match (80 by default), is recorded in a `notifications` table (migration `00023_notifications.sql`) and posted by the desktop app, which the daemon starts in a windowless delivery mode so the notification is JobPilot's own on every platform.
-  The text is counts and the scout's name, written in core; a claim makes a notification post at most once; one never posted waits on the Dashboard under "While you were away".
-  Settings → Notifications and `jobpilot-cli settings notifications` turn posting off and set the strong-match score; `jobpilot-cli notifications` lists what is new.
-  A scout run is now recorded before it loads its saved search and the profile, so one that cannot start is a failed run in Activity, not an invisible one retried at every alarm.
-  Email is designed for and not built.
-- Scout schedules (ADR-0027, `docs/02_features/10_scouts.md`): a scout runs every N hours or daily at a local time, started by launchd, a systemd user timer or Task Scheduler whether or not JobPilot is open.
-  An alarm runs `jobpilot scout wake <id>`, which finds or starts the daemon and asks `POST /v1/scouts/{id}/wake`; core decides whether the scout is due, and a due run belongs to the daemon.
-  On macOS and Linux it does so through a one-line `/bin/sh` script, which runs the executable if it is still there and otherwise removes its own entry: the launchd agent's plist, then the agent itself, or the systemd timer and both units (ADR-0029 §5, `alarmFormat` 2, so every older entry was rewritten once).
-  Every path is an argument to the script rather than part of it.
-  An uninstalled or moved JobPilot so leaves nothing firing; a moved one has its alarms written again at the new path when its daemon next starts.
-  On Windows, where the uninstaller runs as the user, `jobpilot alarms remove` removes every JobPilot task, and refuses while a daemon runs, since its next reconcile would write them back.
-  The macOS agent names the app in `AssociatedBundleIdentifiers`, for Login Items to show it as JobPilot's; whether it does is measured on a built app, which needs the installers.
-  Runs happen one at a time, which also stops two overlapping runs creating the same application twice.
-  The `scouts` table is the schedule: alarms are reconciled to it after every change, at start-up, and before "delete all data", by fingerprint, and a scout shows when it next runs and anything stopping its alarm.
-  The desktop's scout editor and list, `jobpilot-cli scout schedule`, and `trigger` on every run (`started_by`, migration `00022_scout_schedules.sql`) say which runs were the schedule's.
-  Measured on macOS with a real launchd agent, including one removing itself once its executable was gone and `jobpilot alarms remove`; Linux and Windows are built and unit-tested, not yet run.
-  The scripts themselves run under the real `/bin/sh` in the tests, on macOS and Linux, with stand-ins for `launchctl` and `systemctl`.
-  Building it fixed three faults: editing a scout erased its last run, a finishing run rewrote the whole scout row, and the CLI cut every request off at 60 seconds, cancelling a long scout run or letter in the daemon.
-- Scout cancellation preserves completed applications and finalizes the run with a separate five-second deadline, including cancellation during the final scoring call.
-  Best-effort persistence failures are logged rather than silently discarded.
-- Onboarding flow: data directory + schema init, LLM connectivity check,
-  initial candidate profile, optional resume import.
-- Candidate profile management: get, update, delete. Name is stored as
-  separate `first_name`/`last_name` columns (migration
-  `00004_candidate_name_split.sql`), not one combined field — this fixed a
-  real bug found live during Phase 6 verification, where `profileFactAnswer`
-  matched any question label containing "name" and put the candidate's
-  full name into both a form's "first name" and "last name" fields;
-  `Candidate.FullName()` is used wherever a single display string is
-  wanted (cover letters, CLI summaries).
-- Calendar dates (work history start/end, earliest start date) are a
-  `domain.Date`, spelled `YYYY-MM-DD` everywhere — JSON, SQLite, and the
-  UI. They were `time.Time`, which accepts only RFC 3339, so the desktop's
-  date inputs could not save a work history at all; see ADR-0015's
-  "Correction: a date is not an instant". Rows written in the old format
-  still read, so no migration was needed.
-- The desktop's resume picker offers only the formats that convert (PDF,
-  DOCX, TXT, MD, HTML) rather than accepting any file and failing later.
-- Document conversion is a port (`ports.DocumentConverter`, ADR-0016), so
-  core no longer constructs a conversion library and `ResumeService` is
-  testable without a PDF engine. The adapter
-  (`internal/adapters/secondary/documents`) sends PDFs to PDFium's
-  page text and everything else to Go MarkItDown, routing by file
-  signature rather than by extension. MarkItDown's own PDF converter reads
-  text out of text rectangles, which both duplicates and deletes
-  characters: measured on a real resume it agreed with a reference
-  extraction on 61% of tokens against 96% for the path now used, and it
-  broke the candidate's name and email address. PDF hyperlinks — which are
-  annotations, not text — are recovered and paired with the text they sit
-  on, so a link to an employer or an open-source project is not read as the
-  candidate's own.
-- Resume management: import, list, delete, with an
-  optional review-gated LLM suggestion step (first/last name, contact,
-  location, Summary, Skills draft — `ResumeService.ProposeProfileDraft`)
-  applied to the candidate profile after import. Two entry points share
-  this same mechanism: the CLI onboarding flow (prompt-per-field with the
-  suggestion as the default, applied via an explicit `UpdateProfile` call)
-  and the desktop Profile screen's "Import resume to prefill" button (fills
-  the in-progress form; nothing reaches the daemon until the user hits
-  Save/Create profile, via an "Overwrite existing fields with resume data"
-  toggle, default off, that only fills currently-empty fields unless
-  checked). A draft field the LLM didn't find in the resume is left blank
-  rather than guessed.
-- Job discovery: search and list against seven real, no-auth public sources —
-  Arbeitnow, Remotive, RemoteOK, Himalayas, Hacker News's monthly
-  "Who is hiring?" thread, We Work Remotely and Jobicy — and the hiring
-  pages of the companies the candidate watches, with canonical-URL
-  deduplication. None needs credentials, so discovery works on a fresh
-  install with nothing configured. The last two were added by ADR-0023, and
-  Himalayas is searched by title, keywords and country rather than read from
-  its newest pages. Himalayas is the only one that reliably reports a salary range
-  with its currency and period; Hacker News carries postings that exist on
-  no job board, read from a convention nothing enforces, where a comment
-  that does not fit is skipped rather than guessed at. Its header fields
-  are reduced to plain text, because a company written with its homepage
-  had been stored with the link inside its name; migration
-  `00013_hackernews_company_links.sql` repaired the rows already stored.
-  Google is deliberately not among them: a request to google.com/search
-  returns a JavaScript gate and zero result links, and getting past it is
-  the one thing ADR-0013 and ADR-0014 say the product never does. The
-  Programmable Search API that would have been the legitimate route is closed
-  to new customers and ends on 2027-01-01, so no Google source will be built;
-  Brave Search API is deferred as the alternative (ADR-0020). Each connector caches its fetched
-  listing in memory (15 min for Arbeitnow, 4 hours for Remotive, 30 min for
-  RemoteOK, 1 hour for Hacker News, We Work Remotely, and each Himalayas
-  query and Jobicy feed) matching
-  that API's own stated update cadence, so repeated searches don't poll
-  faster than their data actually changes; job descriptions (HTML) are
-  converted through the same document converter resume import uses. Filtering
-  happens client-side (neither API's own search parameter proved reliable)
-  and now lives in `JobDiscoveryService`, not the connectors — see the saved
-  searches entry below for the term-matching rule that replaced the naive
-  substring match this originally carried over from the mock source.
-  `MockJobSource` remains in the codebase for tests/dev but is no longer in
-  the daemon's production source list, so real searches are never mixed
-  with fake jobs.
-- Stored-jobs read path (`GET /v1/jobs`, `JobDiscoveryService.ListJobs`):
-  browsing already-discovered jobs is a separate operation from searching
-  sources. It is paginated (`limit`/`offset`, default 50, capped at 200),
-  optionally filtered by keywords over title and company, source, remote
-  type and posting date (see AC-006), and
-  returns a `{jobs, total}` envelope so a client can tell whether more pages
-  remain. It reads local history only and contacts no source, which is what
-  makes AC-006's "existing history remains usable offline" true in practice:
-  previously the only way to see a job was `POST /v1/jobs/search`, which
-  queries every source over the network and writes what it finds, so both
-  `jobpilot-cli search list` (despite its help text) and the desktop Jobs
-  screen re-ran a live search just to show a list. Both now read stored
-  history instead.
+### Setup, profile and resumes
 
-- Source failures and being offline (`docs/02_features/04_job_discovery.md` AC-006, AC-008): a search reports how every source answered, in a `{jobs, new, sources}` result, instead of logging a failing source and carrying on.
-  Before, an offline search failed at all five sources, logged each, and told the user it had found 0 jobs.
-  Connectors now mark a source that gave no answer at all with `ports.ErrSourceUnreachable`; when every source is unreachable the search fails with a message that says finding new jobs needs internet access (503), and when every source failed with at least one reached it names each (502).
-  Some sources failing is still a result, and the CLI, the desktop's Discover menu (a warning toast) and a Scout's trail (`source_unreachable` and `source_failed` steps) each name them.
-  What a source said is logged and never returned, since a transport error carries its URL and a keyed source's URL carries its key.
-  Sources are asked at once, so a search that cannot reach them fails after the slowest timeout (30 seconds) rather than after all of them in turn (100); a connector that panics is one failed source rather than a crashed daemon.
-  A search also counts the jobs that are new to it, so a repeated search no longer reads as having found everything again.
+- CLI onboarding and the desktop first-run wizard configure the model, profile, optional resume and saved searches.
+  Setup resumes from existing data; desktop completion queues the added searches without requiring discovery to succeed offline.
+- Candidate facts are structured: names, contact, location/time zone, availability, links, work authorization, remote preference, skills and dated work history (ADR-0015).
+  Calendar dates use `YYYY-MM-DD`; experience spans do not double-count overlapping roles.
+- PDF, DOCX, TXT, MD and HTML resumes can be imported, listed and deleted.
+  Resume-to-profile suggestions require review and never directly overwrite saved candidate facts (ADR-0011).
+- About you stores the candidate's own stories, preferences, writing sample and reusable personal answers, with per-application context (ADR-0022).
 
-- Saved searches (`docs/02_features/04_job_discovery.md` AC-001,
-  `docs/02_features/13_settings.md`): named sets of criteria the user keeps
-  and picks between, one of them the default. Stored in `saved_searches`
-  (migration `00005`) as explicit columns rather than a JSON blob, managed
-  through `jobpilot-cli search saved`, the desktop's Settings → Job searches,
-  and an onboarding step that closes the last outstanding requirement in
-  `docs/02_features/01_onboarding.md`.
+See [onboarding](../02_features/01_onboarding.md), [profile](../02_features/02_candidate_profile.md), [resumes](../02_features/03_resume_management.md) and [About you](../02_features/16_about_you.md).
 
-  Discovery now refuses empty criteria. It previously did not, and nothing
-  else did either: `SearchCriteria` had eleven fields of which only
-  `Keywords` was read by any code, the API accepted the other ten and
-  silently ignored them, and an empty keyword short-circuited the connectors
-  into returning their whole listing — about 266 jobs across the two boards,
-  every one written to the database. The desktop's "Search sources" button
-  sent empty criteria whenever the box was blank, so the most obvious action
-  in the UI did exactly that. `Title`, `Location`, `RemotePreference`,
-  `EmploymentType`, `SalaryMin/Max` and `ExcludedCompanies` are now applied;
-  `ExperienceMin/Max` and `IncludedSources` were deleted rather than left
-  accepted-and-ignored.
+### Discovery and matching
 
-  Filtering moved out of the connectors into `JobDiscoveryService`, behind a
-  new `FiltersServerSide` capability
-  (`docs/04_connectors/00_connector_sdk.md`). The same filter loop had been
-  copy-pasted into all three connectors, sharing a helper defined in the mock
-  source, so every new connector had to remember to filter and nothing caught
-  it if it did not. Matching is now defined once, in
-  `domain.SearchCriteria.Matches`, and matches every term in any order —
-  "backend engineer" finds "Engineer, Backend (Go)", which substring matching
-  missed. SQLite's stored-job search applies the same term rule, so browsing
-  history and searching sources agree about what a query means.
+- Seven no-key sources are production connectors: Arbeitnow, Remotive, RemoteOK, Himalayas, Hacker News, We Work Remotely and Jobicy.
+  Watched company pages support Greenhouse, Lever, Ashby, Workable and SmartRecruiters (ADR-0024; ADR-0026 remains proposed).
+  Mock jobs are excluded from production discovery.
+- Saved searches, a catalog of search templates and company watchlists are available in both interfaces.
+  Criteria edits and default-search changes preserve concurrent or failed updates.
+- Discovery normalizes and deduplicates jobs, caches source responses, counts newly stored jobs, and names partial source failures.
+  An all-unreachable search reports that fresh discovery needs internet.
+- Browsing stored jobs is a separate, paginated local read path, usable offline.
+  Jobs can be filtered, hidden as not interested, imported by URL and opened with their analysis and applications.
+- Core derives location eligibility, relocation/sponsorship signals and working-hour requirements from posting evidence (ADR-0023, ADR-0025).
+  Saved searches can filter by work country, relocation/sponsorship and fitting hours.
+- Matching returns validated structured scores, confidence, strengths, gaps and rationale, persisted locally.
+  Ollama supports schema-constrained output; every provider's decoded output is validated (ADR-0017).
 
-- Credential storage (ADR-0019): API keys live in the OS keychain, never in
-  the database, addressed by a source and a user-chosen label —
-  `adzuna/work`. Managed from `jobpilot-cli credentials` and the desktop's
-  Settings → Job source keys.
+See [discovery](../02_features/04_job_discovery.md), [matching](../02_features/05_job_matching.md), [templates](../02_features/14_search_templates.md), [watchlists](../02_features/17_company_watchlists.md) and [working hours](../02_features/18_time_zones.md).
 
-  A credential goes in and never comes out. There is no route that returns a
-  secret, and `TestNoResponseCarriesACredential` checks that every response
-  about credentials is free of one. The reason is ADR-0012: the daemon has
-  no authentication, so a readable secret would be less protected on
-  loopback than in a file with `0600` on it. The desktop says so where the
-  key is typed rather than appearing to have lost it.
+### Applications and browser preparation
 
-  Two places that would seem to need a secret still avoid one. A job board
-  login lives in the browser worker's own Chrome profile, which the user
-  signs into by hand; a cloud LLM credential belongs to Ollama, which holds
-  its own, and `domain.LLMSettings` has no key field.
+- Applications have a validated state machine and durable transition history.
+  Approval, external submission and subsequent outcomes are explicitly recorded by the user; no outcome is inferred.
+- Cover letters are versioned and editable.
+  Answers resolve through profile facts, deterministic derivation, narrative generation, or a request for user input; unknown factual answers never reach the model.
+- Deterministic draft checks flag preambles, stock phrases, excess letter length and unsupported years of experience.
+  Flags are recomputed on read and advise the reviewer without blocking actions.
+- Model generation streams with inactivity limits rather than a fixed total duration; incomplete streams fail.
+- Browser preparation shares one Chrome session, with a tab per task.
+  Apply-control rules choose the route to a form, with a constrained model fallback; a form gate prevents filling unrelated signup boxes (ADR-0013).
+- Resolved fields are filled; unanswered questions remain for the user.
+  Success, detected blockers and failures leave the preparation browser window open, and no submit control is clicked.
+  Custom job import closes its reading window after extraction.
+- Recorded Ashby, Greenhouse and Lever forms and negative posting-page fixtures exercise extraction and routing offline.
 
-  `credential_names` (migration `00011`) records which refs exist and holds
-  no value — `go-keyring` cannot enumerate, and a user-chosen label cannot
-  be guessed. Writes go to the keychain first, so a crash leaves a stored
-  secret nothing lists rather than a listed one nothing can read.
+See [letters](../02_features/06_cover_letters.md), [answers](../02_features/07_application_answers.md), [applications](../02_features/08_applications.md), [Review](../02_features/09_review_mode.md), [draft checks](../02_features/19_draft_checks.md) and [browser architecture](../01_architecture/03_browser_worker.md).
 
-  Running the daemon with no login keychain reachable was measured, and it
-  did not fail: macOS `security` waited for a prompt nobody would answer,
-  indefinitely, and the request never returned. Every keystore call is now
-  bounded at ten seconds and names the `JOBPILOT_CREDENTIAL_<SOURCE>__<LABEL>`
-  override, which is read before the keychain and never written. A keystore
-  that did not answer is a 503; the first implementation said 400, which
-  told the user to fix a request that was correct.
+### Scouts, notifications and activity
 
-  Only macOS is verified. The Linux and Windows paths are the library's.
+- Scouts use a saved search, a score floor and a per-run ceiling to analyze local or freshly discovered jobs and create applications for review (ADR-0018).
+  Runs serialize, skip ineligible or already handled jobs, and preserve completed applications on cancellation.
+- Manual, every-N-hours and daily schedules are supported through launchd, systemd user timers and Task Scheduler (ADR-0027).
+  The database is authoritative; core decides whether a wake is due and reconciles alarms after changes and daemon startup.
+- Notification delivery records a claim to avoid duplicate posting; undelivered items appear on the Dashboard.
+  Settings control posting and the strong-match score (ADR-0028).
+- Desktop Activity and CLI activity commands show browser/scout runs, steps, failures and deterministic policy results.
+  Filled-field events do not retain the candidate's answers.
 
-- Search templates (`docs/02_features/14_search_templates.md`): a catalog of
-  ready-made criteria, 34 of them in 7 groups, served from
-  `internal/core/domain` through `GET /v1/search-templates` so the desktop
-  and the CLI cannot drift apart. Importing one creates an ordinary saved
-  search; a second copy of the same template is numbered rather than
-  refused, and nothing links a search back to where it came from.
-  Offered first in onboarding, and behind "Use a template" in Settings →
-  Job searches, alongside `jobpilot-cli search templates list|import`.
+See [Scouts](../02_features/10_scouts.md), [notifications](../02_features/11_notifications.md) and [Activity](../02_features/12_agent_activity.md).
 
-  The catalog exists because `SearchCriteria.Matches` is unforgiving in ways
-  the form does not show, and every entry was chosen by measuring candidate
-  criteria against 654 live postings pulled from all five sources at once.
-  Three findings shaped it: a role word in `Title` costs the half of the
-  market that spells it the other way (`title="backend engineer"` and
-  `title="backend"` returned the same 11 postings, and the second also finds
-  Developer); a split compound beats any one spelling, since terms are
-  matched as substrings (`"full stack"` 26, `"full-stack"` 15,
-  `"fullstack"` 9); and `Keywords` reads whole descriptions, where a short
-  word is supplied by prose (`keywords="go"` matched 426 of 654, on "go-to",
-  "goals" and "Django"; `"rust"` matched 151, on "trust"). The same
-  substring rule rules out searching on UI, UX, ML, SRE or iOS by name —
-  "ui" matches "Cruise", "ux" matches "Luxury", "ml" matches "Teamleiter" —
-  so each is spelled out or replaced.
+### Desktop, settings and data
 
-  Measured for the profile that prompted it, the three specialist searches
-  written by hand found 26 postings and the equivalent templates 112. The
-  templates are guarded by tests rather than by review: every one must match
-  a real posting, none may match a decoy, and no keyword may be shorter than
-  five characters.
+- Screens: Dashboard, Jobs (including Analyzed), Applications, Scouts, Activity, Profile, Resumes and Settings.
+  Matches is part of Jobs; `/matches` redirects there.
+- TanStack Query manages server state, including offline loopback access; sections retain selection, drafts and scroll positions between visits.
+  Discovery is queued, shows source/search progress and can refresh stale saved searches once per launch.
+- Light, dark and system themes, keyboard navigation, split views and safely rendered job markdown are implemented.
+- Settings cover appearance, model/key selection, prompt guidance, saved searches/watchlists, notifications, API keys, data deletion and About.
+  Prompt guidance changes judgement/style; safety rules and response contracts remain code-owned (ADR-0031).
+- Credentials live in the OS keystore, with labels stored locally and no secret-read API.
+  Keychain calls have bounded waits and documented environment overrides (ADR-0019).
+- Deletion previews show dependent records and require an unchanged preview token.
+  Foreign-key rules match core deletion rules; secure deletion/checkpointing covers SQLite, and delete-all also removes credentials, browser data, logs and Scout alarms (ADR-0021).
 
-- Custom job URL import (`docs/02_features/04_job_discovery.md` AC-007):
-  none of the five public APIs can fetch an arbitrary job by
-  URL, so `JobDiscoveryService.ImportJob` falls back to
-  `importViaBrowser` — opening the URL in the same Playwright worker Phase 6
-  built for application prep, reading the rendered page (handles
-  JS-rendered job boards a plain HTTP fetch couldn't), and asking the LLM
-  to extract structured fields (title, company, location, remote/employment
-  type, salary if stated, skills, and a cleaned job description) from the
-  page's converted markdown — the same "extract, review-gated, never
-  invent" pattern `ResumeService.ProposeProfileDraft` already established.
-  Unlike `PrepareApplication`, the browser window is closed once the page
-  is read rather than left open, since importing a job isn't a submission
-  flow. A detected CAPTCHA/blocker, or a page the LLM can't find a job
-  title on, fails clearly rather than saving a garbage job record.
-- Job matching via Ollama: structured JSON output (score, confidence,
-  strengths, gaps, missing skills, rationale), persisted per candidate/job.
-- SQLite persistence for candidates, resumes, jobs, and matches, with
-  goose-based versioned migrations (embedded in the binary).
-- LLM provider/model settings (`jobpilot-cli settings show`/`set-llm`):
-  choose from known local providers (Ollama, llama.cpp, LM Studio) or a
-  custom OpenAI-compatible endpoint, with a manually-entered model name;
-  persisted in SQLite's `user_settings` table. A single active provider
-  configuration is supported, per `docs/01_architecture/05_llm.md`. The
-  daemon resolves those settings per request
-  (`internal/adapters/secondary/llm.ReloadingProvider`) rather than once at
-  startup, so saving them takes effect immediately: the daemon outlives both
-  the desktop app and the CLI, and previously kept using whatever was stored
-  when it started until the user found and restarted it.
-- Submission tracking (Phase 7, `docs/02_features/08_applications.md`): what happens to an application after it is sent.
-  JobPilot hands the user a filled form in a browser and never presses send itself, so only the user knows whether they did — and until now nothing asked.
-  An approved application sat approved forever, indistinguishable from one that was sent, and a sent one had nowhere to go but REJECTED.
-  INTERVIEWING, OFFERED and NO_RESPONSE record what the employer said, WITHDRAWN became reachable from all three plus SUBMITTED, and no outcome is ever inferred — NO_RESPONSE is the user closing something out, never a timer (AC-007).
-  `GET /v1/applications/{id}/transitions` serves the state machine's own answer, so the desktop offers the moves that will work instead of all nine states with an error for most of them, and the CLI's `application show` lists them too.
-  The desktop asks the question directly when an application is approved, shows when it was submitted, groups the Applications list by whose move it is, and puts a count of what is waiting on the user on the Dashboard.
-  `jobpilot-cli application submitted <id>` is the same act under the name a user would look for.
-- Data deletion and "Not interested" (`docs/02_features/15_data_deletion.md`, ADR-0021): a job, an application, a cover letter version, a resume, the profile, the activity history, the unused jobs, or everything, from the CLI and the desktop.
-  Before, almost nothing could be deleted: twelve of the eighteen foreign keys had no `ON DELETE` rule, so a row anything referenced could not be removed, and deleting a resume an application had used failed with a 500.
-  Migration `00015` rebuilds the eight tables concerned so every foreign key carries its rule, and repairs, by those rules, the orphans left from when foreign keys were enforced on one pooled connection only.
-  The rules are `domain.DeletionRules`, and a test fails if the schema's foreign keys ever disagree with them.
-  Every deletion is previewed first, by kind and count, and carried out only with the preview's token; one whose reach changed since is refused with the new reach, so a scout acting between the two cannot have something deleted the user was not shown.
-  Deleted content is overwritten on disk (`secure_delete`, a WAL checkpoint after each deletion, and a vacuum after "delete all data"), which also removes the keychain's API keys, the browser profile and the daemon's log.
-  "Not interested" hides a job from every list and search result and has scouts pass it over before scoring, without deleting it; `jobpilot-cli job not-interested`, and a button on a job's page and in the job list.
-  The repository `Delete` methods the deletion service supersedes were removed, so nothing deletes without a preview, and core no longer imports the SQLite adapter to set up storage (`ports.LocalStorage`).
+See [desktop](../01_architecture/02_desktop.md), [settings](../02_features/13_settings.md), [prompts](../02_features/20_prompt_customization.md) and [deletion](../02_features/15_data_deletion.md).
 
-- No profile yet is an answer, not an error: `GET /v1/profile` is a 404 for an installation that has none (`ports.ErrNoCandidate`), and the desktop reads it as `null`.
-  It was a 500, which the desktop kept as an errored query, and that turned into a request loop that left the app on "Loading…" for anyone who skipped first-run setup.
-  An errored query with no data reads as pending while it refetches, the setup gate unmounted every screen while the profile was pending, and each screen remounting refetched it — thousands of requests a minute against a fresh install.
-  The gate now waits only for the first answer, which also stops a slower form of the loop while the daemon is down.
-  An error from the daemon now reads as a sentence, without the "Error: " that had been in front of every one.
-- A record an ID names that does not exist is a 404 across the API, not a 500 (`docs/01_architecture/07_ipc.md`, "A missing record is 404, a missing reference 422").
-  Every SQLite repository answers a missing row with `ports.NotFoundError`, which matches `ports.ErrNotFound`, and the HTTP layer's one fallback maps it.
-  The desktop's job, application and activity-run pages show that the record is gone, with the way back to the list, instead of the daemon's message in red, and do not retry a 404.
-- A record a request body names that does not exist is a 422 (`docs/01_architecture/07_ipc.md`, "A missing record is 404, a missing reference 422").
-  The service looks it up before saving, so `POST /v1/applications` and `POST /v1/resumes` with a job, candidate or resume that is not there no longer fail at the database's foreign key as a 500, and match analysis, watching a company from a job, and saving a scout answer the same way instead of with 404 or 400.
-  A `PUT` to a scout that does not exist is now 404 rather than 400.
+## Distribution and verification
 
-- Desktop first-run setup (`/welcome`, `docs/02_features/01_onboarding.md`):
-  the four things an installation needs — LLM provider, candidate profile,
-  optional resume, saved search — in the CLI `onboard` order, since
-  prefilling a profile from a resume needs the LLM. A new installation is
-  redirected there; skipping is remembered for the session and a banner
-  leads back while anything is still missing. Progress is derived from what
-  exists rather than from a stored flag, so it resumes at the first gap.
-  Previously each prerequisite was reachable on its own screen and each
-  screen said what was missing, but nothing put them in an order.
-- Setup ends by searching (`docs/02_features/01_onboarding.md` AC-006): the searches the desktop wizard adds are run as it finishes, so it no longer ends on a dashboard of zeros with a Discover button to find.
-  A search while it runs is shown at the bottom right ("Searching 5 job sources…", and which search), from `GET /v1/sources`, and says what it found when it is done.
-  Discovery runs are queued one at a time wherever they were started, and a run outlives the screen that started it; the Discover menu cannot ask for a search already going.
-  The Discover menu's "All saved searches" queues every saved search at once, rather than one click each.
-  The desktop no longer pauses its requests to the daemon when the OS reports being offline: TanStack Query's default does that, and the daemon is on loopback, so it stopped local history loading at exactly the time it is meant to keep working.
-- About you (`docs/02_features/16_about_you.md`, ADR-0022): the candidate says who they are — six optional questions, how they want to sound, a writing sample — once, and a few words about each job before its letter: what draws them to it, and up to two questions the model proposes from the posting.
-  Letters and written answers are built from it; written answers also get the resume, which they lacked.
-  A written answer the candidate wrote can be kept for similar questions.
-  Only the candidate writes an answer; the model only proposes questions, which are checked and delimited as untrusted.
-  Stored in `personal_answers` (migration `00018`), which also took `application_preferences` from the candidate.
-  Desktop: Profile → About you, and a questions step before "Write one" and "Rewrite". CLI: `profile about`, `cover-letter generate` asks first, `question keep`.
-  A rewritten letter now replaces the old one on screen straight away; it used to show until the application refetched.
-- Checking what the model wrote (`docs/02_features/19_draft_checks.md`): every cover letter and generated answer the API returns carries flags for the reviewer — a first line in which the model presents the draft instead of writing it ("Here is a tailored cover letter for…"), stock phrases, a letter over the length its writing preferences give (or 250 words), and numbers of years the candidate never gave.
-  `domain.CheckDraft` is deterministic and involves no model; a claim naming a skill is held to the duration the candidate gave it, one naming none to their dated work history, and either stands when the candidate's own words — resume, profile, About you — say it.
-  Flags are worked out on every read and never stored, so an edit is re-checked at once, and they block nothing.
-  Desktop: the flagged words are marked in the letter and answer, with a "To review" list beneath. CLI: the same list after `cover-letter generate`, `list` and `edit`, and `question resolve`, `answer` and `list`.
-- Generation is streamed from Ollama and OpenAI-compatible servers, and given up on only after 60 seconds without a byte (five minutes before the first, for a model loading from disk), with no limit on the total.
-  The 30-second limit on every request is gone: a reasoning model run locally, measured with `deepseek-r1`, does not finish a letter inside it.
-  A stream cut off before the model says it is done is an error rather than a shorter letter, and an OpenAI-compatible server that answers in one piece is read that way.
-- Where a job can be done from (ADR-0023, `docs/02_features/04_job_discovery.md` AC-010 to AC-013): every job says whether it can be done from anywhere, from listed countries, or does not say, read deterministically from its locations against compiled country, region and city tables from GeoNames (`internal/core/domain/geo`); a title or sentence that contradicts its source's label makes it "not stated", with the sentence shown.
-  Every job also says whether it offers, mentions or refuses relocation and visa sponsorship, with the sentence each was read from.
-  A saved search has "I can work from" (a country) and "also include jobs elsewhere that offer relocation or visa sponsorship"; a job refusing sponsorship is kept only for a candidate whose profile says they can already work there.
-  New searches, from the form or templates, start with the profile's country. The stored list filters the same way, in SQL held to `SearchCriteria.MatchesFor` by a test.
-  Stored on the job (migration `00019`) and read again for every stored job when the daemon starts, whenever the reading's version changes.
-  Desktop: the saved-search form, the Jobs filter "Where you can work", readable locations and offer marks in the list, and "Where you can work" on a job's page. CLI: `--work-from` and `--include-relocation` on saved searches and `search list`, and `search show` prints both.
-- Company watchlists (ADR-0024, `docs/02_features/17_company_watchlists.md`): the candidate watches a company by the address of its Greenhouse, Lever or Ashby hiring page, or with "Watch this company" on a job whose posting is on one, and discovery reads every watched company's page as one more source, "Company pages", under the same saved-search criteria as every board.
-  Each page is read at most four at a time and once an hour, each check is recorded on its company, and a company whose page has gone is named in what a search says while the other sources' jobs are kept.
-  A starter list of 38 companies to suggest is generated by `make starter-list` from a seed of 87 boards, each entry saying how many of its open roles could be done from anywhere or from more than one continent when measured.
-  Stored in `watched_companies` (migration `00020`), deleted with "delete all data" and not with the profile.
-  Desktop: Settings → Job searches → Companies you watch, with suggestions, and "Watch this company" beside a job's company. CLI: `company watch|list|rename|unwatch|suggestions`.
-  Building it fixed ADR-0023's reading of "Georgia" beside the United States and of airport codes read as cities, and taught it "AMER"; stored jobs are read again for it.
-- Workable and SmartRecruiters company pages (ADR-0026, proposed): watched as the other three are, by `apply.workable.com/…`, `{account}.workable.com`, `careers.smartrecruiters.com/…` or `jobs.smartrecruiters.com/…`.
-  Workable's short posting address, `apply.workable.com/j/…`, names no company and is followed to the one that does when pasted.
-  SmartRecruiters lists postings without descriptions, so only the postings a search may keep are described, one request each, and kept in memory by posting.
-  A Workable refusal to answer (429) names the company as failing for that search, never as gone.
-  Both give one place per posting, so a regional remote role reads as one country, and neither reaches the starter list: none of 13 SmartRecruiters companies, or of the 18 Workable accounts that answered, qualified.
-- Working hours (ADR-0025, `docs/02_features/18_time_zones.md`): every job says the time zones it requires or prefers, as one window of UTC offsets read deterministically from its description — "CET (+/- 3 hours)", "UTC−6 to UTC+3", "overlap at least 4 hours with US Eastern", "9:00 AM – 12:00 PM PST", "home based in EMEA time zones" — with the sentence shown; sentences that only mention working across zones are not read.
-  The profile gains a time zone (an IANA zone, from GeoNames' table of 418, compiled into `geo`), prefilled from the country when it has one zone and from the computer otherwise.
-  A saved search can leave out jobs whose required hours the candidate cannot work, allowing them to move their day by up to 12 hours they choose; preferences never leave a job out.
-  Stored on the job, profile and saved search (migration `00021`), and every stored job is read again.
-  Desktop: Profile → Location → Time zone, the saved-search form, an hours mark on each job in the list and an hours line on its page. CLI: `profile update`, `--fit-hours` and `--hours-shift`, and `search show`.
-- The desktop refreshes stale searches when it opens (`docs/02_features/04_job_discovery.md` AC-009): each saved search records when it last ran (migration `00017`, from any path that ran it and got an answer), and on opening the desktop runs those not run in the last six hours, through the Discover queue, then says what they found in one line.
-  It is once per launch and the desktop's, never the daemon's on starting, since a CLI command starts the daemon too.
-  Settings → Job searches turns it off, and shows when each search last ran.
-- Hot reload for the daemon (`make dev`, `docs/08_development/hot_reload.md`): air rebuilds and restarts it when its Go or migrations change, pinned in the Makefile and installed into `./bin`.
-  The desktop now follows a daemon that restarts: it used to resolve the port once, so any restart left it pointed at a closed one until the app was reopened.
-  It waits for a daemon to answer without starting one, and a daemon refuses to start while another answers, so a restart cannot leave two on one database.
-  A daemon shutting down removes the discovery file only if it still names that daemon.
-  The desktop's daemon commands run off the main thread; starting a daemon had frozen the window for as long as it took.
-- Third-party notices (`docs/08_development/packaging.md`): `THIRD-PARTY-NOTICES.txt` lists every component a release compiles in, with where its source is and its license, and every archive and bundle carries it.
-  `make notices` writes it (`internal/tools/gennotices`) from `go list -deps` over the daemon and CLI for each Go target, `cargo metadata` over the desktop for each Rust target, and the npm packages the desktop's Vite build records bundling (`desktop/bundled-packages.json`); the standard libraries of Go and Rust, and PDFium with the libraries compiled into it, come from `curated/`, guarded by the versions they were taken for.
-  622 components today: 54 Go, 478 Rust with the standard library's own crates, and 90 npm, every one permissive apart from five MPL-2.0 crates, whose source is named as the MPL asks.
-  Identical license texts are printed once.
-  CI's Linux desktop job runs `make notices-check`, which fails when what ships changed without the file.
-- Release workflow (ADR-0029 §8, `.github/workflows/release.yml`): a `v*` tag is checked against the version every release file carries (`make version-check`, which `make set-version` satisfies, `Cargo.lock` included), `ci.yml` runs again as a reusable workflow, and then `make dist` builds the standalone archives on Linux while `make bundle` builds each desktop bundle on a runner of its platform, arm64 Linux on `ubuntu-24.04-arm`.
-  The last job writes `SHA256SUMS` and creates a draft release with `.github/release-notes.md` as its notes, a pre-release for a tag with one.
-  Signing secrets reach the build only when they are set (`packaging.md`, "Signing").
-  Checked with actionlint and its scripts run locally; not yet run on GitHub, and the arm64 Linux job needs the repository public or a paid runner.
-- Installers (ADR-0029 §3, §5, §6): `make bundle TARGET=<rust target> VERSION=x.y.z` builds the sidecars (`make sidecars`) and then the desktop's bundle for that target, with `desktop/src-tauri/tauri.bundle.conf.json` naming the sidecars, since Tauri will not compile the app while one it names is missing (`docs/08_development/packaging.md`).
-  `tauri.conf.json` names the formats (`.app` and `.dmg`, NSIS, `.deb` and `.rpm`), requires macOS 12, which Go does, ad-hoc signs on macOS, and installs per user on Windows with the hooks in `desktop/src-tauri/windows/hooks.nsh`: `stop` before installing, `alarms restore` after, and `stop` then `alarms remove` before uninstalling.
-  `alarms restore` was added because an upgrade runs the old uninstaller, whose hook cannot tell it from an uninstall (ADR-0029 §5, amended).
-  Measured on macOS: a universal `.app` and `.dmg` built, with `jobpilot`, `jobpilot-cli` and `jobpilot-desktop` side by side in `Contents/MacOS`, all three universal and ad-hoc signed with the hardened runtime, and `codesign --verify --deep --strict` passing; the app starting the daemon inside it, and a CLI linked onto `PATH` doing the same; and `alarms restore` scheduling a removed Scout again, doing nothing with no database, and leaving a running daemon's alarms to it.
-  Not yet measured: a downloaded, quarantined copy opened through Open Anyway, starting its daemon and having launchd start it; Login Items showing the agents as JobPilot's; and the NSIS installer, `.deb` and `.rpm`, which are built on their own platforms by the release workflow.
-- Versions (ADR-0029 §2, §4): `internal/version` holds the version a binary was built as, which `make dist` sets from `VERSION` and every other build leaves as `dev`.
-  `jobpilot --version` and `jobpilot-cli --version` print it, the CLI without reaching the daemon; `/v1/health` returns the daemon's; Settings → About shows the app's and the daemon's.
-  `make dist VERSION=x.y.z` builds both binaries for macOS (arm64, x86_64), Linux (x86_64, arm64) and Windows (x86_64) with `CGO_ENABLED=0`, and packs each pair as a `.tar.gz`, or a `.zip` for Windows.
-  Every client compares its version with the daemon's: the CLI and `scout wake` in `httpapi.EnsureDaemon`, the desktop in `daemon.rs`.
-  A newer one asks the daemon to stop (`POST /v1/shutdown`), waits for its process to exit, and starts its own, and the desktop says "Waiting for the previous version of JobPilot to finish…" meanwhile; an older one uses the daemon, and the CLI says on stderr that it is older.
-  `jobpilot stop` stops the running daemon the same way.
-  Whether the process has exited is told by an exclusive lock on `daemon.lock` in the data directory, which the daemon holds until it exits, since a stopping daemon stops answering before its Scout run has recorded how it ended.
-  The same lock replaced the health check that kept a second daemon from starting, which let one start while the first was still stopping.
-  A client that finds the lock held and nothing answering waits for that daemon to answer or go, rather than starting another.
-  A daemon refuses a database with migrations it does not know, which a newer JobPilot wrote.
-  The desktop now starts the daemon detached, as the Go clients do: in a process group of its own, and on Windows with no console, where a release build would otherwise have opened a window for it.
-  A CLI put on `PATH` as a link to the one inside the app resolves the link to find the daemon beside it.
-  Measured on macOS: a 1.1.0 client replacing a running 1.0.0 daemon, and a 1.0.5 client using the 1.1.0 daemon (`ensure_integration_test.go`); a release build of the desktop replacing a 0.0.9 daemon with its 0.1.0 one, which outlived the app; and `jobpilot stop`.
-  Not measured on Linux or Windows, where the lock is the same `flock` and `LockFileEx` on both sides.
-- The app identifier is `io.github.unicdeve.jobpilot` (ADR-0029 §1), replacing the Tauri template's `com.user.jobpilot`, and the Rust and npm packages are `jobpilot-desktop`.
-  The package is not `jobpilot`, which is the daemon's binary and what the app looks for beside its own executable.
-  The webview's storage is keyed by the identifier, so the theme preference is chosen again once, and macOS asks again for permission to notify.
-  The macOS agents are named after it too.
-  The old prefix was recognised long enough to move the agents of the one machine that had run JobPilot, and then removed before any release, which never carried it.
-- LLM readiness check (`GET /v1/settings/llm/health`): reports whether the
-  configured backend is set up at all and whether it answers right now, so a
-  screen can check before starting work that needs it. The desktop's
-  "Import resume to prefill" uses it — it previously created the profile and
-  imported the resume before failing on the LLM step the user actually
-  wanted.
-- SQLite connection configuration (`internal/adapters/secondary/sqlite/db.go`,
-  `docs/01_architecture/04_database.md`): connection pragmas are set through
-  the DSN so they apply to every connection in `database/sql`'s pool, not
-  just whichever one a post-open `db.Exec` happened to take. This fixed two
-  live defects: concurrent API requests failing outright with
-  `database is locked (5) (SQLITE_BUSY)` — visible as an error on the
-  desktop dashboard's first load, which disappeared on the next visit
-  because by then discovery had nothing new to write — and `PRAGMA
-  foreign_keys = ON` leaving most pooled connections with foreign key
-  enforcement off, so the schema's `FOREIGN KEY` clauses held only by luck.
-  `busy_timeout` makes contention wait rather than fail; `journal_mode=WAL`
-  stops a writer from blocking readers.
+Packaging follows [ADR-0029](../09_decisions/0029-shipping-jobpilot.md): `io.github.unicdeve.jobpilot`, Apache-2.0, unsigned initial builds and manual updates.
+The app bundles the daemon and CLI; standalone archives cover macOS/Linux arm64 and amd64, plus Windows amd64.
+Desktop packages are a universal macOS `.dmg`, Windows per-user NSIS installer, and Linux `.deb`/`.rpm` for both architectures.
+Every bundle/archive includes project and third-party license notices.
 
-- Automated test suite (Phase 0 "Test infrastructure"): unit tests for
-  `internal/core/services` (fakes, no I/O) and pure-logic helpers, plus
-  integration tests (`-tags=integration`) for the SQLite repositories
-  (against a real temp-file database) and the LLM provider adapters
-  (against a fake HTTP server), per `docs/08_development/testing.md`.
-- Daemon/IPC boundary (`docs/09_decisions/0012-loopback-http-ipc.md`):
-  `cmd/jobpilot` is a real process that owns the database and every core
-  service, exposed as JSON over loopback HTTP
-  (`internal/adapters/primary/httpapi`). `cmd/jobpilot-cli` no longer opens
-  SQLite or wires services directly — it is a thin client that auto-starts
-  the daemon (via a discovery file in the data directory) if none is
-  reachable. This closes the gap between the CLI-direct wiring that existed
-  through Phase 3 and the client/daemon architecture described in
-  `docs/01_architecture/00_overview.md` and `07_ipc.md`.
-- Candidate profile normalization, stage one (ADR-0015, migration
-  `00007_normalize_candidate_facts.sql`): email and phone, city/region/country,
-  notice period and earliest start date as columns; links and per-country work
-  authorization as their own tables (`candidate_links`,
-  `candidate_work_authorizations`), written with the candidate in one
-  transaction.
-  This exists because the resolver was measurably wrong, not merely thin.
-  Run against the question labels recorded from live Ashby, Greenhouse and
-  Lever forms, the old matcher put the candidate's email address in both
-  forms' phone fields, put every one of their URLs into each of LinkedIn,
-  Portfolio and Website while leaving GitHub and Twitter empty, and answered
-  a Yes/No sponsorship question with a paragraph of prose.
-  `profileFactAnswer` is now an ordered rule table that refuses
-  decision-shaped labels ("Are you…", "Do you…"), work authorization is
-  answered only for a country the candidate has spoken about and the job is
-  actually in, and a question offering fixed choices is answered only with
-  one of them — an answer a `<select>` does not have used to fail the whole
-  run. `internal/core/services/answers_forms_test.go` asserts all of it
-  against the recorded labels.
-- Candidate profile normalization, stage two (ADR-0015, migration
-  `00008_structured_experience_and_skills.sql`): the work history as dated
-  entries and skills as a list with optional durations, replacing two prose
-  columns.
-  This is what makes answers possible that could not be given at all:
-  "Current company", asked by two of the three recorded forms, and a years-of-experience
-  figure measured as a span rather than summed, so two jobs held at once are
-  not counted twice. A question naming a skill is answered only from what the
-  candidate said about that skill — answering "how many years of Rust?" with
-  the decade they spent writing Go is the kind of invented fact principle 6
-  forbids. Resume extraction was widened to propose all of it, review-gated
-  under ADR-0011, and is forbidden by its own prompt from estimating a
-  duration the resume does not state.
-- Application schema (`internal/adapters/secondary/sqlite/migrations/00002_application_schema.sql`):
-  revised the Phase-0-era `applications`/`application_questions` tables —
-  versioned `cover_letters` (replacing a single mutable column, so
-  regeneration keeps history), a durable `application_state_transitions`
-  table, and an answer `category` column matching the four-category
-  resolver in `docs/02_features/07_application_answers.md`.
-- Application generation (Phase 4, `jobpilot-cli application ...`):
-  `ApplicationService` enforces a validated state machine
-  (`docs/02_features/08_applications.md`) as an explicit Go rule table, with
-  `SUBMITTED` reachable only from `APPROVED` through one explicit call.
-  `CoverLetterService` generates cover letters grounded in the candidate
-  profile and (if chosen) resume, with the job description wrapped as
-  untrusted content the same way job matching already does; each
-  generate/regenerate call creates a new version rather than overwriting the
-  previous one, and versions are user-editable. `AnswerService` resolves
-  application questions through an explicit four-step chain (exact profile
-  fact → one deterministic derivation rule → LLM generation for narrative
-  questions only → left for the user) — an unresolved factual question
-  structurally never reaches the LLM, per
-  `docs/02_features/07_application_answers.md` AC-003.
+Clients replace an older daemon safely, use a newer daemon without downgrading it, and wait on its process lock during startup/shutdown.
+A daemon refuses a database with unknown newer migrations.
+Windows install/uninstall hooks stop the daemon and remove/restore Scout alarms; macOS/Linux alarms remove themselves when the executable is gone.
 
-- Desktop app (Phase 5, `desktop/`): Tauri 2 + React + TypeScript + Tailwind
-  v4, per `docs/01_architecture/02_desktop.md`. A Rust `ensure_daemon`
-  command (`desktop/src-tauri/src/daemon.rs`) locates or spawns
-  `cmd/jobpilot` using the exact same discovery-file protocol as
-  `cmd/jobpilot-cli/daemon.go`, so the CLI and desktop app agree on the
-  running daemon; all other calls go from TypeScript straight to the
-  daemon's loopback API via a typed client
-  (`desktop/src/lib/api.ts`) mirroring `internal/adapters/primary/httpapi/client.go`.
-  Screens: Dashboard, Jobs, Applications (the review/approval UI — state
-  transitions, cover letter versions, question resolution), Scouts,
-  Activity, Profile, Resumes, Settings. Accessible components are generated
-  via the shadcn/ui CLI, per `02_desktop.md`.
-  The look and feel follows the rules in `02_desktop.md`: colours are theme
-  tokens only, with a light and a dark theme and a System / Light / Dark
-  choice under Settings → Appearance kept in the desktop's own storage; the
-  platform's own font; a grouped sidebar with ⌘1–⌘7 and ⌘, shortcuts and a
-  count of applications waiting on the user; and Jobs, Applications and
-  Activity as split views, a list beside the selected item. On macOS the
-  title bar is drawn over the sidebar (`src-tauri/tauri.macos.conf.json`).
-  Matches is no longer a screen of its own: a match is a job with a score,
-  ranked under Jobs → Analyzed, and `/matches` redirects there.
-  Settings has appearance, the AI model, prompts, job searches,
-  notifications, API keys, data and About; the categories
-  `docs/02_features/13_settings.md` lists beyond those (application mode,
-  data retention, storage location, browser settings, policies) have no
-  backend yet.
+CI is configured for pushes and pull requests targeting `main`.
+Linux runs `make check-go`; desktop jobs on all three systems run Biome, frontend builds, Rust formatting, clippy and tests.
+Go tests run on all three, with race detection where supported; notices are checked on Linux.
+The release workflow validates tag/version agreement, runs CI, builds packages and checksums, and creates a draft release for manual publication.
+It has not had its first release run.
 
-- Agent Activity (`docs/02_features/12_agent_activity.md`): the desktop's
-  Activity screen lists every agent run — browser preparation and scout runs
-  alike — newest first, filterable by kind and status, and opens each one to
-  show its steps with their policy results. `GET /v1/agent-runs` and
-  `GET /v1/agent-runs/{id}` serve it, read by `AgentActivityService`, and
-  `jobpilot-cli activity list` / `activity show` read the same trail.
-  A scout run now records its scout (migration `00012_agent_activity.sql`),
-  and steps decided by a deterministic rule record its verdict as their
-  policy result. A filled field's step no longer records the answer typed
-  into it; the same migration removed the answers already stored.
+| Runtime check | Measured | Outstanding |
+| --- | --- | --- |
+| Desktop bundle and sidecars | Local universal macOS app/DMG, ad-hoc signatures, app/CLI starting bundled daemon | Download quarantine/Open Anyway and installed builds on Windows/Linux |
+| Daemon upgrades | Newer/older clients and desktop replacement on macOS | Runtime checks on Windows/Linux |
+| Scout alarms | Real launchd run, self-removal and remove/restore on macOS; generated files/commands tested on all platforms | Real systemd and Task Scheduler runs, windowless Windows wake and daemon survival |
+| Notifications | Debug-binary delivery | Bundled-app attribution and OS permission behavior |
+| Keystore | macOS access and bounded failure when login keychain is unavailable | Real Linux/Windows keystores |
+| Release automation | Workflow/scripts checked locally | First GitHub release build and downloaded-artifact installation |
 
-- Desktop server state (`desktop/src/lib/queries.ts`,
-  `docs/01_architecture/02_desktop.md`): every screen reads the daemon
-  through TanStack Query hooks over the existing typed client rather than a
-  per-screen `useEffect`. Request deduplication removes the double fetch
-  React StrictMode caused on first render (two concurrent job searches on
-  the dashboard, which is what raced on SQLite); the cache means returning
-  to a screen no longer refetches; and mutations declare which queries they
-  invalidate, replacing the Applications detail screen's habit of reloading
-  all five of its endpoints after every action. The Dashboard and Jobs
-  screens now read stored jobs via `GET /v1/jobs` instead of running a live
-  source search, so opening the app no longer performs a network round trip
-  and a database write. The Dashboard's error text no longer appends
-  "has a candidate profile been created yet?" to every failure regardless of
-  cause; a missing profile is now its own state.
+See [testing](../08_development/testing.md) for check coverage and [packaging](../08_development/packaging.md) for the release procedure.
 
-- Job filters: a filter button beside "Add a job by URL" on the Jobs screen.
-  All jobs filters by posting date, source and work type, sent to the
-  daemon since that list is paged there. Analyzed filters by match score,
-  when the job was analyzed, source and work type, applied in the desktop,
-  which already holds every match. Filters live in the URL like the search.
-- Stored times: from migration 00014 (a Go migration, `migrations_go.go`)
-  every DATETIME is written in UTC as `2006-01-02 15:04:05.999999999-07:00`
-  (`_time_format=sqlite`, `_timezone=UTC` on the connection), which SQLite's
-  date functions read. Before it the driver wrote `time.Time.String`, in
-  the local zone and with a monotonic-clock suffix, so no query could
-  compare dates. The migration rewrites existing values and refuses to
-  guess at one it cannot read.
+## Limitations and deliberate exclusions
 
-- Desktop jobs list and scroll restoration: the Jobs screen pages through
-  stored jobs with `useInfiniteQuery` over `GET /v1/jobs` (50 at a time,
-  fetching the next page when a sentinel scrolls into view, with a real
-  "Load more" button behind it for keyboard users and for the case where the
-  observer never fires). Sections stay alive between visits: the shell
-  hides the ones not showing with React's `<Activity>` instead of
-  unmounting them, so selection, search, drafts, open dialogs and scroll
-  positions survive navigation with no restoring code — see "Sections and
-  navigation state" in `docs/01_architecture/02_desktop.md`. The sidebar
-  and ⌘1–⌘7 return to where a section was left.
-
-- Job-centric desktop navigation (`docs/01_architecture/02_desktop.md`): a
-  job detail route (`/jobs/:id`, served by `GET /v1/jobs/{id}` and
-  `jobpilot-cli search show`) shows a stored job with its match, its
-  applications, and the actions that create either. Jobs, the analyzed-jobs
-  view and Applications all link to it, and applications show the job's
-  title instead of a bare `job_id`. The forms that asked the user to paste a
-  job ID (Matches, Applications) and a resume ID (Applications) are gone:
-  analysis starts from the job, an application starts from the job with its
-  resume chosen from a list of imported resumes, and creating one opens it.
-  This closes the gap between the UI, which had mirrored the CLI's
-  verb-per-command shape, and the job-first flows in
-  `docs/00_product/03_user_flows.md`.
-  The job's description is rendered as markdown
-  (`desktop/src/components/markdown.tsx`, react-markdown + remark-gfm) with
-  the restrictions the threat model requires for displayed external text:
-  no raw HTML, no image loading, http(s) links only and opened in the user's
-  browser rather than in the webview.
-
-- Browser automation (Phase 6, `internal/adapters/secondary/browser`,
-  `docs/01_architecture/03_browser_worker.md`): a real Go Playwright
-  (`github.com/mxschmitt/playwright-go`) worker that opens the user's actual
-  installed Chrome — never Playwright's bundled browser — in a dedicated,
-  JobPilot-owned profile (never the user's daily-driver Chrome profile, so
-  it can't conflict with it and never needs their real passwords; the user
-  logs into any job board once inside this profile). `application prepare-
-  in-browser <id>` / the desktop's "Prepare in browser" button navigates to
-  the job posting, walks from there to the page that actually holds the
-  application form, extracts it (label association follows the same
-  chain browsers use: `<label for>` → wrapping `<label>` → `aria-label` →
-  `placeholder` → name, reading what is rendered rather than what the markup
-  holds, with radio buttons sharing a name grouped into one
-  question), turns each field into an `ApplicationQuestion` via
-  `AnswerService.AddExtractedQuestion` (unchanged resolver chain reused as-
-  is), and fills in whatever resolved — leaving `needs_user_input` fields
-  blank in the still-open browser, exactly like a manually entered
-  unresolved question today. On success the application moves
-  `PREPARING → READY_FOR_REVIEW`; on a CAPTCHA, an unreadable form, or a
-  fill failure it moves to `FAILED` with the reason. **It never clicks the
-  target site's own submit button** — the browser window is always left
-  open (on every path, including failure) for the human to review and
-  submit themselves, which is what actually satisfies Review Mode's
-  explicit-approval requirement here; see the "Submission boundary" section
-  added to `03_browser_worker.md`. One Chrome, one tab per task (`browser.ChromeSession`): Chrome permits a single instance per profile directory and every task leaves its window open on purpose, so the original worker-per-run launched a second Chrome against a profile the first run had locked and failed for every run after the first.
-  Chrome is launched lazily on first use, relaunched if the user closes it, and a task closing its own tab leaves every other task's tab alone.
-  The route from posting to form is ADR-0013, now complete.
-  `services.PickApplyControl` ranks the page's own links and buttons — ATS destination, then URL path, then wording — and on every board measured so far it answers with no model involved.
-  When it ranks nothing, `services.ApplyControlChooser` shows the model those same controls as untrusted content and asks for a position in the list or an abstention; it returns an index, never a URL, so the browser can only be sent where the page already pointed, and a missing, unreachable or incoherent model leaves the run exactly where it would have been without a fallback.
-  Whoever chose, `services.LooksLikeApplicationForm` decides what was reached: a page counts only if it asks about a person in at least three distinct ways.
-  That gate was not there before, and the absence had teeth — observed live on an Arbeitnow posting, the one field on the listing page was the site's own "Enter your email" job-alert signup, which the resolver answered with the candidate's contact address, the worker filled, and the run reported as `completed` before moving the application to READY_FOR_REVIEW.
-  Every hop is recorded in the run trail with its destination, whether a model chose it, and whether it left the origin.
-  Recorded copies of six real pages — Ashby, Greenhouse and Lever application forms, and Arbeitnow, Remotive and Ashby postings as the negatives — run the whole decision offline in `internal/adapters/secondary/browser/testdata/ats`, with what was extracted from each checked in beside it.
-  `AgentRun`/`AgentEvent`
-  (`internal/core/domain/agent_run.go`) get their first real implementation
-  here (schema existed since migration 00001, unused until now), each run
-  scoped to one application (migration `00003_agent_runs_application_link.sql`,
-  which also adds `source`/`field_ref` to `application_questions`) and
-  surfaced via `GET /v1/applications/{id}/agent-runs` and a panel on the
-  desktop's Applications detail screen.
-
-## Known gaps within Phases 0–6
-
-- No settings/configuration system beyond LLM provider/model, prompts, job
-  searches and notifications (`docs/02_features/13_settings.md` — other
-  categories like data retention are unimplemented).
-- No job source that needs an API key is *built* yet, though credential
-  storage now exists for one (ADR-0019, below). Measured, Adzuna, Jooble,
-  USAJOBS and The Muse all refuse an unauthenticated request.
-- The desktop has no progress indicator for a long import or discovery
-  beyond its button's label; a resume read by a slow model shows
-  "Reading…" for as long as it takes.
-- Some core entities from `docs/01_architecture/04_database.md` are still
-  not separate tables: `JobSource` (jobs reference their source only by
-  free-text ID). `Prompt` is deliberately a setting rather than a table
-  (ADR-0031 §5).
-  The candidate half is done — `candidate_skills`, `candidate_experiences`,
-  `candidate_links` and `candidate_work_authorizations` are real tables.
-  `CandidateEducation` is deliberately not among them; see the education
-  entry below.
-  ADR-0015 covers the candidate half and is complete. Stage one normalized
-  contact, location, links, work authorization and availability; stage two
-  added dated work history and skills; the closing change made work
-  preference structured and removed education and certifications, which no
-  interface ever wrote and nothing ever read.
-- Structured model output is schema-constrained where the backend supports
-  it (ADR-0017). `ports.Request` carries an optional `ResponseSchema`, which
-  Ollama compiles to a sampling grammar; llama.cpp, LM Studio and custom
-  endpoints ignore it until each is measured, so they behave as before.
-  The schema type cannot express `enum`, `pattern` or numeric bounds: the
-  latter two are not enforced by a grammar, and `enum` is enforced in a way
-  that turns a detectably wrong answer into a plausible one. Every
-  structured reply is validated after decoding regardless, which is new for
-  the job-page extraction — it previously checked nothing but a non-empty
-  title, on content scraped from an arbitrary web page.
-- The profile is empty until it is filled in. ADR-0015 dropped the prose
-  columns, so after upgrading JobPilot answers less than it used to until the
-  user enters their details or re-imports their resume. That is the intended
-  direction — an unanswered question is left for the user, a wrongly answered
-  one goes to an employer — but it is a real regression in the interim.
-- Education and certifications are not stored at all. No recorded form asks
-  about them, so bringing them back should start with a fixture that does.
-- Per-skill durations are self-reported and never estimated. A question about
-  a skill the candidate has not given a duration for is left for them, rather
-  than answered from their career total.
-- Scouts are implemented (ADR-0014, ADR-0018): a scout runs a saved search,
-  scores what it finds through the existing match service, and creates
-  applications in Review state for the user to read. It stops before the
-  browser — `ScoutJobFinder` exposes only search and list, so no scout code
-  path can reach `ImportJob`, which can open one. Eligibility is one
-  deterministic function in core that returns the reason with the decision,
-  because the run's trail has to record why something was rejected.
-  Three of ADR-0014's five rules were already built: salary floor, excluded
-  companies and location/work-arrangement live on the saved search and are
-  applied by `SearchCriteria.Matches`. A scout adds only a match-score floor
-  and a per-run ceiling.
-  A scout is started by the user or by its schedule (ADR-0027). Unattended
-  preparation in the browser stays deferred.
-  `ApplicationMode` is now Assist and Review only, and an unrecognised mode is refused at the boundary rather than stored (ADR-0014, migration `00006_retire_autopilot_mode.sql`).
-  "Assist does not interact with external application forms" is enforced in core: `BrowserWorkerService.PrepareApplication` refuses an Assist application before a browser opens (`409` over HTTP). It had been stated and not checked.
-- The browser worker's CAPTCHA/anti-bot detection (`internal/adapters/secondary/browser/playwright_worker.go`) is a best-effort heuristic, not a real detector, and can still miss a novel challenge — which then surfaces as an extraction or fill failure instead, the same safe stop.
-  It now asks whether a challenge is being posed rather than whether a vendor's script is present: a CAPTCHA iframe blocks only when it is visible and tall enough to cover the form, and the interstitial phrases are matched against rendered text rather than page source.
-  Both of those were false positives with teeth. Real ATS forms carry an invisible reCAPTCHA (measured on Ashby: 256x60, `visibility: hidden`) while being entirely fillable, and the words appear in the scripts of pages that work perfectly well, so the previous "any frame URL containing recaptcha" rule would have failed every application the worker could reach.
-- Radio button groups are extracted as one question with the group's
-  `<fieldset><legend>` text as its label, falling back to a humanized
-  `name` attribute when there's no fieldset/legend — real-world forms
-  without either markup pattern will show a rough, not fully human-authored
-  label.
-- Salary fields on extracted forms aren't filled: `ApplicationQuestion` has
-  no structured salary type, so a form's salary field becomes an ordinary
-  text question resolved (or not) like any other, rather than something
-  purpose-built for numeric/range salary inputs.
-- There is no vision or agentic page understanding in the browser worker.
-  Field discovery is DOM heuristics only: the accessible-name chain, fieldset grouping, and a readability filter that drops a question whose only label is a machine identifier.
-  The model's single job in the browser loop is choosing an apply control when nothing else can (below); it never decides what a field means.
-- Some real questions are dropped rather than asked.
-  A field whose label is a UUID — Lever's custom cards, Ashby's ungrouped radios — is skipped as unanswerable, and the count of skipped fields is not reported anywhere.
-  The user is not told, beyond the browser window being left open on a form with blanks in it.
-- The browser worker requires the user to log into any job board once
-  inside its dedicated, JobPilot-owned Chrome profile (never their real
-  daily-driver profile) before "prepare in browser" can get past an
-  authentication wall on that board — there is no guided first-use flow
-  for this yet.
+- Other settings categories remain unimplemented: a global application-mode setting, retention policy, storage relocation, browser configuration and additional policies.
+  Application modes and Scout eligibility can already be chosen on their own records.
+- Resume/model work can still show only a busy label for a long operation; discovery has queue/progress feedback.
+- Browser CAPTCHA detection and radio labeling are heuristic.
+  Machine-identifier-only fields can be skipped without a reported count; there is no vision-based field understanding or guided first-use board login.
+- Answer derivation is limited, and draft checks do not cover “Never mention” or claims beyond years.
+- Only Ollama uses response schemas as sampling constraints; other providers rely on validation after decoding.
+- Education/certifications are deliberately absent until a recorded form demonstrates a need.
+  Skill durations are self-reported, never inferred; salary questions remain for the user and salary floors belong to saved searches.
+- Upgraded profiles may need details entered or a resume re-imported after the old prose fields were removed.
+- Jobs store source IDs as text rather than separate `JobSource` records; prompt guidance is deliberately a setting, not a table.
+- Keyed job-source adapters are not built; credential selection among multiple labels for one source is unresolved.
+  Google discovery is declined (ADR-0020); Brave is deferred.
+- Regional remote titles can be narrower in the stored reading than intended when a source lists one city (for example “EMEA Remote” listed as Paris).
+  Changing that interpretation remains open under ADR-0026/ADR-0023.
+- Email notifications, third-party plugin/tool SDKs, in-app updates and unattended browser preparation remain deferred.
+  Idle daemon auto-exit is not implemented.
 
 ## Next
 
-1. The first release (ADR-0029). Phase 10 is built and has not shipped:
-   - the repository made public, which also gives the arm64 Linux build its runner; JobPilot is licensed under Apache-2.0 (`LICENSE`, `NOTICE`), and every archive and bundle carries both;
-   - a first run of `release.yml`, from a pre-release tag such as `v0.1.0-rc.1`;
-   - measuring a downloaded build: opening a quarantined `.dmg`'s app through Open Anyway and launchd starting its daemon (ADR-0029 §6), Login Items showing the agents as JobPilot's (§5), and the NSIS installer's hooks, the `.deb` and the `.rpm` on their systems;
-2. Running scout schedules on Linux and Windows. Both adapters are built and tested on the systemd units and task XML they generate, but neither has run on its system. Linux needs a systemd user manager, and a session without one says scheduling is unavailable. On Windows, `conhost.exe --headless` keeping the alarm windowless, and the daemon it starts outliving the task, are both unmeasured.
-   Beside it, seeing a notification from a built, bundled app: delivery is measured with the debug binary, which macOS attributes to the terminal, and Windows attributes a toast to PowerShell until there is an installer (ADR-0028).
-   Both wait on the first release's installers.
-3. The remaining documented gaps — richer answer derivation, the browser worker's CAPTCHA heuristic and radio grouping fallback, the skipped fields a user is never told about, and what the draft check leaves out ("Never mention", and claims other than years: `docs/02_features/19_draft_checks.md`, "Out of scope") — and the Settings category still open (data retention).
-   Two are no longer among them: ADR-0015 §4 settled salary, with the filter on the saved search and a form's salary question left for the user, and ADR-0017 settled structured LLM output.
-4. A keyed job source, now that there is somewhere to put a key (ADR-0019). Adzuna is first, once there is a key to build it against; USAJOBS and Jooble are the same shape. Google's Programmable Search API, which prompted ADR-0019, is closed (ADR-0020), and Brave Search API is deferred as its alternative. Nothing yet says which label a run uses when a source has several — identity is settled and selection is not, and it becomes a real question the moment two labels can both be live.
-5. Verifying the keystore on Linux and Windows. Only macOS was measured, and what was measured there was a hang rather than an error, so the other two should not be assumed.
-6. A title naming a region wider than a job's one listed place: Hugging Face's "EMEA Remote" roles on Workable list Paris and read as France (ADR-0026 §4).
-   Whether such a title should make the reading less certain is a change to ADR-0023 for every source, left open.
+1. Prepare the first pre-release under ADR-0029: refresh starter companies, align release versions, make the repository public as agreed, and run the tag-triggered draft-release workflow.
+   The arm64 Linux runner requires a public repository or paid runner.
+2. Verify downloaded installers: macOS quarantine/sidecars/Login Items attribution, Windows install/upgrade/uninstall hooks, and Linux packages.
+   Measure real schedules, notification attribution, daemon upgrades and keystore behavior on Linux/Windows before claiming cross-platform verification.
+3. Address the documented browser/answer/draft-check gaps and remaining settings requirements within their specifications.
+4. Build a keyed source (Adzuna first) once a key is available and source credential selection is defined.
+5. Resolve regional-title versus single-location eligibility before changing the reading across sources.

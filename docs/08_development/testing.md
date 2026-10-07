@@ -39,6 +39,7 @@ blocker/failure handling, state transitions) with a fake `ports.BrowserWorker`
 and needs no browser at all. The first run of the browser-adapter test
 downloads the Playwright driver (~50MB, cached afterward) — expect that run
 to take longer.
+The real-browser tests skip when installed Chrome or the driver is unavailable, so a passing tagged suite alone does not prove these tests executed.
 
 ## Running tests
 
@@ -62,18 +63,36 @@ CI and local pre-push checks should run the tagged variant (optionally with
 `--build-tags=integration` to lint the tagged files. `make lint` and `make
 lint-integration` cover both, and `make check` runs the whole gate:
 formatting, `go vet` (tagged and untagged), both lint passes, and both test
-suites.
+suites, plus desktop Biome checks.
+`make check` does not build the frontend or run Rust checks; run those separately as CI does.
 
 The tagged vet and lint passes check the code as each platform JobPilot ships for — macOS, Linux and Windows — wherever they run, so a file built only for Windows is linted on a Mac too.
 Only the tests need a machine of each kind.
+
+For the desktop, run these checks from `desktop/`:
+
+```sh
+bun run check
+bun run build
+```
+
+Then run the pinned Rust toolchain's checks from `desktop/src-tauri/`:
+
+```sh
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+When shipped dependencies change, also regenerate and verify [third-party notices](packaging.md#third-party-notices).
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main`, and on every pull request into it.
 Work on `develop`, and pull requests into it, run no CI; `make check` is the gate there.
-Linux runs `make check`.
+Linux runs `make check-go`; the separate desktop job runs the frontend and Rust checks.
 macOS and Windows run both test suites, with `-race` on macOS; the race detector needs cgo, which a Windows runner has no compiler for.
-The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
+The desktop is built and checked on all three: `bun run build` type-checks the frontend, then `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` and `cargo test --locked`.
 
 `.github/workflows/release.yml` calls `ci.yml` (`workflow_call`), so a release is built only from a commit that passes the same checks.
 The Linux desktop job also runs `make notices-check`, which fails when a dependency changed without `make notices` being run (`packaging.md`, "Third-party notices").

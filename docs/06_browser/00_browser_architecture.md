@@ -1,9 +1,9 @@
 # Browser Architecture
 
-Use Go Playwright as the initial browser automation technology.
+Browser preparation is implemented with Go Playwright behind `ports.BrowserWorker`.
+It uses the user's installed Google Chrome, not Playwright's bundled browser.
+A shared `ChromeSession` launches Chrome lazily in a dedicated JobPilot profile and gives each task its own tab.
 
-Chrome/Chromium is expected to be installed by the user.
-
-Browser automation is post-MVP.
-
-The browser layer is isolated behind interfaces so the rest of the application does not depend on Playwright implementation details.
+The worker extracts and fills supported fields, records activity and leaves the browser open for human review and submission.
+It never clicks an external submit control (ADR-0014).
+See [Browser worker architecture](../01_architecture/03_browser_worker.md) for navigation, validation and failure behavior.

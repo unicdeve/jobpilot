@@ -2,6 +2,10 @@
 
 Policy rules are deterministic.
 
+Implemented Scout eligibility combines saved-search filters with a match-score floor and per-run ceiling.
+Other examples below are requirements or possible future rules, not a general implemented policy engine.
+No policy permits automatic submission (ADR-0014).
+
 Examples:
 - minimum match score
 - excluded companies

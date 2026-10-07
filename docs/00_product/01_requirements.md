@@ -52,7 +52,8 @@ Ollama is supported as the initial local LLM provider.
 
 ### PR-013 Prompt customization
 
-Users can customize supported system prompts without editing source code.
+Users can customize the guidance for matching, cover letters and written answers without editing source code.
+The safety rules and response contracts remain code-owned ([ADR-0031](../09_decisions/0031-what-a-user-may-change-in-a-prompt.md)).
 
 ### PR-014 CLI
 
@@ -67,6 +68,11 @@ The application exposes equivalent core user workflows through a native-feeling 
 Previously stored jobs, analyses, generated content, and history remain accessible without internet.
 
 ## Post-MVP requirements
+
+This is the original scope boundary, not a list of unimplemented features.
+Browser preparation, Review mode, Scouts, desktop notifications, Activity, application memory, OS scheduling and packaging are now built.
+Published installers and cross-platform runtime verification remain outstanding.
+See [current state](current_state.md) for status and [roadmap](roadmap.md) for phases.
 
 - Browser automation for application forms.
 - Review workflow with browser form filling.
@@ -88,5 +94,6 @@ Previously stored jobs, analyses, generated content, and history remain accessib
 - No mandatory hosted backend.
 - Local-first storage.
 - User controls consequential external actions.
+- JobPilot never submits an application; the user submits in the browser.
 - No assumption that arbitrary websites permit automation.
 - No guarantee that every job site can be automated.

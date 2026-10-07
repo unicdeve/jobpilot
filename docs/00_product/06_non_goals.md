@@ -4,6 +4,7 @@ For the initial product:
 
 - Building a hosted SaaS backend.
 - Requiring user accounts.
+- Submitting applications to employers, in any mode or configuration.
 - Building a general-purpose autonomous browser agent.
 - Guaranteeing automation support for every job website.
 - Circumventing CAPTCHAs or anti-bot protections.

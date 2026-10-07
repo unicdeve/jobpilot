@@ -49,7 +49,7 @@
 - CAPTCHA appears
 - Session expires
 - Form changes
-- Submission fails
+- The user's submission in the external browser fails
 - Network disconnects mid-flow
 
 ## Local storage

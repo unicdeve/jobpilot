@@ -25,13 +25,15 @@ Avoid logging:
 
 ## Agent trace
 
-Post-MVP, expose structured traces such as:
+Structured browser and scout traces are implemented as `AgentRun` and `AgentEvent` records.
+Users can read them in desktop Activity or `jobpilot-cli activity`.
+Events include:
+
 - action
 - tool
 - input summary
 - output summary
 - policy result
-- confidence
 - timestamp
 - status
 

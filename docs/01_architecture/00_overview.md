@@ -1,46 +1,37 @@
 # Architecture Overview
 
-## High-level architecture
+## Implemented runtime
 
 ```text
-Desktop UI (Tauri + React)
+Desktop (Tauri + React)     CLI (Go)
+          |                   |
+          +-- loopback HTTP ---+
+                     |
+                 Go daemon
+                     |
+        +------------+-------------+
+        |            |             |
+   Core services  LLM providers  Discovery connectors
         |
-        | local IPC/API
-        v
-Go Agent Daemon
-        |
-        +-- Scheduler
-        +-- Agent Runtime
-        +-- Policy Engine
-        +-- Job Discovery
-        +-- Application Domain
-        +-- LLM Gateway
-        +-- Plugin/Connector Runtime
-        +-- Notifications
-        +-- Storage
-        +-- Secrets
-        |
-        +-- SQLite
-        |
-        +-- Go Playwright (post-MVP)
+        +-- SQLite and OS credential storage
+        +-- Go Playwright / installed Chrome
+        +-- Scout alarms / OS scheduler
+        +-- Desktop notification delivery
 ```
 
-## Core design
+The daemon owns local state and coordinates the core services.
+The desktop and CLI are clients of its loopback HTTP API (ADR-0012).
+Core business rules remain independent of UI, storage and provider adapters.
 
-The daemon is the system of record and long-running coordinator. It should not consume significant resources continuously when there is no scheduled or user-requested work.
+Scouts discover, match and create applications for review without opening the browser.
+Browser preparation fills supported fields and leaves submission to the user (ADR-0014).
+A general model-directed tool runtime and external plugin loading remain proposals, not implemented subsystems.
 
-The desktop application is a UI client of the daemon.
+## Lifecycle and resources
 
-The CLI is another client of the daemon/core services.
+Clients and scheduled Scout alarms find or start a single daemon on demand.
+Closing the desktop does not stop it; it remains running until shutdown is requested or it receives a termination signal.
+Automatic idle shutdown is not implemented, and there is no daemon login item (ADR-0029).
 
-## Runtime modes
-
-- Interactive command
-- Desktop session
-- Scheduled/background execution
-
-The daemon may be started on demand, launched by the desktop application, or invoked by OS scheduling mechanisms. It should not require a permanent 24/7 process.
-
-## Resource principle
-
-Idle JobPilot should consume minimal resources. Work should be event-driven, scheduled, or explicitly requested.
+Idle work should be event-driven and consume minimal resources.
+See [Daemon architecture](01_daemon.md) for discovery, version negotiation, scheduling and shutdown.

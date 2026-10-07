@@ -1,5 +1,11 @@
 # Agent Loop
 
+## Proposed general runtime
+
+This loop describes a possible future tool runtime.
+The implemented scout and browser workflows are explicit services, not an LLM selecting arbitrary tools.
+Any implementation must preserve ADR-0014's submission boundary.
+
 ## Steps
 
 1. Load task.

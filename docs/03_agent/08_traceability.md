@@ -2,15 +2,21 @@
 
 Persist structured events, not hidden chain-of-thought.
 
-An event can include:
+Browser preparation and scout runs already persist `AgentRun` and `AgentEvent` records.
+The desktop Activity screen and `jobpilot-cli activity` expose these records.
+
+An event includes:
 - run ID
-- action ID
+- action
 - tool
 - input summary
 - output summary
 - policy result
 - status
 - duration
-- error
+- timestamp
+
+Run failures are recorded on the run; event summaries explain individual steps.
+Filled-field events omit the candidate's answer.
 
 The trace should allow users/developers to understand what happened without exposing internal model reasoning.

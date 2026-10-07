@@ -1,16 +1,9 @@
 # Agent Memory
 
-## MVP
+Application questions and answers, versioned cover letters and state transitions are persisted locally.
+Personal answers are explicit candidate-wide or application-specific records that users can inspect and edit (ADR-0022).
+The answer generator uses relevant personal-answer material as context for new content.
 
-Persist useful application history and generated content.
-
-## Post-MVP application memory
-
-Store:
-- question
-- answer
-- job/company
-- timestamp
-- user-edited status
-
-Memory should be explicit and inspectable, not an opaque uncontrolled model memory.
+This is application history and user-owned data, not opaque model memory.
+Broader automatic retrieval of historical answers is not implemented.
+See [Application answers](../02_features/07_application_answers.md) for the resolver contract.

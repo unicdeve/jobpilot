@@ -51,9 +51,13 @@ Migration `00015` is the example to copy, including repairing orphans by their r
 
 ## Core entities
 
+This inventory includes conceptual entities; it is not a table list.
+`JobSource` and `Policy` are not separate persisted entities, and prompt guidance is a setting.
+Candidate education and certifications were removed by ADR-0015.
+The migrations and domain types define the implemented schema.
+
 - Candidate
 - CandidateExperience
-- CandidateEducation
 - CandidateSkill
 - Resume
 - ResumeDocument

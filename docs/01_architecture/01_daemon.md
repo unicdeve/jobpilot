@@ -9,7 +9,7 @@
 - Coordinate storage
 - Coordinate LLM provider
 - Coordinate discovery connectors
-- Coordinate browser automation post-MVP
+- Coordinate browser preparation
 - Emit structured events
 - Enforce policy boundaries
 
@@ -19,7 +19,7 @@ The daemon is not required to run permanently.
 
 Supported lifecycle patterns:
 
-1. CLI command starts a short-lived process when appropriate. Implemented:
+1. CLI commands find or start the daemon:
    `cmd/jobpilot-cli` auto-starts `cmd/jobpilot` as a detached process if none
    is reachable (see `docs/09_decisions/0012-loopback-http-ipc.md`).
 2. Desktop application starts/communicates with a local daemon when needed.
@@ -29,7 +29,9 @@ Supported lifecycle patterns:
    starts one if none is running, asks it to run the scout if it is due, and
    exits. The daemon it starts is detached, in a session of its own, so it
    outlives the alarm that started it.
-4. Optional user-configured startup integration can launch the daemon/UI on login.
+
+There is no daemon or UI login item (ADR-0029 §9).
+Scheduled Scout alarms provide startup for due work after a restart.
 
 One daemon runs at a time.
 A daemon holds an exclusive lock on `daemon.lock` in the data directory for as long as its process runs, and refuses to start while another holds it, because two would share one database and one browser profile, and the clients would find only whichever wrote the discovery file last.
@@ -66,4 +68,4 @@ Gracefully stop:
 - LLM calls where possible
 - browser sessions
 - database writes
-- plugin processes
+- plugin processes if a future plugin runtime is implemented

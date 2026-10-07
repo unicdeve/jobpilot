@@ -1,5 +1,9 @@
 # Roadmap
 
+This is the phase scope, not an ordered list of unfinished work.
+Phases 0–8 are substantially implemented; Phase 9 remains deferred, and Phase 10 is built but awaits the first release and installed-build validation.
+See [current state](current_state.md) for gaps, platform verification and the next tasks.
+
 ## Phase 0 - Project foundation
 
 - Repository
@@ -54,7 +58,7 @@
 - Tauri application
 - Native-feeling navigation
 - Jobs
-- Matches
+- Analyzed jobs (matches within Jobs)
 - Applications
 - Profile
 - Settings
@@ -74,7 +78,7 @@
 - Application review state
 - Approval UI
 - Browser handoff
-- Submission tracking
+- User-reported external submission and outcome tracking
 
 ## Phase 8 - Scouts
 

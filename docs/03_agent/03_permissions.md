@@ -1,5 +1,8 @@
 # Tool Permissions
 
+These are conceptual categories for a future general tool runtime.
+Current services enforce their own explicit boundaries; a Scout cannot enter the browser, and Assist mode cannot prepare an external form.
+
 ## Categories
 
 READ_LOCAL
@@ -13,4 +16,5 @@ LLM output cannot grant itself permissions.
 
 The runtime determines whether a tool is available.
 
-External side effects require policy evaluation and, for Review mode, explicit user approval.
+Consequential external actions require explicit user approval.
+No permission, approval or mode authorizes JobPilot to submit an application (ADR-0014).
