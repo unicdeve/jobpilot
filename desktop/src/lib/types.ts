@@ -806,3 +806,10 @@ export interface JobCompany {
   url?: string;
   company: WatchedCompany | null;
 }
+export interface Workspace {
+  id: string;
+  name: string;
+  legacy?: boolean;
+  created_at: string;
+  updated_at: string;
+}

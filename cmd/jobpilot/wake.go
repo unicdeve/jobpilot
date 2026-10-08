@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
@@ -37,6 +38,11 @@ func wake(scoutID string) error {
 	if err != nil {
 		logger.Printf("scout wake %s: %v", scoutID, err)
 		return err
+	}
+	workspaceID, actualScoutID, scoped := strings.Cut(scoutID, ".")
+	if scoped {
+		client = client.WithWorkspace(workspaceID)
+		scoutID = actualScoutID
 	}
 	answer, err := client.WakeScout(ctx, scoutID)
 	if err != nil {

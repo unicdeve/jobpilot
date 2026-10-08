@@ -30,6 +30,8 @@ func main() {
 	// own error/usage printing so each error is reported exactly once.
 	var rootCmd = &cobra.Command{Use: "jobpilot-cli", Version: version.Version, SilenceUsage: true, SilenceErrors: true}
 	rootCmd.SetVersionTemplate("jobpilot-cli {{.Version}}\n")
+	var workspaceID string
+	rootCmd.PersistentFlags().StringVar(&workspaceID, "workspace", "", "use this workspace ID for this command")
 
 	// Answered before the daemon is reached, which it does not need.
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
@@ -42,6 +44,10 @@ func main() {
 	client, err := ensureDaemon(ctx)
 	if err != nil {
 		log.Fatalf("Error connecting to jobpilot daemon: %v", err)
+	}
+	workspaceID = workspaceIDFromArgs(os.Args[1:])
+	if workspaceID != "" {
+		client = client.WithWorkspace(workspaceID)
 	}
 
 	llmSettings, err := client.GetLLMSettings(ctx)
@@ -64,6 +70,7 @@ func main() {
 	rootCmd.AddCommand(newDataCmd(client))
 	rootCmd.AddCommand(newCompanyCmd(client))
 	rootCmd.AddCommand(newNotificationsCmd(client))
+	rootCmd.AddCommand(newWorkspaceCmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a
@@ -72,6 +79,80 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func workspaceIDFromArgs(args []string) string {
+	for i, arg := range args {
+		if value, ok := strings.CutPrefix(arg, "--workspace="); ok {
+			return value
+		}
+		if arg == "--workspace" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func newWorkspaceCmd(client *httpapi.Client) *cobra.Command {
+	cmd := &cobra.Command{Use: "profiles", Short: "Manage isolated local profiles"}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List local profiles",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			workspaces, activeID, err := client.ListWorkspaces(context.Background())
+			if err != nil {
+				return fmt.Errorf("listing profiles: %w", err)
+			}
+			for _, workspace := range workspaces {
+				marker := " "
+				if workspace.ID == activeID {
+					marker = "*"
+				}
+				fmt.Printf("%s %s\t%s\n", marker, workspace.ID, workspace.Name)
+			}
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "add <name>",
+		Short: "Add an empty local profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			workspace, err := client.CreateWorkspace(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("adding profile: %w", err)
+			}
+			fmt.Printf("Created %s (%s).\n", workspace.Name, workspace.ID)
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "use <id>",
+		Short: "Make a profile active for clients without --workspace",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			workspace, err := client.ActivateWorkspace(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("activating profile: %w", err)
+			}
+			fmt.Printf("Using %s.\n", workspace.Name)
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rename <id> <name>",
+		Short: "Rename a local profile",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			workspace, err := client.RenameWorkspace(context.Background(), args[0], args[1])
+			if err != nil {
+				return fmt.Errorf("renaming profile: %w", err)
+			}
+			fmt.Printf("Renamed profile to %s.\n", workspace.Name)
+			return nil
+		},
+	})
+	return cmd
 }
 
 func newOnboardCmd(client *httpapi.Client, llmSettings domain.LLMSettings) *cobra.Command {

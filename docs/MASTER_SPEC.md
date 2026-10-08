@@ -15,6 +15,7 @@ For implementation work, follow the source-of-truth order in [SETUP](../.agents/
 - [Product requirements](00_product/01_requirements.md) and [global acceptance criteria](00_product/acceptance_criteria.md).
 - [User flows](00_product/03_user_flows.md) and [application modes](00_product/04_application_modes.md).
 - [Feature specifications](02_features/00_index.md).
+- [Local workspaces](02_features/21_local_workspaces.md): isolated profiles in one local installation.
 - [Edge cases](00_product/05_edge_cases.md) and [non-goals](00_product/06_non_goals.md).
 
 ## Architecture and decisions

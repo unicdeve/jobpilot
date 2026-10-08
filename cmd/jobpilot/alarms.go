@@ -53,14 +53,10 @@ func removeAlarms() error {
 // running daemon keeps the alarms itself. Otherwise it holds the daemon's
 // lock while it works, so a daemon cannot start on the database under it.
 func restoreAlarms() error {
-	dbPath, err := system.DBPath()
+	catalog, err := system.OpenWorkspaceStore()
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), removeAlarmsTimeout)
 	defer cancel()
 	lock, err := system.LockDaemon(ctx, daemonLockWait)
@@ -73,17 +69,35 @@ func restoreAlarms() error {
 	}
 	defer func() { _ = lock.Release() }()
 
-	db, err := sqlite.NewDB(dbPath)
-	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+	workspaces, _ := catalog.List()
+	for _, workspace := range workspaces {
+		dbPath := catalog.DBPath(workspace)
+		if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		db, err := sqlite.NewDB(dbPath)
+		if err != nil {
+			return fmt.Errorf("opening workspace %s database: %w", workspace.ID, err)
+		}
+		if err := db.InitializeSchema(ctx); err != nil {
+			_ = db.Close()
+			return fmt.Errorf("initializing workspace %s database schema: %w", workspace.ID, err)
+		}
+		namespace := workspace.ID
+		if workspace.Legacy {
+			namespace = ""
+		}
+		svc, err := wireServices(db, catalog.Dir(workspace), namespace)
+		if err == nil {
+			err = svc.Scouts.Reconcile(ctx)
+		}
+		closeErr := db.Close()
+		if err != nil {
+			return fmt.Errorf("restoring workspace %s alarms: %w", workspace.ID, err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("closing workspace %s database: %w", workspace.ID, closeErr)
+		}
 	}
-	defer func() { _ = db.Close() }()
-	if err := db.InitializeSchema(ctx); err != nil {
-		return fmt.Errorf("initializing database schema: %w", err)
-	}
-	svc, err := wireServices(db)
-	if err != nil {
-		return fmt.Errorf("wiring services: %w", err)
-	}
-	return svc.Scouts.Reconcile(ctx)
+	return nil
 }

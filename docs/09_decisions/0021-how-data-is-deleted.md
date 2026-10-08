@@ -164,14 +164,20 @@ Spec D8, which this ADR makes concrete:
 
 ### 7. Delete all data
 
-Spec D7: the installation is left as a fresh install is, apart from the device's theme choice.
+ADR-0032 later scopes this operation to the selected local workspace.
+Its database, credentials, browser profile and Scout alarms are removed; other workspaces and installation-global files remain.
+
+Spec D7 originally left the installation as a fresh install apart from the device's theme choice.
+ADR-0032 narrows “installation” here to the selected workspace.
 It spans three stores that share no transaction, so it is ordered to be safe to repeat:
 
 1. The browser worker's Chrome is closed, and `browser-profile/` is removed.
 2. Each API key named in `credential_names` is deleted from the keychain, then its name.
    Keychain first, as writes already are (ADR-0019), so a failure leaves a name that a repeat finds and finishes rather than a key nothing lists.
 3. Every row of every table is deleted in one transaction, the schema and its version table kept, then the database is vacuumed.
-4. `daemon.log` is truncated, not removed, since the running daemon may hold it open.
+
+The original fourth step truncated `daemon.log`.
+ADR-0032 removes that step because the log is shared by every workspace.
 
 A failure stops the sequence and says which step failed; running it again completes it, because every step is a no-op on what is already gone.
 `daemon.json` is kept: it describes the running daemon, not the user.

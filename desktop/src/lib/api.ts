@@ -52,6 +52,7 @@ import type {
   SourceInfo,
   StarterCompany,
   WatchedCompany,
+  Workspace,
 } from "./types";
 
 /**
@@ -96,6 +97,11 @@ export function isNotFound(err: unknown): boolean {
 
 export interface ApiClient {
   health(): Promise<DaemonHealth>;
+
+  listWorkspaces(): Promise<{ workspaces: Workspace[]; active_workspace_id: string }>;
+  createWorkspace(name: string): Promise<Workspace>;
+  renameWorkspace(id: string, name: string): Promise<Workspace>;
+  activateWorkspace(id: string): Promise<Workspace>;
 
   /// getProfile resolves to null when there is no profile yet, which is how
   /// every installation starts rather than something that went wrong.
@@ -248,12 +254,18 @@ export interface ApiClient {
 interface Daemon {
   baseUrl: string;
   onUnreachable?: () => void;
+  workspaceId?: string;
 }
 
 async function request<T>(daemon: Daemon, method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (daemon.workspaceId && !path.startsWith("/v1/workspaces")) {
+    headers["X-JobPilot-Workspace"] = daemon.workspaceId;
+  }
   const res = await fetch(`${daemon.baseUrl}${path}`, {
     method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }).catch((err: unknown) => {
     // fetch says only "Failed to fetch", whatever went wrong, so the detail
@@ -307,14 +319,20 @@ function deletionPath(target: DeletionTarget, id?: string): string {
 /// createApiClient returns a client for the daemon on port. onUnreachable
 /// is called whenever a request cannot reach it at all, which is how a
 /// daemon that stopped or restarted on another port is noticed.
-export function createApiClient(port: number, onUnreachable?: () => void): ApiClient {
-  const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable };
+export function createApiClient(port: number, onUnreachable?: () => void, workspaceId?: string): ApiClient {
+  const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable, workspaceId };
   const q = (params: Record<string, string>) => `?${new URLSearchParams(params).toString()}`;
   const credentialPath = (source: string, label: string) =>
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
   return {
     health: () => request<DaemonHealth>(daemon, "GET", "/v1/health"),
+    listWorkspaces: () =>
+      request<{ workspaces: Workspace[]; active_workspace_id: string }>(daemon, "GET", "/v1/workspaces"),
+    createWorkspace: (name) => request<Workspace>(daemon, "POST", "/v1/workspaces", { name }),
+    renameWorkspace: (id, name) =>
+      request<Workspace>(daemon, "PUT", `/v1/workspaces/${encodeURIComponent(id)}`, { name }),
+    activateWorkspace: (id) => request<Workspace>(daemon, "POST", `/v1/workspaces/${encodeURIComponent(id)}/activate`),
 
     getProfile: () =>
       request<Candidate>(daemon, "GET", "/v1/profile").catch((err: unknown) => {

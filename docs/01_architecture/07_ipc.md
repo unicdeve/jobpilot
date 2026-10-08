@@ -20,6 +20,15 @@ The transport is hidden behind a client interface:
 `internal/adapters/primary/httpapi.Client`. The daemon's handler lives in the
 same package.
 
+## Local workspace selection
+
+`GET` and `POST /v1/workspaces` list and create local profiles.
+`PUT /v1/workspaces/{id}` renames one, and `POST /v1/workspaces/{id}/activate` selects the installation default.
+
+Every workspace-owned request can carry `X-JobPilot-Workspace: <uuid>`.
+The top-level handler rejects unknown identifiers before resolving a runtime; an omitted header uses the active workspace for older clients.
+`PUT /v1/desktop` is installation-global and records the desktop executable for every open workspace so an inactive profile's scheduled Scout can still deliver a notification.
+
 ## Reads and writes are separate endpoints
 
 Discovery illustrates a rule the API follows generally: fetching from an

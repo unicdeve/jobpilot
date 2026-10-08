@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pressly/goose/v3"
-
-	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
 
 	// Registers the "sqlite" driver with database/sql.
 	_ "modernc.org/sqlite"
@@ -20,6 +20,7 @@ import (
 // DB wraps a SQLite connection and its schema lifecycle.
 type DB struct {
 	conn *sql.DB
+	path string
 }
 
 // connectionPragmas are applied to every connection database/sql opens, not
@@ -96,7 +97,7 @@ func NewDB(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to connect to sqlite database at %s: %w", dbPath, err)
 	}
 
-	return &DB{conn: db}, nil
+	return &DB{conn: db, path: dbPath}, nil
 }
 
 // Close closes the underlying database connection.
@@ -173,9 +174,9 @@ func refuseNewerDatabase(ctx context.Context, provider *goose.Provider) error {
 // Prepare makes the data directory and brings the schema up to date
 // (ports.LocalStorage).
 func (db *DB) Prepare(ctx context.Context) (string, error) {
-	dir, err := system.EnsureDataDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to ensure data directory: %w", err)
+	dir := filepath.Dir(db.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("failed to ensure database directory: %w", err)
 	}
 	if err := db.InitializeSchema(ctx); err != nil {
 		return "", fmt.Errorf("failed to initialize database schema: %w", err)

@@ -23,6 +23,13 @@ route that returns a secret, because the daemon has no authentication
 (ADR-0012) and a readable secret would be less protected there than in a
 file.
 
+The keychain account name also includes the local workspace identifier (ADR-0032).
+This prevents the same public source and label in two profiles from referring to the same secret.
+The original migrated workspace keeps its pre-workspace account names so an upgrade does not lose access to existing credentials.
+
+Local workspaces are an organization and isolation boundary inside JobPilot, not an authorization boundary.
+Anyone who can read the operating-system account's files can read its workspace databases; separate operating-system accounts are required for access control between people.
+
 Two things that look like secrets are deliberately not stored. A job board
 login lives in the browser worker's own Chrome profile, which the user signs
 into by hand. A cloud LLM credential belongs to the local provider — Ollama

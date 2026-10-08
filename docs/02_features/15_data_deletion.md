@@ -5,6 +5,7 @@
 Implemented.
 D1 to D10 were decided on 2026-09-25, and ADR-0021 (D1) records how deletion is built.
 Migration `00015` gives the foreign keys their rules and `00016` adds `jobs.not_interested_at`.
+ADR-0032 scopes “delete all data” to the selected local profile once more than one profile can exist.
 
 ## Purpose
 
@@ -61,7 +62,7 @@ Changing one rebuilds the table: create it anew, copy the rows, drop the old one
 
 ## What is stored, and where
 
-In the database (`jobpilot.db` in the data directory):
+In the selected workspace's database (`jobpilot.db` for the migrated first profile or `workspaces/<id>/jobpilot.db` for a later one):
 
 - about the user: the candidate and its four child tables, resumes (as converted text; the original file is never copied, only its path is recorded)
 - derived from the user and a job: matches, applications with their questions and answers, cover letter versions and state transitions
@@ -72,8 +73,8 @@ In the database (`jobpilot.db` in the data directory):
 Outside it:
 
 - API keys, in the OS keychain (ADR-0019)
-- the browser worker's Chrome profile, `browser-profile/` in the data directory, which holds whatever job boards the user signed into
-- `daemon.log` and `daemon.json` in the data directory
+- the workspace's browser worker Chrome profile, `browser-profile/`, which holds whatever job boards that profile signed into
+- the installation-global `daemon.log`, `daemon.json` and `workspaces.json` in the data directory
 - the desktop's theme choice, in the webview's own storage
 
 Deleted rows are not gone from disk when a `DELETE` returns.
@@ -147,8 +148,9 @@ Two separate actions; see D6:
 
 ### Delete all data
 
-Returns the installation to what a fresh install looks like; see D7.
-Deletes every row in every table, every API key JobPilot stored in the keychain, the browser profile directory, and `daemon.log`, then compacts the database so the content is gone from disk.
+Returns the selected local profile to its setup state; see D7 and ADR-0032.
+Deletes every row in that workspace's database, every API key JobPilot stored for that workspace, its browser profile directory and its Scout alarms, then compacts the database so the content is gone from disk.
+Other profiles, the workspace catalog and the installation-global daemon log stay.
 The browser worker's Chrome is closed first, since it holds the profile directory open.
 The desktop's theme choice is kept: it is a preference of the device, not data about the user.
 
@@ -276,6 +278,8 @@ AC-G-022 asks for derived data to go with its source, and a browser run's steps 
 ### D7 — How much "delete all data" deletes
 
 **Decided: A.**
+
+ADR-0032 supersedes the installation-wide scope: option A now applies within the selected local profile, while other profiles and device-global files remain.
 
 - **A. Everything JobPilot stored, including API keys, the browser profile's sign-ins and the log.**
 - **B. The database only**, leaving keys, sign-ins and settings for a user who wants to start over without setting up again.

@@ -8,6 +8,7 @@ import { SearchTemplatePicker } from "../components/search-template-picker";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { useDaemon } from "../lib/daemon";
 import {
   useCreateSavedSearch,
   useImportResume,
@@ -40,6 +41,7 @@ const steps = ["AI provider", "Your profile", "Resume", "Job search"] as const;
 /// the first thing still missing, and a flag can never disagree with the
 /// database.
 export function Welcome() {
+  const { activeWorkspace } = useDaemon();
   const navigate = useNavigate();
   const { notify } = useToast();
 
@@ -71,7 +73,7 @@ export function Welcome() {
   }, [loading, step, done.llm, done.profile]);
 
   const skip = () => {
-    rememberSkip();
+    if (activeWorkspace) rememberSkip(activeWorkspace.id);
     navigate("/");
   };
 

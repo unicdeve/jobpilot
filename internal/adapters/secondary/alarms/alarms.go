@@ -38,11 +38,17 @@ func readFingerprint(content []byte) string {
 	return string(match[1])
 }
 
-// checkScoutID refuses anything but a UUID before it is written into a
-// plist, a unit file or task XML, or used in a file name.
+// checkScoutID accepts a Scout UUID or the workspace-qualified pair used by
+// isolated workspaces before it participates in a scheduler name or file.
 func checkScoutID(id string) error {
-	if _, err := uuid.Parse(id); err != nil {
-		return fmt.Errorf("a scout's alarm needs a scout ID that is a UUID, got %q", id)
+	parts := strings.Split(id, ".")
+	if len(parts) > 2 {
+		return fmt.Errorf("a scout's alarm needs a uuid or workspace.scout uuid pair, got %q", id)
+	}
+	for _, part := range parts {
+		if parsed, err := uuid.Parse(part); err != nil || parsed.String() != strings.ToLower(part) {
+			return fmt.Errorf("a scout's alarm needs a uuid or workspace.scout uuid pair, got %q", id)
+		}
 	}
 	return nil
 }

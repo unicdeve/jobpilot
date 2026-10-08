@@ -38,7 +38,8 @@ It opens at 1280×820 and cannot be made smaller than 1000×640.
 On macOS the title bar is drawn over the window's content (`src-tauri/tauri.macos.conf.json`), so the sidebar runs to the top edge and toolbars are drag regions; Windows and Linux keep their standard frame.
 
 **Navigation.**
-A grouped sidebar with icons, in the order of the ⌘1–⌘7 shortcuts (Ctrl on Windows and Linux), with Settings at the bottom on ⌘,.
+A grouped sidebar with icons, in the order of the ⌘1–⌘7 shortcuts (Ctrl on Windows and Linux), with the active local profile at the bottom.
+Its menu switches or adds profiles and links to Settings, which remains available on ⌘,.
 Its only badge is the number of applications waiting on the user, because it is the only count that asks for something.
 
 **Lists beside their items.**
@@ -121,6 +122,10 @@ A daemon that stops answering is different: the desktop waits for one to
 answer again without starting one, and keeps the cache when it does, since a
 daemon found through the discovery file serves the same data directory
 (`docs/08_development/hot_reload.md`).
+
+Cached and mounted screen state also belongs to one workspace.
+Switching profiles clears the query cache and remounts the application shell under the new workspace identifier, so drafts, selections and scroll positions cannot cross the isolation boundary.
+The theme provider sits outside that boundary because appearance is a device preference.
 
 ## Rendering untrusted content
 

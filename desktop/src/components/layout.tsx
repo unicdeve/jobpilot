@@ -21,6 +21,7 @@ import { preloadSections, SECTIONS, type Section, sectionFor } from "../sections
 import { ErrorBoundary } from "./error-boundary";
 import { RequireDaemon } from "./require-daemon";
 import { Button } from "./ui/button";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface NavItem {
   /// The section's root, as in SECTIONS.
@@ -194,7 +195,9 @@ function Sidebar({ active, hrefFor }: { active: Section; hrefFor: HrefFor }) {
         <WhenConnected>
           <SetupCallout />
         </WhenConnected>
-        <SidebarLink item={settingsItem} active={active.root === settingsItem.to} to={hrefFor(settingsItem.to)} />
+        <WhenConnected>
+          <WorkspaceSwitcher />
+        </WhenConnected>
       </div>
     </aside>
   );
@@ -298,6 +301,7 @@ function useNavigationShortcuts(hrefFor: HrefFor) {
 /// rather than traps: the screens' own empty states still say what is
 /// missing for anyone who would rather look around first.
 function RequireSetup({ children }: { children: React.ReactNode }) {
+  const { activeWorkspace } = useDaemon();
   const { data: profile, dataUpdatedAt, errorUpdatedAt } = useProfile();
 
   // Deciding before the answer arrives would either flash the dashboard or
@@ -307,7 +311,8 @@ function RequireSetup({ children }: { children: React.ReactNode }) {
   // refetches again — a request loop for as long as the daemon is down.
   const answered = dataUpdatedAt > 0 || errorUpdatedAt > 0;
   if (!answered) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (profile === null && !setupSkipped()) return <Navigate to="/welcome" replace />;
+  if (profile === null && activeWorkspace && !setupSkipped(activeWorkspace.id))
+    return <Navigate to="/welcome" replace />;
 
   return <>{children}</>;
 }

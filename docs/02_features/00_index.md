@@ -11,7 +11,7 @@ See [current state](../00_product/current_state.md) for implementation limitatio
 | Discovery and analysis | [Discovery](04_job_discovery.md), [Matching](05_job_matching.md), [Search templates](14_search_templates.md), [Company watchlists](17_company_watchlists.md), [Working hours](18_time_zones.md) |
 | Application preparation | [Cover letters](06_cover_letters.md), [Answers](07_application_answers.md), [Applications](08_applications.md), [Review mode](09_review_mode.md), [Draft checks](19_draft_checks.md) |
 | Background work and activity | [Scouts](10_scouts.md), [Notifications](11_notifications.md), [Activity](12_agent_activity.md) |
-| Configuration and data | [Settings](13_settings.md), [Data deletion](15_data_deletion.md), [Prompt customization](20_prompt_customization.md) |
+| Configuration and data | [Settings](13_settings.md), [Data deletion](15_data_deletion.md), [Prompt customization](20_prompt_customization.md), [Local workspaces](21_local_workspaces.md) |
 
 The [CLI reference](../CLI.md) and [desktop architecture](../01_architecture/02_desktop.md) cover the interfaces.
 [Browser preparation](../01_architecture/03_browser_worker.md) and Review mode are implemented; the user always submits applications themselves.

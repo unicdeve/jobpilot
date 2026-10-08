@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { DiscoveryActivity, LaunchRefresh } from "./components/discovery-activity";
 import { Layout } from "./components/layout";
 import { RequireDaemon } from "./components/require-daemon";
 import { isNotFound } from "./lib/api";
-import { DaemonProvider } from "./lib/daemon";
+import { DaemonProvider, useDaemon } from "./lib/daemon";
 import { lazyPage } from "./lib/lazy-page";
 import "./lib/platform";
 import { ThemeProvider } from "./lib/theme";
@@ -47,41 +47,50 @@ function App() {
       <ThemeProvider>
         <ToastProvider>
           <DaemonProvider>
-            <DiscoveryActivity />
-            <LaunchRefresh />
-            <HashRouter>
-              <Routes>
-                {/* Outside <Layout>: first-run setup has nothing to navigate
-                  to yet, so it gets the whole window rather than a sidebar
-                  of screens that cannot do anything. */}
-                <Route
-                  path="welcome"
-                  element={
-                    <div className="h-screen overflow-y-auto">
-                      <div data-tauri-drag-region className="h-13" />
-                      <div className="px-8 pb-10">
-                        <RequireDaemon>
-                          <Suspense fallback={null}>
-                            <Welcome />
-                          </Suspense>
-                        </RequireDaemon>
-                      </div>
-                    </div>
-                  }
-                />
-                {/* Matches were folded into Jobs: a match is a job with a
-                  score, ranked under Jobs → Analyzed. */}
-                <Route path="matches" element={<Navigate to="/jobs?view=analyzed" replace />} />
-                {/* Every other path is a section of the app shell, which does
-                  its own routing so that sections stay alive between visits
-                  (see components/layout.tsx and sections.tsx). */}
-                <Route path="*" element={<Layout />} />
-              </Routes>
-            </HashRouter>
+            <WorkspaceApp />
           </DaemonProvider>
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
+  );
+}
+
+function WorkspaceApp() {
+  const { activeWorkspace } = useDaemon();
+  return (
+    <Fragment key={activeWorkspace?.id ?? "connecting"}>
+      <DiscoveryActivity />
+      <LaunchRefresh />
+      <HashRouter>
+        <Routes>
+          {/* Outside <Layout>: first-run setup has nothing to navigate
+                  to yet, so it gets the whole window rather than a sidebar
+                  of screens that cannot do anything. */}
+          <Route
+            path="welcome"
+            element={
+              <div className="h-screen overflow-y-auto">
+                <div data-tauri-drag-region className="h-13" />
+                <div className="px-8 pb-10">
+                  <RequireDaemon>
+                    <Suspense fallback={null}>
+                      <Welcome />
+                    </Suspense>
+                  </RequireDaemon>
+                </div>
+              </div>
+            }
+          />
+          {/* Matches were folded into Jobs: a match is a job with a
+                  score, ranked under Jobs → Analyzed. */}
+          <Route path="matches" element={<Navigate to="/jobs?view=analyzed" replace />} />
+          {/* Every other path is a section of the app shell, which does
+                  its own routing so that sections stay alive between visits
+                  (see components/layout.tsx and sections.tsx). */}
+          <Route path="*" element={<Layout />} />
+        </Routes>
+      </HashRouter>
+    </Fragment>
   );
 }
 

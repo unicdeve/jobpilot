@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { type ApiClient, createApiClient } from "./api";
+import type { Workspace } from "./types";
 
 interface DaemonState {
   status: "connecting" | "ready" | "error";
@@ -12,9 +13,29 @@ interface DaemonState {
   /// replacing, while it stops (ADR-0029 §4).
   waiting: boolean;
   retry: () => void;
+  workspaces: Workspace[];
+  activeWorkspace: Workspace | null;
+  createWorkspace: (name: string) => Promise<void>;
+  renameWorkspace: (id: string, name: string) => Promise<void>;
+  switchWorkspace: (id: string) => Promise<void>;
 }
 
 const DaemonContext = createContext<DaemonState | null>(null);
+
+async function connectToWorkspace(
+  port: number,
+  onUnreachable: () => void,
+): Promise<{ client: ApiClient; workspaces: Workspace[]; active: Workspace }> {
+  const unscoped = createApiClient(port, onUnreachable);
+  const catalog = await unscoped.listWorkspaces();
+  const active = catalog.workspaces.find((workspace) => workspace.id === catalog.active_workspace_id);
+  if (!active) throw new Error("The active JobPilot profile is missing");
+  return {
+    client: createApiClient(port, onUnreachable, active.id),
+    workspaces: catalog.workspaces,
+    active,
+  };
+}
 
 /// DaemonProvider ensures the jobpilot daemon is running (starting it if
 /// necessary, via the Rust ensure_daemon command in
@@ -28,13 +49,15 @@ const DaemonContext = createContext<DaemonState | null>(null);
 /// again, the app carries on where it was; not found, it says so and Retry
 /// starts one.
 export function DaemonProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Omit<DaemonState, "retry" | "waiting">>({
+  const [state, setState] = useState<Pick<DaemonState, "status" | "client" | "error">>({
     status: "connecting",
     client: null,
     error: null,
   });
   const [waiting, setWaiting] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const queryClient = useQueryClient();
 
   const port = useRef<number | null>(null);
@@ -58,7 +81,11 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
           }
           port.current = found;
           refetchOnConnect.current = true;
-          setState({ status: "ready", client: createApiClient(found, onUnreachable), error: null });
+          return connectToWorkspace(found, onUnreachable).then((connected) => {
+            setWorkspaces(connected.workspaces);
+            setActiveWorkspace(connected.active);
+            setState({ status: "ready", client: connected.client, error: null });
+          });
         })
         .catch((err) => {
           port.current = null;
@@ -97,7 +124,16 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
         // showing the previous daemon's data.
         if (attempt > 0) queryClient.clear();
         port.current = resolved;
-        setState({ status: "ready", client: createApiClient(resolved, onUnreachable), error: null });
+        void connectToWorkspace(resolved, onUnreachable)
+          .then((connected) => {
+            if (cancelled) return;
+            setWorkspaces(connected.workspaces);
+            setActiveWorkspace(connected.active);
+            setState({ status: "ready", client: connected.client, error: null });
+          })
+          .catch((err) => {
+            if (!cancelled) setState({ status: "error", client: null, error: String(err) });
+          });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -113,8 +149,54 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
     };
   }, [attempt, queryClient, onUnreachable]);
 
+  const switchWorkspace = useCallback(
+    async (id: string) => {
+      if (!state.client || port.current === null || id === activeWorkspace?.id) return;
+      const selected = await state.client.activateWorkspace(id);
+      queryClient.clear();
+      setActiveWorkspace(selected);
+      setState({
+        status: "ready",
+        client: createApiClient(port.current, onUnreachable, selected.id),
+        error: null,
+      });
+    },
+    [activeWorkspace?.id, onUnreachable, queryClient, state.client],
+  );
+
+  const createWorkspace = useCallback(
+    async (name: string) => {
+      if (!state.client) return;
+      const created = await state.client.createWorkspace(name);
+      setWorkspaces((current) => [...current, created]);
+      await switchWorkspace(created.id);
+    },
+    [state.client, switchWorkspace],
+  );
+
+  const renameWorkspace = useCallback(
+    async (id: string, name: string) => {
+      if (!state.client) return;
+      const renamed = await state.client.renameWorkspace(id, name);
+      setWorkspaces((current) => current.map((workspace) => (workspace.id === id ? renamed : workspace)));
+      if (activeWorkspace?.id === id) setActiveWorkspace(renamed);
+    },
+    [activeWorkspace?.id, state.client],
+  );
+
   return (
-    <DaemonContext.Provider value={{ ...state, waiting, retry: () => setAttempt((a) => a + 1) }}>
+    <DaemonContext.Provider
+      value={{
+        ...state,
+        waiting,
+        workspaces,
+        activeWorkspace,
+        createWorkspace,
+        renameWorkspace,
+        switchWorkspace,
+        retry: () => setAttempt((a) => a + 1),
+      }}
+    >
       {children}
     </DaemonContext.Provider>
   );

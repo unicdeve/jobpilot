@@ -20,6 +20,7 @@ Implemented does not mean verified on every target platform or guaranteed to wor
 ## Architecture and boundaries
 
 - Go daemon owns core services and SQLite; the Go CLI and Tauri 2 + React + TypeScript desktop are clients of its loopback HTTP API (ADR-0012).
+- One daemon serves isolated local workspaces, each with its own SQLite database, credentials namespace, browser profile and scheduled Scouts (ADR-0032).
 - Data stays local by default, with no application account or mandatory hosted backend.
 - Ollama is the default local model; llama.cpp, LM Studio and custom OpenAI-compatible endpoints are supported.
 - Hosted model use sends candidate context and job content to the configured host, with a notice when configured (ADR-0030).
@@ -96,6 +97,8 @@ See [Scouts](../02_features/10_scouts.md), [notifications](../02_features/11_not
 
 - Screens: Dashboard, Jobs (including Analyzed), Applications, Scouts, Activity, Profile, Resumes and Settings.
   Matches is part of Jobs; `/matches` redirects there.
+- The bottom sidebar profile switcher creates, renames and switches isolated local profiles.
+  Switching clears cached server state and remounts workspace-owned screens while preserving the device theme.
 - TanStack Query manages server state, including offline loopback access; sections retain selection, drafts and scroll positions between visits.
   Discovery is queued, shows source/search progress and can refresh stale saved searches once per launch.
 - Light, dark and system themes, keyboard navigation, split views and safely rendered job markdown are implemented.
@@ -104,9 +107,9 @@ See [Scouts](../02_features/10_scouts.md), [notifications](../02_features/11_not
 - Credentials live in the OS keystore, with labels stored locally and no secret-read API.
   Keychain calls have bounded waits and documented environment overrides (ADR-0019).
 - Deletion previews show dependent records and require an unchanged preview token.
-  Foreign-key rules match core deletion rules; secure deletion/checkpointing covers SQLite, and delete-all also removes credentials, browser data, logs and Scout alarms (ADR-0021).
+  Foreign-key rules match core deletion rules; secure deletion/checkpointing covers SQLite, and resetting a profile also removes that profile's credentials, browser data and Scout alarms (ADR-0021; ADR-0032).
 
-See [desktop](../01_architecture/02_desktop.md), [settings](../02_features/13_settings.md), [prompts](../02_features/20_prompt_customization.md) and [deletion](../02_features/15_data_deletion.md).
+See [desktop](../01_architecture/02_desktop.md), [settings](../02_features/13_settings.md), [prompts](../02_features/20_prompt_customization.md), [local workspaces](../02_features/21_local_workspaces.md) and [deletion](../02_features/15_data_deletion.md).
 
 ## Distribution and verification
 

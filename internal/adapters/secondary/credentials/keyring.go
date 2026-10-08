@@ -44,11 +44,17 @@ const keychainTimeout = 10 * time.Second
 type KeyringStore struct {
 	// lookupEnv is os.LookupEnv except in tests.
 	lookupEnv func(string) (string, bool)
+	namespace string
 }
 
-// NewKeyringStore constructs a KeyringStore.
-func NewKeyringStore() *KeyringStore {
-	return &KeyringStore{lookupEnv: os.LookupEnv}
+// NewKeyringStore constructs a KeyringStore. A non-empty namespace isolates
+// otherwise identical credential references belonging to another workspace.
+func NewKeyringStore(namespace ...string) *KeyringStore {
+	store := &KeyringStore{lookupEnv: os.LookupEnv}
+	if len(namespace) > 0 {
+		store.namespace = namespace[0]
+	}
+	return store
 }
 
 // Set stores a secret in the keychain.
@@ -64,7 +70,7 @@ func (s *KeyringStore) Set(ctx context.Context, ref domain.CredentialRef, secret
 	// has a size ceiling — measured at 3009 bytes on macOS — so this can
 	// genuinely fail on a large token and must not be assumed to succeed.
 	err := s.withTimeout(ctx, ref, func() error {
-		return keyring.Set(keychainService, ref.String(), secret)
+		return keyring.Set(keychainService, s.account(ref), secret)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to store the credential for %s: %w", ref, err)
@@ -86,7 +92,7 @@ func (s *KeyringStore) Get(ctx context.Context, ref domain.CredentialRef) (strin
 	var secret string
 	err := s.withTimeout(ctx, ref, func() error {
 		var getErr error
-		secret, getErr = keyring.Get(keychainService, ref.String())
+		secret, getErr = keyring.Get(keychainService, s.account(ref))
 		return getErr
 	})
 	switch {
@@ -111,7 +117,7 @@ func (s *KeyringStore) Delete(ctx context.Context, ref domain.CredentialRef) err
 	}
 
 	err := s.withTimeout(ctx, ref, func() error {
-		return keyring.Delete(keychainService, ref.String())
+		return keyring.Delete(keychainService, s.account(ref))
 	})
 	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return fmt.Errorf("failed to delete the credential for %s: %w", ref, err)
@@ -130,6 +136,13 @@ func (s *KeyringStore) Delete(ctx context.Context, ref domain.CredentialRef) err
 func (s *KeyringStore) FromEnvironment(ref domain.CredentialRef) bool {
 	value, ok := s.lookupEnv(ref.EnvVarName())
 	return ok && value != ""
+}
+
+func (s *KeyringStore) account(ref domain.CredentialRef) string {
+	if s.namespace == "" {
+		return ref.String()
+	}
+	return s.namespace + "/" + ref.String()
 }
 
 // withTimeout runs a keychain call under ctx and keychainTimeout.

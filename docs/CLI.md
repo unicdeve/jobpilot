@@ -7,6 +7,11 @@ IDs in the examples are placeholders; use the IDs printed by the corresponding l
 
 ## General
 
+- `jobpilot-cli profiles list`: Lists local profiles and marks the installation's active profile.
+- `jobpilot-cli profiles add <name>`: Creates a new empty local profile.
+- `jobpilot-cli profiles use <id>`: Makes a profile active for desktop and unscoped CLI requests.
+- `jobpilot-cli profiles rename <id> <name>`: Renames a local profile.
+- `jobpilot-cli --workspace <id> <command>`: Runs one command against that profile without changing the active profile.
 - `jobpilot-cli --version`: Prints the CLI's version, without starting the daemon.
   A CLI older than the running daemon uses it, and says on stderr that it is older; a newer one stops the daemon and starts its own (ADR-0029 §4).
 - `jobpilot --version` and `jobpilot stop`: The daemon's version, and stopping the running daemon, which waits for its process to exit.
@@ -163,7 +168,7 @@ Saved-search, scout, watched-company and credential removal commands do not use 
   The version an application uses cannot be deleted while it is in use.
 - `jobpilot-cli data clear activity`: Deletes every agent run and its steps.
 - `jobpilot-cli data clear jobs`: Deletes every stored job no application uses, keeping those marked not interested so they are not offered again.
-- `jobpilot-cli data delete-all`: Deletes everything JobPilot stores — the database's contents, API keys in the system keychain, the browser profile and its job board sign-ins, and the daemon's log — leaving it as a fresh install.
+- `jobpilot-cli data delete-all`: Resets the selected profile — its database contents, API keys in the system keychain, browser sign-ins and Scout alarms — while keeping other profiles and device preferences.
   Asks for the word `delete`.
   An API key supplied through an environment variable cannot be unset by JobPilot, and the confirmation says so.
 

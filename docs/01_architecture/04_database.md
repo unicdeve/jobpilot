@@ -4,6 +4,10 @@
 
 SQLite.
 
+Each local workspace owns a separate SQLite database (ADR-0032).
+The installation-level `workspaces.json` catalog contains only workspace metadata and selects the active database; it is not part of the candidate-data schema.
+The first workspace adopts an existing root database in place, while later databases live under `workspaces/<uuid>/jobpilot.db`.
+
 ## Principles
 
 - Local-only by default.

@@ -78,6 +78,24 @@ func TestKeyringStore_LabelsAreSeparateCredentials(t *testing.T) {
 	assert.Equal(t, "personal-key", personal)
 }
 
+func TestKeyringStore_WorkspacesHaveSeparateCredentials(t *testing.T) {
+	keyring.MockInit()
+	ctx := context.Background()
+	credential := ref(t, "adzuna", "default")
+	first := NewKeyringStore("workspace-one")
+	second := NewKeyringStore("workspace-two")
+
+	require.NoError(t, first.Set(ctx, credential, "first-key"))
+	require.NoError(t, second.Set(ctx, credential, "second-key"))
+
+	firstValue, err := first.Get(ctx, credential)
+	require.NoError(t, err)
+	secondValue, err := second.Get(ctx, credential)
+	require.NoError(t, err)
+	assert.Equal(t, "first-key", firstValue)
+	assert.Equal(t, "second-key", secondValue)
+}
+
 func TestKeyringStore_NotFoundIsNotAFailure(t *testing.T) {
 	store := newTestStore(nil)
 	ctx := context.Background()

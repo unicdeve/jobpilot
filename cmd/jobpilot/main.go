@@ -113,49 +113,15 @@ func run() error {
 	}
 	defer func() { _ = lock.Release() }()
 
-	dbPath, err := system.DefaultDBPath()
+	catalog, err := system.OpenWorkspaceStore()
 	if err != nil {
-		return fmt.Errorf("resolving database path: %w", err)
+		return fmt.Errorf("opening workspace catalog: %w", err)
 	}
-	db, err := sqlite.NewDB(dbPath)
+	workspaces, err := newWorkspaceManager(ctx, shutdown, catalog)
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("error closing database: %v", err)
-		}
-	}()
-
-	if err := db.InitializeSchema(ctx); err != nil {
-		return fmt.Errorf("initializing database schema: %w", err)
-	}
-
-	svc, err := wireServices(db)
-	if err != nil {
-		return fmt.Errorf("wiring services: %w", err)
-	}
-	svc.Stop = shutdown
-	// Scheduled runs belong to the daemon's lifetime, and shutdown waits
-	// for them to record how they ended before the database closes.
-	// Deferred first so it runs last: a scout run the next line waits for
-	// can still record a notification and start a delivery.
-	defer svc.Notifications.Wait()
-	svc.Scouts.Start(ctx)
-	defer svc.Scouts.Wait()
-
-	// Jobs stored before the reading last changed are read again, in the
-	// background: nothing waits on it, and a job not yet read is treated as
-	// not saying where it can be done from (ADR-0023 §3).
-	go func() {
-		read, err := svc.Discovery.ReadStoredSignals(ctx)
-		switch {
-		case err != nil && ctx.Err() == nil:
-			log.Printf("reading stored jobs again: %v", err)
-		case read > 0:
-			log.Printf("read %d stored jobs again for where they can be done from", read)
-		}
-	}()
+	defer workspaces.close()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -172,7 +138,7 @@ func run() error {
 		}
 	}()
 
-	server := &http.Server{Handler: httpapi.NewHandler(svc)}
+	server := &http.Server{Handler: httpapi.NewWorkspaceHandler(catalog, workspaces)}
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -205,7 +171,7 @@ const daemonLockWait = 2 * time.Second
 
 // wireServices constructs every core service the daemon exposes, exactly as
 // cmd/jobpilot-cli used to wire them in-process before this package existed.
-func wireServices(db *sqlite.DB) (httpapi.Services, error) {
+func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (httpapi.Services, error) {
 	candRepo := sqlite.NewCandidateRepository(db.Conn())
 	resRepo := sqlite.NewResumeRepository(db.Conn())
 	jobRepo := sqlite.NewJobRepository(db.Conn())
@@ -221,15 +187,11 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	// The secret lives in the OS keychain and the table records only which
 	// refs exist, because a keychain cannot be enumerated (ADR-0019 §6).
 	credentialSvc := services.NewCredentialService(
-		credentials.NewKeyringStore(),
+		credentials.NewKeyringStore(credentialNamespace),
 		sqlite.NewCredentialNameRepository(db.Conn()),
 	)
 
-	dataDir, err := system.GetDataDir()
-	if err != nil {
-		return httpapi.Services{}, fmt.Errorf("resolving data directory: %w", err)
-	}
-	browserProfileDir := filepath.Join(dataDir, browserProfileDirName)
+	browserProfileDir := filepath.Join(workspaceDir, browserProfileDirName)
 
 	// Resolved per request rather than once here: the daemon outlives both
 	// the desktop app and the CLI, so a provider fixed at startup would
@@ -317,6 +279,11 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	} else if target, err := alarmTarget(); err != nil {
 		log.Printf("scouts can be run by hand but not scheduled: %v", err)
 	} else {
+		if credentialNamespace == "" {
+			scoutAlarms = alarms.LegacyScoped(scoutAlarms)
+		} else {
+			scoutAlarms = alarms.Scoped(scoutAlarms, credentialNamespace)
+		}
 		scoutSvc.WithAlarms(scoutAlarms, target)
 	}
 	savedSearchSvc.WithScoutsChanged(scoutSvc.ScoutsChanged)
@@ -329,7 +296,7 @@ func wireServices(db *sqlite.DB) (httpapi.Services, error) {
 	// "Delete all data" reaches past the database to the browser profile
 	// and the daemon's log (ADR-0021 §7).
 	deletionSvc := services.NewDeletionService(sqlite.NewDeletionStore(db), credentialSvc,
-		chrome.ProfileEraser(), system.NewDaemonLog(dataDir)).WithScoutAlarms(scoutSvc)
+		chrome.ProfileEraser(), nil).WithScoutAlarms(scoutSvc)
 
 	return httpapi.Services{
 		Candidates:    candRepo,

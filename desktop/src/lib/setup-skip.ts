@@ -8,21 +8,25 @@
 /// again next time it is opened.
 const skipKey = "jobpilot.setup-skipped";
 
+function key(workspaceID: string) {
+  return `${skipKey}.${workspaceID}`;
+}
+
 /// setupSkipped reports whether the user dismissed the wizard. Reading
 /// storage can throw outright (a webview with site data blocked), and a
 /// failure here must not take the app down with it — treating that as
 /// "not skipped" shows a wizard nobody asked for at worst.
-export function setupSkipped(): boolean {
+export function setupSkipped(workspaceID: string): boolean {
   try {
-    return sessionStorage.getItem(skipKey) === "1";
+    return sessionStorage.getItem(key(workspaceID)) === "1";
   } catch {
     return false;
   }
 }
 
-export function rememberSkip() {
+export function rememberSkip(workspaceID: string) {
   try {
-    sessionStorage.setItem(skipKey, "1");
+    sessionStorage.setItem(key(workspaceID), "1");
   } catch {
     // Nothing to do: the wizard offers itself again, which is the safe way
     // to be wrong.

@@ -52,14 +52,14 @@ const DATA_ACTIONS: DataAction[] = [
   },
   {
     target: "everything",
-    title: "Delete all data",
+    title: "Reset this profile",
     description:
-      "Everything JobPilot keeps on this computer, including API keys and the browser profile it signs in to job boards with. It starts again as if newly installed.",
-    button: "Delete all data…",
-    dialogTitle: "Delete all data?",
-    confirmLabel: "Delete all data",
-    note: "Your theme choice for this window is kept.",
-    done: "All data deleted.",
+      "Everything in this profile, including its API keys and browser sign-ins. Your other profiles and device preferences are untouched.",
+    button: "Reset profile…",
+    dialogTitle: "Reset this profile?",
+    confirmLabel: "Reset profile",
+    note: "The profile remains available and starts again at setup.",
+    done: "Profile reset.",
   },
 ];
 

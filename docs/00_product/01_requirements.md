@@ -67,6 +67,11 @@ The application exposes equivalent core user workflows through a native-feeling 
 
 Previously stored jobs, analyses, generated content, and history remain accessible without internet.
 
+### PR-017 Local workspaces
+
+The user can create and switch between isolated local profiles whose candidate data, settings, searches, history, credentials and browser sessions are separate.
+This requires no hosted account and does not make a workspace an authentication boundary.
+
 ## Post-MVP requirements
 
 This is the original scope boundary, not a list of unimplemented features.

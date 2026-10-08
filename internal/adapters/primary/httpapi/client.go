@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unicdev/jobpilot/internal/adapters/secondary/system"
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/services"
 )
@@ -22,8 +23,52 @@ import (
 // services, so callers (currently cmd/jobpilot-cli) don't need to know
 // they're talking to a separate process.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL     string
+	httpClient  *http.Client
+	workspaceID string
+}
+
+// WithWorkspace returns a client whose data requests are explicitly scoped
+// to id. The underlying transport is shared.
+func (c *Client) WithWorkspace(id string) *Client {
+	scoped := *c
+	scoped.workspaceID = id
+	return &scoped
+}
+
+// ListWorkspaces returns the local workspaces and the installation's active
+// workspace identifier.
+func (c *Client) ListWorkspaces(ctx context.Context) ([]system.Workspace, string, error) {
+	var response struct {
+		Workspaces []system.Workspace `json:"workspaces"`
+		ActiveID   string             `json:"active_workspace_id"`
+	}
+	_, err := c.do(ctx, http.MethodGet, "/v1/workspaces", nil, &response)
+	return response.Workspaces, response.ActiveID, err
+}
+
+// CreateWorkspace creates an empty local workspace.
+func (c *Client) CreateWorkspace(ctx context.Context, name string) (*system.Workspace, error) {
+	var workspace system.Workspace
+	_, err := c.do(ctx, http.MethodPost, "/v1/workspaces", map[string]string{"name": name}, &workspace)
+	return &workspace, err
+}
+
+// RenameWorkspace changes a workspace's display name.
+func (c *Client) RenameWorkspace(ctx context.Context, id, name string) (*system.Workspace, error) {
+	var workspace system.Workspace
+	path := "/v1/workspaces/" + url.PathEscape(id)
+	_, err := c.do(ctx, http.MethodPut, path, map[string]string{"name": name}, &workspace)
+	return &workspace, err
+}
+
+// ActivateWorkspace changes the workspace used by clients without an
+// explicit selection.
+func (c *Client) ActivateWorkspace(ctx context.Context, id string) (*system.Workspace, error) {
+	var workspace system.Workspace
+	path := "/v1/workspaces/" + url.PathEscape(id) + "/activate"
+	_, err := c.do(ctx, http.MethodPost, path, nil, &workspace)
+	return &workspace, err
 }
 
 // clientDialTimeout bounds reaching the daemon. A daemon on the same
@@ -572,6 +617,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (*h
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.workspaceID != "" && !strings.HasPrefix(path, "/v1/workspaces") {
+		req.Header.Set(WorkspaceHeader, c.workspaceID)
 	}
 
 	resp, err := c.httpClient.Do(req)
