@@ -5,6 +5,7 @@ import { FormField } from "../components/form-field";
 import { LLMProviderFields, withProviderDefaults } from "../components/llm-provider-fields";
 import { SavedSearchForm } from "../components/saved-search-form";
 import { SearchTemplatePicker } from "../components/search-template-picker";
+import { Thinking } from "../components/thinking";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -402,6 +403,8 @@ function ResumeStep({
         </Button>
         <Button onClick={onNext}>{imported ? "Continue" : "Skip this step"}</Button>
       </div>
+
+      {proposeDraft.isPending && <Thinking state="working">Reading your details from the resume…</Thinking>}
     </>
   );
 }

@@ -14,6 +14,7 @@ import {
   type UseMutationOptions,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQueries,
   useQuery,
   useQueryClient,
@@ -100,6 +101,9 @@ export const keys = {
   /// discovery is a mutation key, not a query key: every discovery run
   /// carries it, so any screen can see what is searching.
   discovery: ["discovery"] as const,
+  /// analysis is a mutation key too: the button that asks for a match and
+  /// the section that shows it are apart, and both say it is under way.
+  analysis: ["analysis"] as const,
   credentials: ["credentials"] as const,
   scouts: ["scouts"] as const,
   notifications: ["notifications"] as const,
@@ -889,6 +893,7 @@ export function useAnalyzeMatch(opts?: MutationOpts<JobMatch, { candidateId: str
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: keys.analysis,
     mutationFn: ({ candidateId, jobId }: { candidateId: string; jobId: string }) =>
       api.analyzeMatch(candidateId, jobId),
     ...opts,
@@ -898,6 +903,19 @@ export function useAnalyzeMatch(opts?: MutationOpts<JobMatch, { candidateId: str
       opts?.onSuccess?.(match, variables, ...rest);
     },
   });
+}
+
+/// useAnalyzing says whether a match for this job is being analysed,
+/// wherever it was asked for.
+export function useAnalyzing(jobId: string): boolean {
+  const pending = useMutationState({
+    filters: {
+      mutationKey: keys.analysis,
+      status: "pending",
+      predicate: (mutation) => (mutation.state.variables as { jobId: string } | undefined)?.jobId === jobId,
+    },
+  });
+  return pending.length > 0;
 }
 
 /// useCheckLLMHealth asks the daemon whether the configured backend would

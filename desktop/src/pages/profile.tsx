@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FormField } from "../components/form-field";
 import { Page, Panel, Section } from "../components/page";
 import { Loading } from "../components/status-line";
+import { Thinking } from "../components/thinking";
 import { suggestedTimeZone, TimeZoneField } from "../components/time-zone-field";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -327,9 +328,15 @@ function ProfileDetails({ tabs }: { tabs: ReactNode }) {
       <Panel className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium">{exists ? "Fill in from a resume" : "Start from your resume"}</p>
-          <p className="text-xs text-muted-foreground">
-            JobPilot reads the resume and suggests what to put here. Nothing is saved until you review it and save.
-          </p>
+          {proposeDraft.isPending ? (
+            <Thinking state="working" className="-my-0.5 text-xs">
+              Reading your details from the resume…
+            </Thinking>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              JobPilot reads the resume and suggests what to put here. Nothing is saved until you review it and save.
+            </p>
+          )}
         </div>
         <label className="flex items-center gap-2 text-xs text-subtle-foreground">
           <Checkbox checked={overwriteExisting} onCheckedChange={(checked) => setOverwriteExisting(checked === true)} />

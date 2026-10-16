@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Ellipsis, LoaderCircle, Plus, Radar, TriangleAlert } from "lucide-react";
+import { ChevronRight, Ellipsis, Plus, Radar, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../components/confirm";
@@ -7,6 +7,7 @@ import { EmptyState } from "../components/empty-state";
 import { FormField } from "../components/form-field";
 import { Page, Panel, Section } from "../components/page";
 import { StatusBadge } from "../components/status-badge";
+import { Orb } from "../components/thinking";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -174,10 +175,17 @@ export function Scouts() {
                           Paused
                         </span>
                       )}
-                      {scout.activity && (
-                        <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px text-[11px] leading-4 font-normal text-primary">
-                          <LoaderCircle className="size-3 animate-spin" />
-                          {scout.activity === "running" ? "Running" : "Waiting for another scout"}
+                      {/* Running is work done for the user, so it carries the
+                          orb; waiting is not work yet, and is only a state. */}
+                      {scout.activity === "running" && (
+                        <span className="-my-0.5 inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                          <Orb state="working" />
+                          Running
+                        </span>
+                      )}
+                      {scout.activity === "waiting" && (
+                        <span className="rounded bg-muted px-1.5 py-px text-[11px] leading-4 font-normal text-muted-foreground">
+                          Waiting for another scout
                         </span>
                       )}
                     </p>

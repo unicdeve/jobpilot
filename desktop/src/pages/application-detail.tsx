@@ -1,14 +1,4 @@
-import {
-  ArrowLeft,
-  BookmarkPlus,
-  ChevronRight,
-  Ellipsis,
-  Globe,
-  LoaderCircle,
-  Plus,
-  Send,
-  Sparkles,
-} from "lucide-react";
+import { ArrowLeft, BookmarkPlus, ChevronRight, Ellipsis, Globe, Plus, Send, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { DeletionDialog } from "../components/deletion-dialog";
@@ -18,6 +8,8 @@ import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
 import { StatusBadge, statusLabel } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
+import { Thinking } from "../components/thinking";
+import { ThinkingFrame } from "../components/thinking-frame";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -532,6 +524,7 @@ function CoverLetterSection({
 
   const current = versions.find((v) => v.id === application.current_cover_letter_id) ?? versions[0];
   const earlier = versions.filter((v) => v !== current);
+  const writing = generateCoverLetter.isPending;
 
   return (
     <DetailSection
@@ -547,27 +540,29 @@ function CoverLetterSection({
                   setDraft(current.content);
                   setEditing(true);
                 }}
+                // An edit to the letter being replaced would be saved to a
+                // version that is no longer current once the new one lands.
+                disabled={writing}
               >
                 Edit
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setAsking(true)}
-              disabled={generateCoverLetter.isPending}
-            >
+            <Button size="sm" variant="outline" onClick={() => setAsking(true)} disabled={writing}>
               <Sparkles data-icon="inline-start" />
-              {generateCoverLetter.isPending ? "Writing…" : current ? "Rewrite" : "Write one"}
+              {writing ? "Writing…" : current ? "Rewrite" : "Write one"}
             </Button>
           </>
         )
       }
     >
       {!current ? (
-        <p className="text-sm text-muted-foreground">
-          No cover letter yet. JobPilot writes one from your profile, what you tell it about yourself, and this job.
-        </p>
+        writing ? (
+          <Thinking state="composing">Writing your cover letter…</Thinking>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No cover letter yet. JobPilot writes one from your profile, what you tell it about yourself, and this job.
+          </p>
+        )
       ) : editing ? (
         <div className="space-y-2">
           <Textarea rows={14} value={draft} onChange={(e) => setDraft(e.target.value)} />
@@ -586,11 +581,20 @@ function CoverLetterSection({
         </div>
       ) : (
         <>
-          <div className="rounded-lg border border-border bg-card px-5 py-4">
-            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-subtle-foreground select-text">
-              <FlaggedText text={current.content} flags={current.flags} />
-            </p>
-          </div>
+          {/* The letter stays readable while its replacement is written, and
+              is marked as the one being replaced. */}
+          {writing && (
+            <Thinking state="composing" className="mb-3">
+              Writing a new version. This one stays until it is ready.
+            </Thinking>
+          )}
+          <ThinkingFrame active={writing}>
+            <div className="rounded-lg border border-border bg-card px-5 py-4">
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-subtle-foreground select-text">
+                <FlaggedText text={current.content} flags={current.flags} />
+              </p>
+            </div>
+          </ThinkingFrame>
           <p className="mt-2 text-xs text-muted-foreground">
             {current.user_edited
               ? "Edited by you"
@@ -731,12 +735,7 @@ function LetterQuestionsDialog({
               />
             </label>
           ))}
-          {prepare.isPending && (
-            <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              Reading the posting for a question or two…
-            </p>
-          )}
+          {prepare.isPending && <Thinking state="working">Reading the posting for a question or two…</Thinking>}
         </div>
 
         <DialogFooter>

@@ -49,6 +49,14 @@ The Jobs list keeps its filters behind a toolbar button (`lib/job-filters.ts`), 
 A filter is applied by the daemon when the list is paged there (All jobs), and in the desktop when every item is already loaded (Analyzed).
 Other screens are a page (`components/page.tsx`): a sticky toolbar with the title and actions, then titled sections.
 
+**Two kinds of wait, told apart.**
+A read from the daemon is quick and quiet: a small spinner where the content will appear (`Loading` in `components/status-line.tsx`).
+Work JobPilot does for the user — the model writing a letter, weighing a match or reading a resume, a search across the job sources, a running scout — can take a minute on a local model, and is shown by an animated orb from `thinking-orbs` beside words saying what is happening (`Thinking` and `Orb` in `components/thinking.tsx`).
+The orb is never spent on a plain load, so it always means "working for you", and its animation names the verb: composing, solving, searching or working.
+The line sits where the result will land, not only on the button that asked for it, and a result being replaced stays readable until the new one arrives.
+A cover letter being rewritten is also framed by a slow glow from `border-beam` (`components/thinking-frame.tsx`), the one place the beam is used.
+Both follow the theme the user chose, and stand still under reduced motion.
+
 **Few boxes.**
 A section is a heading, not a card; a bordered `Panel` holds a grouped list or form, divided by hairlines.
 Forms that are not the point of a screen — starting an application, adding a job by URL, editing a scout — open in a dialog.

@@ -22,6 +22,7 @@ import { DetailSection, Toolbar } from "../components/page";
 import { splitBackClass } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
+import { Thinking } from "../components/thinking";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -55,6 +56,7 @@ import {
 } from "../lib/format";
 import {
   useAnalyzeMatch,
+  useAnalyzing,
   useApplications,
   useCandidateId,
   useCountries,
@@ -147,7 +149,7 @@ export function JobDetail() {
 
         <WhereSection job={job} />
 
-        <MatchSection candidateId={candidateId} match={match ?? undefined} />
+        <MatchSection candidateId={candidateId} jobId={job.id} match={match ?? undefined} />
 
         {job.skills?.length > 0 && (
           <DetailSection title="Skills">
@@ -503,7 +505,16 @@ function ExistingApplications({ applications }: { applications: Application[] })
   );
 }
 
-function MatchSection({ candidateId, match }: { candidateId: string | null; match: JobMatch | undefined }) {
+function MatchSection({
+  candidateId,
+  jobId,
+  match,
+}: {
+  candidateId: string | null;
+  jobId: string;
+  match: JobMatch | undefined;
+}) {
+  const analyzing = useAnalyzing(jobId);
   if (!candidateId) {
     return (
       <DetailSection title="Match">
@@ -520,15 +531,24 @@ function MatchSection({ candidateId, match }: { candidateId: string | null; matc
   if (!match) {
     return (
       <DetailSection title="Match">
-        <p className="text-sm text-muted-foreground">
-          Not analyzed yet. Analyze match compares the posting with your profile and explains the fit.
-        </p>
+        {analyzing ? (
+          <Thinking state="solving">Comparing the posting with your profile…</Thinking>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Not analyzed yet. Analyze match compares the posting with your profile and explains the fit.
+          </p>
+        )}
       </DetailSection>
     );
   }
 
   return (
     <DetailSection title="Match">
+      {analyzing && (
+        <Thinking state="solving" className="mb-4">
+          Comparing the posting with your profile again. This analysis stays until the new one is ready.
+        </Thinking>
+      )}
       <div className="flex items-start gap-4">
         <div
           className={`flex size-14 shrink-0 flex-col items-center justify-center rounded-xl ${scoreTone(match.score)}`}

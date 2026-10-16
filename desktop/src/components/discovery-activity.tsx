@@ -1,5 +1,4 @@
 import { useMutationState } from "@tanstack/react-query";
-import { LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
 import { ApiError } from "../lib/api";
 import { useApi, useDaemon } from "../lib/daemon";
@@ -7,6 +6,7 @@ import { discoverySummary, type RefreshFailure, refreshSummary } from "../lib/fo
 import { type DiscoveryRun, keys, useJobSources, useRunSavedSearch } from "../lib/queries";
 import { ToastActivity, useToast } from "../lib/toast";
 import type { SavedSearch } from "../lib/types";
+import { Orb } from "./thinking";
 
 /// useDiscover runs a saved search against the job sources and says how it
 /// went once it has. Runs are queued and outlive the screen that started
@@ -59,7 +59,7 @@ function Searching({ runs }: { runs: PendingDiscovery[] }) {
 
   return (
     <ToastActivity>
-      <LoaderCircle className="mt-px size-4 shrink-0 animate-spin text-muted-foreground" />
+      <Orb state="searching" className="-mt-px" />
       <div className="min-w-0">
         <p className="font-medium" title={sources?.map((source) => source.name).join(", ")}>
           {sources
