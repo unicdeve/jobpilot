@@ -189,3 +189,16 @@ func handleSetQuestionAnswer(svc *services.AnswerService) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, question)
 	}
 }
+
+// handleAllowedTransitions serves the state machine's own answer for one
+// application, so a client can offer the actions that will actually work
+// rather than every state there is and an error for most of them.
+func handleAllowedTransitions(svc *services.ApplicationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		application, err := svc.GetApplication(r.Context(), r.PathValue("id"))
+		if writeErrIfAny(w, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, services.AllowedTransitions(application))
+	}
+}
