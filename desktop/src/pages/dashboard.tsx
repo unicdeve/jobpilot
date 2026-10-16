@@ -7,17 +7,12 @@ import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
 import { runKind, runSubject } from "../lib/activity";
 import { dateTime, relativeTime, scoreTone } from "../lib/format";
-import {
-  useApplications,
-  useCandidateId,
-  useInfiniteActivity,
-  useJobCount,
-  useJobsByID,
-  useMarkNotificationsSeen,
-  useMatches,
-  useProfile,
-  useUnseenNotifications,
-} from "../lib/queries";
+import { useInfiniteActivity } from "../lib/queries/activity.queries";
+import { useApplications } from "../lib/queries/application.queries";
+import { useJobCount, useJobsByID } from "../lib/queries/job.queries";
+import { useMatches } from "../lib/queries/match.queries";
+import { useMarkNotificationsSeen, useUnseenNotifications } from "../lib/queries/notification.queries";
+import { useCandidateId, useProfile } from "../lib/queries/profile.queries";
 import type { Application, ApplicationState, Notification } from "../lib/types";
 
 const WAITING: ApplicationState[] = ["READY_FOR_REVIEW", "APPROVED"];

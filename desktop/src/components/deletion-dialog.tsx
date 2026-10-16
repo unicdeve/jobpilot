@@ -2,7 +2,7 @@ import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../lib/api";
 import { countedKinds, keptNote, sentNote, totalDeleted } from "../lib/deletion";
-import { useDeleteRecords, useDeletionPreview } from "../lib/queries";
+import { useDeleteRecords, useDeletionPreview } from "../lib/queries/deletion.queries";
 import type { DeletionReach, DeletionResult, DeletionTarget } from "../lib/types";
 import { Button } from "./ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "./ui/dialog";

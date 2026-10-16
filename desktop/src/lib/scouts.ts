@@ -4,7 +4,7 @@
 import type { Scout, ScoutAlarmStatus, ScoutSchedule } from "./types";
 
 /// timeOfDay reads minutes after midnight as the user's clock shows a time.
-export function timeOfDay(minutes: number): string {
+function timeOfDay(minutes: number): string {
   const at = new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60);
   return at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }

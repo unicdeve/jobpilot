@@ -1,7 +1,11 @@
 import { cn } from "cn";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
-import { usePromptGuidance, useResetPromptGuidance, useSavePromptGuidance } from "../lib/queries";
+import {
+  usePromptGuidance,
+  useResetPromptGuidance,
+  useSavePromptGuidance,
+} from "../lib/queries/prompt-guidance.queries";
 import { useToast } from "../lib/toast";
 import type { PromptGuidance } from "../lib/types";
 import { ConfirmDialog } from "./confirm";
@@ -48,7 +52,7 @@ function characters(text: string): number {
 }
 
 function PromptCard({ prompt, maxLength }: { prompt: PromptGuidance; maxLength: number }) {
-  const { notify } = useToast();
+  const { notify, notifyError } = useToast();
   const current = prompt.custom ?? prompt.default;
   // The textarea is an editable draft over the saved guidance, dropped once
   // what it holds has been saved or reverted.
@@ -61,7 +65,7 @@ function PromptCard({ prompt, maxLength }: { prompt: PromptGuidance; maxLength: 
       setDraft(null);
       notify(`Saved your guidance for ${saved.title.toLowerCase()}.`, "success");
     },
-    onError: (err) => notify(String(err)),
+    onError: notifyError,
   });
   const reset = useResetPromptGuidance({
     onSuccess: (saved) => {
@@ -70,7 +74,7 @@ function PromptCard({ prompt, maxLength }: { prompt: PromptGuidance; maxLength: 
       setShowDefault(false);
       notify(`Back to the default for ${saved.title.toLowerCase()}.`, "success");
     },
-    onError: (err) => notify(String(err)),
+    onError: notifyError,
   });
 
   const text = draft ?? current;

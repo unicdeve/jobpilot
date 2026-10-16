@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { actionLabel, formatDuration, runDuration, runKind, runSubject, stepOutput } from "../lib/activity";
 import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
-import { useActivityRun } from "../lib/queries";
+import { useActivityRun } from "../lib/queries/activity.queries";
 import type { AgentEvent, AgentRunSummary } from "../lib/types";
 
 /// ActivityRun shows one agent run and every step it recorded, in order.

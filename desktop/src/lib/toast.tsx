@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
 import { createPortal } from "react-dom";
+import { errorMessage } from "./api";
 
 interface Toast {
   id: number;
@@ -10,6 +11,8 @@ interface Toast {
 
 interface ToastContextValue {
   notify: (message: string, variant?: Toast["variant"]) => void;
+  /// notifyError says what went wrong, for a failed request or mutation.
+  notifyError: (err: unknown) => void;
   /// activity is where work still under way is shown, above the toasts.
   activity: HTMLElement | null;
 }
@@ -29,9 +32,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       setToasts((current) => current.filter((t) => t.id !== id));
     }, 5000);
   }, []);
+  const notifyError = useCallback((err: unknown) => notify(errorMessage(err)), [notify]);
 
   return (
-    <ToastContext.Provider value={{ notify, activity }}>
+    <ToastContext.Provider value={{ notify, notifyError, activity }}>
       {children}
       {/* A notification, not a banner: a raised surface in the theme's own
           colours, with the tone carried by its icon. */}

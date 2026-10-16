@@ -1,6 +1,7 @@
 import { Check, ChevronUp, Plus, Settings, UserRound } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { errorMessage } from "../lib/api";
 import { useDaemon } from "../lib/daemon";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "./ui/dialog";
@@ -44,7 +45,7 @@ export function WorkspaceSwitcher() {
       }
       setDialog(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     } finally {
       setSaving(false);
     }

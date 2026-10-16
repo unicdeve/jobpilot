@@ -56,6 +56,22 @@ export interface JobFilters {
   where: WhereChoice | "";
 }
 
+/// StoredJobsFilter is what the daemon pages the stored jobs by. The posting
+/// window is a range rather than an instant so a query keyed by it stays
+/// the same from one render to the next.
+export interface StoredJobsFilter {
+  keywords: string;
+  source: string;
+  remote: string;
+  posted: TimeRange | "";
+  /// notInterested lists only the jobs the user ruled out.
+  notInterested?: boolean;
+  /// workFrom and includeRelocation narrow the list as a saved search's
+  /// "I can work from" does.
+  workFrom?: string;
+  includeRelocation?: boolean;
+}
+
 /// VIEW_FILTERS are the filters each view applies, and so the ones its
 /// filter menu shows and counts.
 export const VIEW_FILTERS = {

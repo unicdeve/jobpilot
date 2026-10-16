@@ -1,12 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
-import { Page, Panel, Section } from "../components/page";
-import { ErrorLine, Loading } from "../components/status-line";
-import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { useAboutYou, useDeleteKeptAnswer, useSaveAboutYou } from "../lib/queries";
-import { useToast } from "../lib/toast";
-import type { AboutYou, AboutYouUpdate, PersonalAnswerKey } from "../lib/types";
+import { Page, Panel, Section } from "../../components/page";
+import { ErrorLine, Loading } from "../../components/status-line";
+import { Button } from "../../components/ui/button";
+import { Textarea } from "../../components/ui/textarea";
+import { useAboutYou, useDeleteKeptAnswer, useSaveAboutYou } from "../../lib/queries/about-you.queries";
+import { useToast } from "../../lib/toast";
+import type { AboutYou, AboutYouUpdate, PersonalAnswerKey } from "../../lib/types";
 
 /// Draft is the editable form over what is saved: each answer by key, and
 /// the writing sample and preferences.
@@ -43,10 +43,10 @@ function changes(about: AboutYou, draft: Draft): AboutYouUpdate {
 /// written answers to be built from (docs/02_features/16_about_you.md).
 /// Every question is optional, and the wording of each is the daemon's.
 export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
-  const { notify } = useToast();
+  const { notify, notifyError } = useToast();
   const { data: about, isPending, error } = useAboutYou();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const onError = (err: Error) => notify(String(err));
+  const onError = (err: Error) => notifyError(err);
 
   const save = useSaveAboutYou({
     onSuccess: () => {

@@ -1,6 +1,6 @@
 import { Globe } from "lucide-react";
 import { useRef, useState } from "react";
-import { useCredentials, useSetCredential } from "../lib/queries";
+import { useCredentials, useSetCredential } from "../lib/queries/credential.queries";
 import type { LLMSettings } from "../lib/types";
 import { FormField } from "./form-field";
 import { Button } from "./ui/button";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 /// Mirrors llm.Presets in internal/adapters/secondary/llm/presets.go, which
 /// the daemon and CLI use for the same choice. An OpenAI-compatible base URL
 /// includes its version, as providers publish it (ADR-0030 §4).
-export const presets = [
+const presets = [
   { key: "ollama", label: "Ollama", defaultBaseUrl: "http://localhost:11434" },
   { key: "llama.cpp", label: "llama.cpp (llama-server)", defaultBaseUrl: "http://localhost:8080/v1" },
   { key: "lmstudio", label: "LM Studio", defaultBaseUrl: "http://localhost:1234/v1" },
@@ -51,7 +51,7 @@ function nextBaseUrl(current: string, preset?: (typeof presets)[number]): string
 /// hostedAt is the host a base URL reaches when that is not this computer,
 /// or "" — mirroring domain.LLMSettings.HostedAt, so the notice shows for
 /// exactly the URLs the daemon counts as hosted.
-export function hostedAt(baseUrl: string): string {
+function hostedAt(baseUrl: string): string {
   let host: string;
   try {
     host = new URL(baseUrl).hostname.toLowerCase().replace(/\.$/, "");

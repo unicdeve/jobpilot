@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { timeZoneLabel } from "../lib/format";
-import { useCountries, useProfile } from "../lib/queries";
+import { useProfile } from "../lib/queries/profile.queries";
+import { useCountries } from "../lib/queries/saved-search.queries";
 import type { SearchCriteria } from "../lib/types";
 import { FormField } from "./form-field";
 import { Button } from "./ui/button";
@@ -27,7 +28,7 @@ const EMPLOYMENT_LABELS: Record<string, string> = {
 /// hasCriterion mirrors the daemon's rule that a search must narrow
 /// something. The Save button stays disabled until it does, so the rejection
 /// is visible before the round trip rather than as an error afterwards.
-export function hasCriterion(criteria: SearchCriteria): boolean {
+function hasCriterion(criteria: SearchCriteria): boolean {
   return Boolean(
     criteria.keywords?.trim() ||
       criteria.title?.trim() ||

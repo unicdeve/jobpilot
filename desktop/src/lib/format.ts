@@ -15,7 +15,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   "browser-import": "Added by URL",
 };
 
-export function sourceLabel(sourceId: string): string {
+function sourceLabel(sourceId: string): string {
   return SOURCE_LABELS[sourceId] ?? sourceId;
 }
 
@@ -109,7 +109,7 @@ export function offerLabel(topic: "relocation" | "visa", status: string): string
 
 /// formatOffset writes an offset as a person reads it: "UTC+1", "UTC−5",
 /// "UTC+5:30", "UTC", as the daemon's domain.FormatOffset does.
-export function formatOffset(offset: number): string {
+function formatOffset(offset: number): string {
   let value = offset > 14 ? offset - 24 : offset;
   if (value === 0) return "UTC";
   const sign = value < 0 ? "−" : "+";

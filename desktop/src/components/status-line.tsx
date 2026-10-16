@@ -1,4 +1,5 @@
 import { LoaderCircle } from "lucide-react";
+import { errorMessage } from "../lib/api";
 
 /// Loading is the one way a screen says it is waiting: quiet, and in the
 /// place its content will appear.
@@ -12,6 +13,5 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 }
 
 export function ErrorLine({ error }: { error: unknown }) {
-  const message = error instanceof Error ? error.message : String(error);
-  return <p className="px-6 py-5 text-sm text-destructive">{message}</p>;
+  return <p className="px-6 py-5 text-sm text-destructive">{errorMessage(error)}</p>;
 }

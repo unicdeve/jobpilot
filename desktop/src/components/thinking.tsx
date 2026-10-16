@@ -1,6 +1,6 @@
+import { cn } from "cn";
 import type { ReactNode } from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
-import { cn } from "../lib/utils";
 
 /// Orb is the mark for JobPilot doing work on the user's behalf: the model
 /// reading or writing, or a search across the job sources. On a local model

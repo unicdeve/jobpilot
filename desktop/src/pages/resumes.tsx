@@ -6,20 +6,21 @@ import { Page, Panel } from "../components/page";
 import { Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
 import { dateTime, relativeTime } from "../lib/format";
-import { useCandidateId, useImportResume, useResumes } from "../lib/queries";
+import { useCandidateId } from "../lib/queries/profile.queries";
+import { useImportResume, useResumes } from "../lib/queries/resume.queries";
 import { pickResumeFile } from "../lib/resume-file";
 import { useToast } from "../lib/toast";
 import type { Resume } from "../lib/types";
 
 export function Resumes() {
-  const { notify } = useToast();
+  const { notify, notifyError } = useToast();
   const { candidateId } = useCandidateId();
   const { data: resumes, isPending } = useResumes(candidateId);
   const [deleting, setDeleting] = useState<Resume | null>(null);
 
   const importMutation = useImportResume({
     onSuccess: () => notify("Resume imported.", "success"),
-    onError: (err) => notify(String(err)),
+    onError: notifyError,
   });
 
   const importResume = async () => {

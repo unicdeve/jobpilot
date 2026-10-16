@@ -88,6 +88,14 @@ export class ApiError extends Error {
   }
 }
 
+/// errorMessage is how err reads to the user: its message, which for the
+/// daemon's errors is already a sentence, rather than String(err), which
+/// puts "Error: " or "TypeError: " in front of anything that is not an
+/// ApiError.
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /// isNotFound reports whether err is the daemon saying the record a request
 /// named does not exist, such as an application deleted since its page was
 /// last open.
@@ -292,6 +300,20 @@ async function request<T>(daemon: Daemon, method: string, path: string, body?: u
   return (await res.json()) as T;
 }
 
+/// nullIfNotFound turns the daemon saying a record does not exist into
+/// null, for the reads where that is an ordinary state rather than a failure.
+function nullIfNotFound(err: unknown): null {
+  if (isNotFound(err)) return null;
+  throw err;
+}
+
+/// query is a query string from params, leaving out the ones not set, or ""
+/// when none is.
+function query(params: Record<string, string | undefined>): string {
+  const set = Object.entries(params).filter((entry): entry is [string, string] => !!entry[1]);
+  return set.length > 0 ? `?${new URLSearchParams(set).toString()}` : "";
+}
+
 /// deletionPath is where target lives, as the daemon's deletion routes name
 /// it (internal/adapters/primary/httpapi/deletion.go).
 function deletionPath(target: DeletionTarget, id?: string): string {
@@ -321,7 +343,6 @@ function deletionPath(target: DeletionTarget, id?: string): string {
 /// daemon that stopped or restarted on another port is noticed.
 export function createApiClient(port: number, onUnreachable?: () => void, workspaceId?: string): ApiClient {
   const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable, workspaceId };
-  const q = (params: Record<string, string>) => `?${new URLSearchParams(params).toString()}`;
   const credentialPath = (source: string, label: string) =>
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
@@ -334,11 +355,7 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
       request<Workspace>(daemon, "PUT", `/v1/workspaces/${encodeURIComponent(id)}`, { name }),
     activateWorkspace: (id) => request<Workspace>(daemon, "POST", `/v1/workspaces/${encodeURIComponent(id)}/activate`),
 
-    getProfile: () =>
-      request<Candidate>(daemon, "GET", "/v1/profile").catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) return null;
-        throw err;
-      }),
+    getProfile: () => request<Candidate>(daemon, "GET", "/v1/profile").catch(nullIfNotFound),
     updateProfile: (profile) => request<Candidate>(daemon, "PUT", "/v1/profile", profile),
     initializeProfile: (profile) => request<Candidate>(daemon, "POST", "/v1/onboarding/profile", profile),
 
@@ -347,15 +364,13 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         candidate_id: candidateId,
         file_path: filePath,
       }),
-    listResumes: (candidateId) => request<Resume[]>(daemon, "GET", `/v1/resumes${q({ candidate_id: candidateId })}`),
+    listResumes: (candidateId) =>
+      request<Resume[]>(daemon, "GET", `/v1/resumes${query({ candidate_id: candidateId })}`),
     previewDeletion: (target, id) => request<DeletionReach>(daemon, "GET", `${deletionPath(target, id)}/deletion`),
     deleteRecords: (target, id, token) =>
-      request<DeletionResult>(daemon, "DELETE", deletionPath(target, id) + q({ token })),
+      request<DeletionResult>(daemon, "DELETE", deletionPath(target, id) + query({ token })),
     getJobMatch: (jobId) =>
-      request<JobMatch>(daemon, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/match`).catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) return null;
-        throw err;
-      }),
+      request<JobMatch>(daemon, "GET", `/v1/jobs/${encodeURIComponent(jobId)}/match`).catch(nullIfNotFound),
     setJobInterest: (id, notInterested) =>
       request<Job>(daemon, "PUT", `/v1/jobs/${encodeURIComponent(id)}/interest`, { not_interested: notInterested }),
     proposeProfileDraft: (resumeMarkdown) =>
@@ -363,20 +378,22 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         resume_markdown: resumeMarkdown,
       }),
 
-    listJobs: (filter, limit, offset) => {
-      const params: Record<string, string> = {};
-      if (filter.keywords) params.q = filter.keywords;
-      if (filter.source) params.source = filter.source;
-      if (filter.remote) params.remote = filter.remote;
-      if (filter.postedSince) params.posted_since = filter.postedSince.toISOString();
-      if (filter.interest) params.interest = filter.interest;
-      if (filter.workFrom) params.work_from = filter.workFrom;
-      if (filter.workFrom && filter.includeRelocation) params.include_relocation = "true";
-      if (limit > 0) params.limit = String(limit);
-      if (offset > 0) params.offset = String(offset);
-      const query = new URLSearchParams(params).toString();
-      return request<JobPage>(daemon, "GET", `/v1/jobs${query ? `?${query}` : ""}`);
-    },
+    listJobs: (filter, limit, offset) =>
+      request<JobPage>(
+        daemon,
+        "GET",
+        `/v1/jobs${query({
+          q: filter.keywords,
+          source: filter.source,
+          remote: filter.remote,
+          posted_since: filter.postedSince?.toISOString(),
+          interest: filter.interest,
+          work_from: filter.workFrom,
+          include_relocation: filter.workFrom && filter.includeRelocation ? "true" : undefined,
+          limit: limit > 0 ? String(limit) : undefined,
+          offset: offset > 0 ? String(offset) : undefined,
+        })}`,
+      ),
     getJob: (id) => request<Job>(daemon, "GET", `/v1/jobs/${encodeURIComponent(id)}`),
     searchJobs: (criteria) => request<DiscoveryResult>(daemon, "POST", "/v1/jobs/search", criteria),
     listSources: () => request<SourceInfo[]>(daemon, "GET", "/v1/sources"),
@@ -417,19 +434,21 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
     updateScout: (id, scout) => request<Scout>(daemon, "PUT", `/v1/scouts/${encodeURIComponent(id)}`, scout),
     deleteScout: (id) => request<void>(daemon, "DELETE", `/v1/scouts/${encodeURIComponent(id)}`),
     runScout: (id) => request<ScoutRunReport>(daemon, "POST", `/v1/scouts/${encodeURIComponent(id)}/run`),
-    listScoutRuns: (limit) => request<AgentRun[]>(daemon, "GET", `/v1/scout-runs?limit=${limit}`),
+    listScoutRuns: (limit) => request<AgentRun[]>(daemon, "GET", `/v1/scout-runs${query({ limit: String(limit) })}`),
     listScoutRunEvents: (runId) =>
       request<AgentEvent[]>(daemon, "GET", `/v1/scout-runs/${encodeURIComponent(runId)}/events`),
 
-    listActivity: (filter, limit, offset) => {
-      const params: Record<string, string> = {};
-      if (filter.task_type) params.task_type = filter.task_type;
-      if (filter.status) params.status = filter.status;
-      if (limit > 0) params.limit = String(limit);
-      if (offset > 0) params.offset = String(offset);
-      const query = new URLSearchParams(params).toString();
-      return request<AgentRunPage>(daemon, "GET", `/v1/agent-runs${query ? `?${query}` : ""}`);
-    },
+    listActivity: (filter, limit, offset) =>
+      request<AgentRunPage>(
+        daemon,
+        "GET",
+        `/v1/agent-runs${query({
+          task_type: filter.task_type,
+          status: filter.status,
+          limit: limit > 0 ? String(limit) : undefined,
+          offset: offset > 0 ? String(offset) : undefined,
+        })}`,
+      ),
     getActivityRun: (id) => request<AgentRunDetail>(daemon, "GET", `/v1/agent-runs/${encodeURIComponent(id)}`),
 
     setDefaultSavedSearch: (id) =>
@@ -442,7 +461,8 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         candidate_id: candidateId,
         job_id: jobId,
       }),
-    listMatches: (candidateId) => request<JobMatch[]>(daemon, "GET", `/v1/matches${q({ candidate_id: candidateId })}`),
+    listMatches: (candidateId) =>
+      request<JobMatch[]>(daemon, "GET", `/v1/matches${query({ candidate_id: candidateId })}`),
 
     getLLMSettings: () => request<LLMSettings>(daemon, "GET", "/v1/settings/llm"),
     listNotifications: async (unseen) =>
@@ -450,7 +470,7 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         await request<{ notifications: Notification[] }>(
           daemon,
           "GET",
-          unseen ? "/v1/notifications?unseen=true" : "/v1/notifications",
+          `/v1/notifications${query({ unseen: unseen ? "true" : undefined })}`,
         )
       ).notifications,
     markNotificationsSeen: async (id) => {
@@ -477,7 +497,7 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         mode,
       }),
     listApplications: (candidateId) =>
-      request<Application[]>(daemon, "GET", `/v1/applications${q({ candidate_id: candidateId })}`),
+      request<Application[]>(daemon, "GET", `/v1/applications${query({ candidate_id: candidateId })}`),
     getApplication: (id) => request<Application>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}`),
     transitionApplication: (id, toState, reason) =>
       request<Application>(daemon, "POST", `/v1/applications/${encodeURIComponent(id)}/transition`, {
@@ -489,11 +509,7 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
     listAllowedTransitions: (id) =>
       request<ApplicationState[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}/transitions`),
 
-    getAboutYou: () =>
-      request<AboutYou>(daemon, "GET", "/v1/profile/about").catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) return null;
-        throw err;
-      }),
+    getAboutYou: () => request<AboutYou>(daemon, "GET", "/v1/profile/about").catch(nullIfNotFound),
     saveAboutYou: (update) => request<AboutYou>(daemon, "PUT", "/v1/profile/about", update),
     deleteKeptAnswer: (id) => request<void>(daemon, "DELETE", `/v1/profile/about/kept/${encodeURIComponent(id)}`),
     keepAnswer: (questionId) =>

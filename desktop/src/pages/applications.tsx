@@ -4,7 +4,9 @@ import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pa
 import { SplitView } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
 import { relativeTime } from "../lib/format";
-import { useApplications, useCandidateId, useJobsByID } from "../lib/queries";
+import { useApplications } from "../lib/queries/application.queries";
+import { useJobsByID } from "../lib/queries/job.queries";
+import { useCandidateId } from "../lib/queries/profile.queries";
 import type { Application, ApplicationState, Job } from "../lib/types";
 
 /// Applications are grouped by who the next move belongs to. A flat list

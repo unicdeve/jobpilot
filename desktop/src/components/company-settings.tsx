@@ -9,7 +9,7 @@ import {
   useRenameCompany,
   useUnwatchCompany,
   useWatchCompany,
-} from "../lib/queries";
+} from "../lib/queries/company.queries";
 import { useToast } from "../lib/toast";
 import type { BoardProvider, StarterCompany, WatchedCompany } from "../lib/types";
 import { Panel } from "./page";

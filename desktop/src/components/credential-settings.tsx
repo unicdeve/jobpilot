@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCredentials, useDeleteCredential, useSetCredential } from "../lib/queries";
+import { useCredentials, useDeleteCredential, useSetCredential } from "../lib/queries/credential.queries";
 import { useToast } from "../lib/toast";
 import { FormField } from "./form-field";
 import { llmCredentialSource } from "./llm-provider-fields";
@@ -29,7 +29,7 @@ function sourceName(source: string): string {
 /// key is typed, because a field that silently turns into dots reads as a
 /// product that has lost the value.
 export function CredentialSettings() {
-  const { notify } = useToast();
+  const { notify, notifyError } = useToast();
   const { data: credentials, error, isPending } = useCredentials();
   const [adding, setAdding] = useState(false);
   const [source, setSource] = useState("");
@@ -43,7 +43,7 @@ export function CredentialSettings() {
     setSecret("");
   };
 
-  const onError = (err: unknown) => notify(String(err));
+  const onError = (err: unknown) => notifyError(err);
 
   const store = useSetCredential({
     onSuccess: (ref) => {

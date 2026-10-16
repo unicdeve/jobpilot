@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { type ApiClient, createApiClient } from "./api";
+import { type ApiClient, createApiClient, errorMessage } from "./api";
 import type { Workspace } from "./types";
 
 interface DaemonState {
@@ -89,7 +89,7 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
         })
         .catch((err) => {
           port.current = null;
-          setState({ status: "error", client: null, error: String(err) });
+          setState({ status: "error", client: null, error: errorMessage(err) });
         })
         .finally(() => {
           finding.current = false;
@@ -132,12 +132,12 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
             setState({ status: "ready", client: connected.client, error: null });
           })
           .catch((err) => {
-            if (!cancelled) setState({ status: "error", client: null, error: String(err) });
+            if (!cancelled) setState({ status: "error", client: null, error: errorMessage(err) });
           });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ status: "error", client: null, error: String(err) });
+        setState({ status: "error", client: null, error: errorMessage(err) });
       })
       .finally(() => {
         if (!cancelled) setWaiting(false);

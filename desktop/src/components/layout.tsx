@@ -15,7 +15,10 @@ import { Link, type Location, Navigate, Routes, useLocation, useNavigate } from 
 import { useDaemon } from "../lib/daemon";
 import { isMac, modLabel } from "../lib/platform";
 import { PortalContainer } from "../lib/portal-container";
-import { useApplications, useCandidateId, useLLMSettings, useProfile, useSavedSearches } from "../lib/queries";
+import { useApplications } from "../lib/queries/application.queries";
+import { useLLMSettings } from "../lib/queries/llm.queries";
+import { useCandidateId, useProfile } from "../lib/queries/profile.queries";
+import { useSavedSearches } from "../lib/queries/saved-search.queries";
 import { setupSkipped } from "../lib/setup-skip";
 import { preloadSections, SECTIONS, type Section, sectionFor } from "../sections";
 import { ErrorBoundary } from "./error-boundary";

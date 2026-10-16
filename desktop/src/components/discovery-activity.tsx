@@ -1,9 +1,15 @@
 import { useMutationState } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { ApiError } from "../lib/api";
-import { useApi, useDaemon } from "../lib/daemon";
+import { ApiError, errorMessage } from "../lib/api";
+import { useDaemon } from "../lib/daemon";
 import { discoverySummary, type RefreshFailure, refreshSummary } from "../lib/format";
-import { type DiscoveryRun, keys, useJobSources, useRunSavedSearch } from "../lib/queries";
+import {
+  type DiscoveryRun,
+  useJobSources,
+  useRunSavedSearch,
+  useStaleSavedSearches,
+} from "../lib/queries/discovery.queries";
+import { mutationKeys } from "../lib/queries/keys";
 import { ToastActivity, useToast } from "../lib/toast";
 import type { SavedSearch } from "../lib/types";
 import { Orb } from "./thinking";
@@ -23,7 +29,7 @@ export function useDiscover() {
   });
 }
 
-export interface PendingDiscovery {
+interface PendingDiscovery {
   search: DiscoveryRun;
   /// queued is a run waiting for the one before it to finish.
   queued: boolean;
@@ -33,7 +39,7 @@ export interface PendingDiscovery {
 /// screen, in the order they were asked.
 export function useDiscoveryRuns(): PendingDiscovery[] {
   return useMutationState({
-    filters: { mutationKey: keys.discovery, status: "pending" },
+    filters: { mutationKey: mutationKeys.discovery, status: "pending" },
     select: (mutation) => ({
       search: mutation.state.variables as DiscoveryRun,
       queued: mutation.state.isPaused,
@@ -93,7 +99,7 @@ export function LaunchRefresh() {
 }
 
 function Refresh() {
-  const api = useApi();
+  const staleSavedSearches = useStaleSavedSearches();
   const { notify } = useToast();
   const { mutateAsync } = useRunSavedSearch();
 
@@ -104,9 +110,7 @@ function Refresh() {
     void (async () => {
       let stale: SavedSearch[];
       try {
-        const settings = await api.getDiscoverySettings();
-        if (!settings.refresh_on_launch) return;
-        stale = await api.staleSavedSearches();
+        stale = await staleSavedSearches();
       } catch {
         // Not knowing what is stale is not worth a message: nothing ran,
         // and Discover still works.
@@ -123,7 +127,7 @@ function Refresh() {
           ? [
               {
                 offline: outcome.reason instanceof ApiError && outcome.reason.status === 503,
-                message: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+                message: errorMessage(outcome.reason),
               },
             ]
           : [],
@@ -131,7 +135,7 @@ function Refresh() {
       const { message, complete } = refreshSummary(results, failures);
       notify(message, complete ? "success" : "warning");
     })();
-  }, [api, mutateAsync, notify]);
+  }, [staleSavedSearches, mutateAsync, notify]);
 
   return null;
 }

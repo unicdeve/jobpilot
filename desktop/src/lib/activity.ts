@@ -8,7 +8,7 @@ export const TASK_LABELS: Record<AgentTaskType, string> = {
   scout_run: "Scout run",
 };
 
-export function taskLabel(taskType: string): string {
+function taskLabel(taskType: string): string {
   return TASK_LABELS[taskType as AgentTaskType] ?? taskType;
 }
 

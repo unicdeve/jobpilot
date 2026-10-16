@@ -7,7 +7,7 @@ import { SplitView } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
 import { runDuration, runKind, runSubject, TASK_LABELS } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";
-import { useInfiniteActivity } from "../lib/queries";
+import { useInfiniteActivity } from "../lib/queries/activity.queries";
 import type { AgentRunFilter, AgentRunStatus, AgentRunSummary, AgentTaskType } from "../lib/types";
 
 const PAGE_SIZE = 50;

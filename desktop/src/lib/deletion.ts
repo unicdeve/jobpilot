@@ -47,7 +47,7 @@ const KIND_ORDER = [
   "settings",
 ];
 
-export function countedKind(kind: RecordKind, n: number): string {
+function countedKind(kind: RecordKind, n: number): string {
   const [one, many] = KIND_NAMES[kind] ?? [kind.replace(/_/g, " "), kind.replace(/_/g, " ")];
   return n === 1 ? `1 ${one}` : `${n} ${many}`;
 }

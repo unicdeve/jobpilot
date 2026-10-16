@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 /// less the p-6 it applies top and bottom. A screen whose whole body is an
 /// EmptyState uses it on its own root, so the empty state can centre in what
 /// is left after any heading above it instead of overflowing past the fold.
-export const fillsContentArea = "min-h-[calc(100vh-3rem)]";
+const fillsContentArea = "min-h-[calc(100vh-3rem)]";
 
 /// EmptyState centres a short explanation and one action in the content
 /// area, for screens that cannot show anything until something else exists.

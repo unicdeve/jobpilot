@@ -11,7 +11,7 @@ import { open } from "@tauri-apps/plugin-dialog";
  * Legacy `.doc` is deliberately absent: it is a different format from
  * `.docx` and nothing here reads it.
  */
-export const RESUME_EXTENSIONS = ["pdf", "docx", "txt", "md", "markdown", "html", "htm"];
+const RESUME_EXTENSIONS = ["pdf", "docx", "txt", "md", "markdown", "html", "htm"];
 
 /**
  * Asks for a resume file, offering only the formats that convert.

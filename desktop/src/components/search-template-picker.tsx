@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { useImportSearchTemplates, useSearchTemplates } from "../lib/queries";
+import { errorMessage } from "../lib/api";
+import { useImportSearchTemplates } from "../lib/queries/saved-search.queries";
+import { useSearchTemplates } from "../lib/queries/search-template.queries";
 import type { SavedSearch, SearchCriteria, SearchTemplate } from "../lib/types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -40,7 +42,7 @@ export function SearchTemplatePicker({
       setSelected(new Set());
       onImported(created);
     },
-    onError: (err) => onError(String(err)),
+    onError: (err) => onError(errorMessage(err)),
   });
 
   const activeGroup = useMemo(() => {
