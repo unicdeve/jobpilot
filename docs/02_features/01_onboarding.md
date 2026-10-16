@@ -56,7 +56,7 @@ The CLI's `onboard` ends by printing the `search run` command instead.
 `jobpilot-cli onboard`.
 
 The desktop app covers the same ground with a first-run wizard at
-`/welcome` (`desktop/src/pages/welcome.tsx`), in the CLI's order and for the
+`/welcome` (`desktop/src/pages/welcome/`), in the CLI's order and for the
 CLI's reason: prefilling a profile from a resume needs the LLM, so the
 provider comes first. An installation with no candidate profile is sent
 there from wherever it lands; skipping is remembered for the session, and a

@@ -106,9 +106,10 @@ answer if those lists ever grow enough for this to matter.
 
 ## Server state
 
-Screens do not call the daemon client directly. `desktop/src/lib/queries.ts`
-wraps it in TanStack Query hooks, and `desktop/src/lib/api.ts` remains the
-single typed description of the daemon's HTTP surface underneath.
+Screens do not call the daemon client directly.
+`desktop/src/lib/queries/` wraps it in TanStack Query hooks, one module per kind of record (`job.queries.ts`, `application.queries.ts`, `scout.queries.ts`, ...), and `desktop/src/lib/api.ts` remains the single typed description of the daemon's HTTP surface underneath.
+Every cache key is declared once, in `queries/keys.ts`, so one module can invalidate another's data without restating its keys.
+Screens import the hooks from the module that owns them; there is no barrel module.
 
 What that buys, beyond avoiding a hand-written `useEffect` per screen:
 
@@ -134,6 +135,12 @@ daemon found through the discovery file serves the same data directory
 Cached and mounted screen state also belongs to one workspace.
 Switching profiles clears the query cache and remounts the application shell under the new workspace identifier, so drafts, selections and scroll positions cannot cross the isolation boundary.
 The theme provider sits outside that boundary because appearance is a device preference.
+
+## Source layout
+
+A screen small enough to read in one sitting is one module in `desktop/src/pages/`.
+A larger one is a directory named after its route, whose `index.tsx` exports the screen and whose other modules each hold one section or dialog of it (`pages/application-detail/cover-letter-section.tsx`, `pages/settings/model-settings.tsx`).
+Components shared by several screens live in `desktop/src/components/`, and logic with no markup in `desktop/src/lib/`.
 
 ## Rendering untrusted content
 
