@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -13,6 +14,30 @@ import (
 )
 
 const taskTypePrepareApplication = domain.AgentTaskPrepareApplication
+
+// challengeTimeout is how long a run waits for the user to solve a check
+// before it gives up (ADR-0033 §2).
+const challengeTimeout = 5 * time.Minute
+
+// challengePoll is how often a waiting run looks at the page again. A check
+// counts as solved once two looks in a row find none, so a page caught
+// between two documents does not read as solved.
+const challengePoll = time.Second
+
+// ErrPreparationInProgress is returned for a second start while a run for
+// the same application has not finished.
+var ErrPreparationInProgress = errors.New("this application is already being prepared in the browser")
+
+// ErrCannotPrepare is returned for an application whose state does not let
+// it be prepared: one not yet matched, or one already past review.
+var ErrCannotPrepare = errors.New("only a matched, preparing or failed application can be prepared in the browser")
+
+// ErrRunNotInProgress is returned for stopping a run that is not running.
+var ErrRunNotInProgress = errors.New("this run is not in progress")
+
+// errStoppedByUser is the cause a run is cancelled with when the user stops
+// it, which is how its record tells that apart from JobPilot stopping.
+var errStoppedByUser = errors.New("stopped by the user")
 
 // BrowserWorkerService drives a ports.BrowserWorker to navigate to an
 // application's job posting, extract its form, and fill in resolved
@@ -23,6 +48,9 @@ const taskTypePrepareApplication = domain.AgentTaskPrepareApplication
 // (docs/02_features/09_review_mode.md) requires the human's own explicit
 // approval before submission — so the browser window is always left open
 // on every path (success, blocked, or failed) for the user to review.
+//
+// A run belongs to the daemon rather than to the request that started it,
+// because it may wait minutes for the user to solve a check (ADR-0033 §5).
 type BrowserWorkerService struct {
 	appSvc    *ApplicationService
 	jobRepo   ports.JobRepository
@@ -34,13 +62,30 @@ type BrowserWorkerService struct {
 	// way to the application form. It may be nil, which simply means there
 	// is no fallback and such a page stops the run.
 	applyChooser *ApplyControlChooser
+
+	challengeTimeout time.Duration
+	challengePoll    time.Duration
+
+	// background is what every run belongs to: the daemon's lifetime, once
+	// Start has been called.
+	background context.Context
+	runs       sync.WaitGroup
+	mu         sync.Mutex
+	// active holds each application's run in progress.
+	active map[string]activeRun
+}
+
+// activeRun is a run in progress, and how to stop it.
+type activeRun struct {
+	runID  string
+	cancel context.CancelCauseFunc
 }
 
 // NewBrowserWorkerService constructs a BrowserWorkerService with its
-// required collaborators. newWorker is called once per PrepareApplication
-// run (never shared across runs) so each application being prepared gets
-// its own browser window left open, rather than one run's window being
-// reused or overwritten by the next.
+// required collaborators. newWorker is called once per run (never shared
+// across runs) so each application being prepared gets its own browser
+// window left open, rather than one run's window being reused or
+// overwritten by the next.
 func NewBrowserWorkerService(
 	appSvc *ApplicationService,
 	jobRepo ports.JobRepository,
@@ -51,14 +96,30 @@ func NewBrowserWorkerService(
 	applyChooser *ApplyControlChooser,
 ) *BrowserWorkerService {
 	return &BrowserWorkerService{
-		appSvc:       appSvc,
-		jobRepo:      jobRepo,
-		runRepo:      runRepo,
-		eventRepo:    eventRepo,
-		answers:      answers,
-		newWorker:    newWorker,
-		applyChooser: applyChooser,
+		appSvc:           appSvc,
+		jobRepo:          jobRepo,
+		runRepo:          runRepo,
+		eventRepo:        eventRepo,
+		answers:          answers,
+		newWorker:        newWorker,
+		applyChooser:     applyChooser,
+		challengeTimeout: challengeTimeout,
+		challengePoll:    challengePoll,
+		background:       context.Background(),
+		active:           map[string]activeRun{},
 	}
+}
+
+// Start is called once when the daemon starts. Runs belong to ctx, which
+// ends when the daemon stops, and a run in progress then ends as blocked.
+func (s *BrowserWorkerService) Start(ctx context.Context) {
+	s.background = ctx
+}
+
+// Wait blocks until every run has finished recording itself, so the daemon
+// does not close the database under one.
+func (s *BrowserWorkerService) Wait() {
+	s.runs.Wait()
 }
 
 // ErrAssistDoesNotFillForms is returned for an attempt to prepare an Assist
@@ -69,29 +130,59 @@ func NewBrowserWorkerService(
 // they declined.
 var ErrAssistDoesNotFillForms = errors.New("this application is in Assist mode, which never fills in an employer's form; fill it in yourself, or start a Review application")
 
-// PrepareApplication navigates to the application's job posting, extracts
-// its form, resolves each field through the existing answer resolver chain
+// StartPreparation records a run for the application and starts it in the
+// background, returning the run as it began.
+//
+// The run navigates to the application's own link if the user gave one
+// (ADR-0033 §4), else the job's, walks to the application form, resolves
+// each field through the existing answer resolver chain
 // (AnswerService.Resolve, unchanged), and fills in whatever resolved —
 // leaving needs_user_input fields blank, exactly like a manually entered
 // unresolved question does today. On success it transitions the
-// application to READY_FOR_REVIEW; on any blocker (CAPTCHA, unreadable
-// form, a fill failure) it transitions to FAILED with the reason and stops
-// — both transitions go through ApplicationService.TransitionState, so an
+// application to READY_FOR_REVIEW; on a stop (a check the user did not
+// solve, an unreadable form, a fill failure) it transitions to FAILED with
+// the reason — both through ApplicationService.TransitionState, so an
 // application not currently in PREPARING is rejected there rather than by
 // any rule duplicated in this service.
-func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicationID string) error {
+//
+// What can be refused at once is refused here, before a run is recorded:
+// an Assist application, a missing job, a run already in progress, a state
+// that cannot be prepared from. Starting moves an application that may
+// enter PREPARING into it — a matched one, or a failed one being tried
+// again — since that is what starting means (ADR-0033 §5).
+func (s *BrowserWorkerService) StartPreparation(ctx context.Context, applicationID string) (*domain.AgentRun, error) {
 	application, err := s.appSvc.GetApplication(ctx, applicationID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if application.Mode == domain.ApplicationModeAssist {
 		// Refused before a run is recorded or a browser opens: nothing was
 		// attempted, so there is nothing for the trail to say.
-		return ErrAssistDoesNotFillForms
+		return nil, ErrAssistDoesNotFillForms
 	}
 	job, err := s.jobRepo.GetByID(ctx, application.JobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job: %w", err)
+		return nil, fmt.Errorf("failed to get job: %w", err)
+	}
+	startURL := job.CanonicalURL
+	if application.ApplyURL != "" {
+		startURL = application.ApplyURL
+	}
+
+	// Checked and claimed under one lock, so two starts arriving together
+	// start one run.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, busy := s.active[applicationID]; busy {
+		return nil, ErrPreparationInProgress
+	}
+	if application.State != domain.ApplicationStatePreparing {
+		if !isTransitionAllowed(application.State, domain.ApplicationStatePreparing) {
+			return nil, fmt.Errorf("%w; this one is %s", ErrCannotPrepare, readableState(application.State))
+		}
+		if _, err := s.appSvc.TransitionState(ctx, applicationID, domain.ApplicationStatePreparing, "preparing in the browser"); err != nil {
+			return nil, err
+		}
 	}
 
 	run := &domain.AgentRun{
@@ -100,8 +191,52 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 		Status:        domain.AgentRunStatusRunning,
 	}
 	if err := s.runRepo.Save(ctx, run); err != nil {
-		return fmt.Errorf("failed to record agent run: %w", err)
+		return nil, fmt.Errorf("failed to record agent run: %w", err)
 	}
+
+	// A copy for the caller, taken before the run goroutine starts
+	// changing its own.
+	started := *run
+
+	stop, cancel := context.WithCancelCause(s.background)
+	s.active[applicationID] = activeRun{runID: run.ID, cancel: cancel}
+	s.runs.Add(1)
+	go func() {
+		defer s.runs.Done()
+		defer s.release(applicationID, cancel)
+		if err := s.prepare(stop, run, applicationID, startURL); err != nil {
+			slog.Info("browser preparation stopped", "run_id", run.ID, "error", err)
+		}
+	}()
+	return &started, nil
+}
+
+// StopPreparation stops a run in progress. The run records why and ends
+// as blocked; the browser window stays open.
+func (s *BrowserWorkerService) StopPreparation(runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, active := range s.active {
+		if active.runID == runID {
+			active.cancel(errStoppedByUser)
+			return nil
+		}
+	}
+	return ErrRunNotInProgress
+}
+
+func (s *BrowserWorkerService) release(applicationID string, cancel context.CancelCauseFunc) {
+	s.mu.Lock()
+	delete(s.active, applicationID)
+	s.mu.Unlock()
+	cancel(nil)
+}
+
+// prepare is one run, from opening the page to the outcome. stop ends when
+// the user or the daemon stops the run; the run's own record is written on
+// a context that does not, so a stopped run still says why.
+func (s *BrowserWorkerService) prepare(stop context.Context, run *domain.AgentRun, applicationID, startURL string) error {
+	ctx := context.WithoutCancel(stop)
 
 	worker, err := s.newWorker()
 	if err != nil {
@@ -109,18 +244,21 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 	}
 
 	start := time.Now()
-	navErr := worker.Navigate(ctx, job.CanonicalURL)
-	s.recordEvent(ctx, run.ID, "navigate", "browser", statusFor(navErr), job.CanonicalURL, "", time.Since(start))
+	navErr := worker.Navigate(ctx, startURL)
+	s.recordEvent(ctx, run.ID, "navigate", "browser", statusFor(navErr), startURL, "", time.Since(start))
 	if navErr != nil {
 		return s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to open the job posting: %v", navErr))
 	}
 
-	fields, err := s.reachApplicationForm(ctx, worker, run, applicationID)
+	fields, err := s.reachApplicationForm(ctx, stop, worker, run, applicationID)
 	if err != nil {
 		return err
 	}
 
 	for _, field := range fields {
+		if stop.Err() != nil {
+			return s.stopRequested(ctx, stop, run, applicationID)
+		}
 		if err := s.prepareField(ctx, worker, run, applicationID, field); err != nil {
 			return err
 		}
@@ -149,18 +287,34 @@ func (s *BrowserWorkerService) PrepareApplication(ctx context.Context, applicati
 // earlier version of this method extracted that box, filled it with the
 // candidate's email address and reported a prepared application. Arriving
 // somewhere is not the same as arriving at the form, so the fields decide.
+//
+// A page asking whether the user is a person waits for them to answer it
+// (ADR-0033 §2). One that asks again on the same page after being answered
+// is a site refusing JobPilot's browser, and stops the run (§3).
 func (s *BrowserWorkerService) reachApplicationForm(
-	ctx context.Context,
+	ctx, stop context.Context,
 	worker ports.BrowserWorker,
 	run *domain.AgentRun,
 	applicationID string,
 ) ([]ports.FormField, error) {
-	for hop := 0; ; hop++ {
+	solvedHere := false
+	for hop := 0; ; {
+		if stop.Err() != nil {
+			return nil, s.stopRequested(ctx, stop, run, applicationID)
+		}
+
 		if reason, blocked := worker.DetectBlocker(ctx); blocked {
-			// JobPilot never gets past an anti-bot measure (ADR-0013,
-			// ADR-0014), so a blocker is a policy stop, not a failure.
-			s.recordPolicy(ctx, run.ID, "detect_blocker", "browser", "blocked", domain.PolicyDenied, "", reason)
-			return nil, s.blockRun(ctx, run, applicationID, reason)
+			if solvedHere {
+				refused := refusedReason(worker.CurrentURL(ctx))
+				s.recordPolicy(ctx, run.ID, "detect_blocker", "browser", "blocked", domain.PolicyDenied,
+					worker.CurrentURL(ctx), refused)
+				return nil, s.blockRun(ctx, run, applicationID, refused)
+			}
+			if err := s.waitForUser(ctx, stop, worker, run, applicationID, reason); err != nil {
+				return nil, err
+			}
+			solvedHere = true
+			continue
 		}
 
 		start := time.Now()
@@ -206,7 +360,110 @@ func (s *BrowserWorkerService) reachApplicationForm(
 		if err := worker.FollowControl(ctx, control.Ref); err != nil {
 			return nil, s.blockRun(ctx, run, applicationID, fmt.Sprintf("failed to follow %q: %v", control.Text, err))
 		}
+		hop++
+		solvedHere = false
 	}
+}
+
+// waitForUser pauses the run on a check only the user can solve, until
+// they solve it, stop the run, or the wait runs out (ADR-0033 §2). It only
+// ever looks at the page: the check is the user's to answer.
+//
+// The page reloading while the check is still there is the site turning a
+// solved check down, and asking again would only repeat it (§3).
+func (s *BrowserWorkerService) waitForUser(
+	ctx, stop context.Context,
+	worker ports.BrowserWorker,
+	run *domain.AgentRun,
+	applicationID, reason string,
+) error {
+	s.recordPolicy(ctx, run.ID, "detect_blocker", "browser", "waiting", domain.PolicyDenied,
+		worker.CurrentURL(ctx), reason+" — waiting for you to answer it in the browser window")
+	if err := s.setRunStatus(ctx, run, domain.AgentRunStatusWaitingForUser); err != nil {
+		return err
+	}
+	if err := worker.Focus(ctx); err != nil {
+		// The window is still there for the user to find, so this is worth
+		// a note in the log rather than the run.
+		slog.WarnContext(ctx, "failed to bring the browser window forward", "run_id", run.ID, "error", err)
+	}
+
+	loads := worker.PageLoads(ctx)
+	started := time.Now()
+	deadline := time.NewTimer(s.challengeTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(s.challengePoll)
+	defer ticker.Stop()
+
+	clearOnce := false
+	for {
+		select {
+		case <-stop.Done():
+			return s.stopRequested(ctx, stop, run, applicationID)
+		case <-deadline.C:
+			return s.blockRun(ctx, run, applicationID,
+				fmt.Sprintf("%s, and it was not answered within %s", reason, waitDescription(s.challengeTimeout)))
+		case <-ticker.C:
+		}
+
+		_, blocked := worker.DetectBlocker(ctx)
+		switch {
+		case blocked && worker.PageLoads(ctx) > loads:
+			refused := refusedReason(worker.CurrentURL(ctx))
+			s.recordPolicy(ctx, run.ID, "detect_blocker", "browser", "blocked", domain.PolicyDenied,
+				worker.CurrentURL(ctx), refused)
+			return s.blockRun(ctx, run, applicationID, refused)
+		case blocked:
+			clearOnce = false
+		case !clearOnce:
+			clearOnce = true
+		default:
+			s.recordTimedPolicy(ctx, run.ID, "solve_check", "user", "ok", domain.PolicyAllowed,
+				worker.CurrentURL(ctx), "the check was answered", time.Since(started))
+			return s.setRunStatus(ctx, run, domain.AgentRunStatusRunning)
+		}
+	}
+}
+
+// refusedReason is the stop for a site that asked again after its check
+// was answered, named so the user knows which site to visit themselves.
+func refusedReason(pageURL string) string {
+	site := hostOf(pageURL)
+	if site == "" {
+		site = "the site"
+	}
+	return site + " asked again after its check was answered — it does not let JobPilot's browser through"
+}
+
+// readableState is a state as a sentence says it: READY_FOR_REVIEW reads
+// "ready for review".
+func readableState(state domain.ApplicationState) string {
+	return strings.ToLower(strings.ReplaceAll(string(state), "_", " "))
+}
+
+// waitDescription renders a wait as a person would say it.
+func waitDescription(d time.Duration) string {
+	if d >= time.Minute {
+		return pluralize(int(d/time.Minute), "minute")
+	}
+	return pluralize(int(d/time.Second), "second")
+}
+
+// stopRequested ends a run the user or the daemon stopped, saying which.
+func (s *BrowserWorkerService) stopRequested(ctx, stop context.Context, run *domain.AgentRun, applicationID string) error {
+	reason := "JobPilot stopped"
+	if errors.Is(context.Cause(stop), errStoppedByUser) {
+		reason = "you stopped this run"
+	}
+	return s.blockRun(ctx, run, applicationID, reason)
+}
+
+func (s *BrowserWorkerService) setRunStatus(ctx context.Context, run *domain.AgentRun, status domain.AgentRunStatus) error {
+	run.Status = status
+	if err := s.runRepo.Update(ctx, run); err != nil {
+		return fmt.Errorf("failed to record agent run status: %w", err)
+	}
+	return nil
 }
 
 // chooseApplyControl decides which control to follow, and reports how the

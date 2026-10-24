@@ -9,6 +9,8 @@ One detail of part 3 below was changed by what the real pages turned out to look
 The file-input arm of the gate is not implemented: a resume upload is an `<input type=file>`, which the worker deliberately skips because it cannot be filled from a text answer, so it never reaches the gate to count.
 The three-distinct-fields arm decides alone, and all three recorded ATS forms clear it comfortably.
 
+ADR-0033 extends part 4: a page that is itself a human check is a blocker however small its checkbox, and a blocker now waits for the user to answer it rather than stopping the run.
+
 ## Context
 
 `BrowserWorkerService.PrepareApplication` navigates to `job.CanonicalURL` and scrapes every `input`, `select` and `textarea` on whatever page loads.

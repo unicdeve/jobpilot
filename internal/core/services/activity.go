@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -23,9 +24,9 @@ var ErrInvalidActivityFilter = errors.New("invalid activity filter")
 // AgentActivityService reads the trail every agent run leaves, across all
 // kinds of run (docs/02_features/12_agent_activity.md).
 //
-// It only reads. The runs are written by the services that do the work —
-// BrowserWorkerService and ScoutService — and nothing here can change what
-// they recorded.
+// It only reads, but for closing the runs a stopped daemon left open. The
+// runs are written by the services that do the work — BrowserWorkerService
+// and ScoutService — and nothing here can change what they recorded.
 type AgentActivityService struct {
 	runs   ports.AgentRunRepository
 	events ports.AgentEventRepository
@@ -34,6 +35,15 @@ type AgentActivityService struct {
 // NewAgentActivityService constructs an AgentActivityService.
 func NewAgentActivityService(runs ports.AgentRunRepository, events ports.AgentEventRepository) *AgentActivityService {
 	return &AgentActivityService{runs: runs, events: events}
+}
+
+// CloseUnfinishedRuns ends every run still recorded as in progress, as
+// failed, and reports how many it closed. It is called when a workspace
+// opens: runs only exist inside a running daemon, so one still open then
+// was cut off by a daemon that stopped without closing it, and nothing will
+// ever finish it (ADR-0033 §5).
+func (s *AgentActivityService) CloseUnfinishedRuns(ctx context.Context) (int, error) {
+	return s.runs.CloseUnfinished(ctx, "JobPilot stopped while this run was in progress", time.Now())
 }
 
 // ListRuns returns one page of runs, newest first.

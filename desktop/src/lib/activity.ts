@@ -37,7 +37,8 @@ export function runSubject(run: AgentRunSummary): string {
 /// a later daemon is still displayed rather than dropped.
 const ACTION_LABELS: Record<string, string> = {
   navigate: "Opened the job posting",
-  detect_blocker: "Stopped at a blocker",
+  detect_blocker: "Met a check only you can answer",
+  solve_check: "You answered the check",
   extract_form: "Read the page",
   follow_apply: "Followed an apply link",
   choose_apply: "Asked the model for the way in",

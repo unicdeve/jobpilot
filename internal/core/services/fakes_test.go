@@ -751,6 +751,17 @@ func (f *fakeAgentRunRepository) GetSummary(_ context.Context, id string) (*doma
 	return &domain.AgentRunSummary{AgentRun: *run}, nil
 }
 
+func (f *fakeAgentRunRepository) CloseUnfinished(_ context.Context, reason string, at time.Time) (int, error) {
+	closed := 0
+	for _, run := range f.runs {
+		if run.Status.InProgress() {
+			run.Status, run.Error, run.CompletedAt = domain.AgentRunStatusFailed, reason, &at
+			closed++
+		}
+	}
+	return closed, nil
+}
+
 func (f *fakeAgentRunRepository) LastScoutStart(_ context.Context, scoutID string) (*time.Time, error) {
 	var last *time.Time
 	for _, run := range f.runs {
@@ -813,6 +824,16 @@ type fakeBrowserWorker struct {
 	followErr  error
 	followed   []string
 	currentURL string
+
+	// detect, when set, answers DetectBlocker in place of blocked and
+	// blockedReason, given how many times it has been asked before — so a
+	// test can script a check appearing, being answered, or coming back.
+	detect      func(asked int) (string, bool)
+	detectCalls int
+	// loads is what PageLoads reports; a detect script raises it to stand
+	// for the page reloading.
+	loads   int
+	focused bool
 }
 
 func (f *fakeBrowserWorker) Navigate(_ context.Context, url string) error {
@@ -821,8 +842,19 @@ func (f *fakeBrowserWorker) Navigate(_ context.Context, url string) error {
 }
 
 func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) {
+	if f.detect != nil {
+		f.detectCalls++
+		return f.detect(f.detectCalls - 1)
+	}
 	return f.blockedReason, f.blocked
 }
+
+func (f *fakeBrowserWorker) Focus(_ context.Context) error {
+	f.focused = true
+	return nil
+}
+
+func (f *fakeBrowserWorker) PageLoads(_ context.Context) int { return f.loads }
 
 func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
 	if f.extractErr != nil {

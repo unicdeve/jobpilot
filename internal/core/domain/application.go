@@ -63,8 +63,13 @@ type Application struct {
 	ApprovalStatus       string           `json:"approval_status"`
 	SubmittedAt          *time.Time       `json:"submitted_at,omitempty"`
 	FailureReason        string           `json:"failure_reason"`
-	CreatedAt            time.Time        `json:"created_at"`
-	UpdatedAt            time.Time        `json:"updated_at"`
+	// ApplyURL is where the user said the application form is, when the
+	// job's own link does not get there — a posting behind a check that
+	// refuses JobPilot's browser, say (ADR-0033 §4). A browser run starts
+	// here when it is set.
+	ApplyURL  string    `json:"apply_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ApplicationStateTransition is one durable, historical record of an

@@ -91,6 +91,7 @@ External webpages are treated as untrusted input.
 LLM output cannot escalate tool permissions.
 
 ### AC-G-025
-Browser automation stops safely on CAPTCHA or ambiguous required fields.
+Browser automation never gets past a CAPTCHA or anti-bot check itself: it waits for the user to answer one, and stops when the user does not or the site refuses its browser (ADR-0033).
+It stops safely on ambiguous required fields.
 Unresolved factual questions are left blank for the user; a preparation result does not imply every required field was filled.
 CAPTCHA detection and unreadable-field reporting have known limitations; see [current state](current_state.md).

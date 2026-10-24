@@ -68,12 +68,14 @@ func TestApplicationRepository_Update(t *testing.T) {
 
 	app.CurrentCoverLetterID = coverLetter.ID
 	app.ApprovalStatus = "pending"
+	app.ApplyURL = "https://jobs.ashbyhq.com/acme/1/application"
 	require.NoError(t, repo.Update(context.Background(), app))
 
 	got, err := repo.GetByID(context.Background(), app.ID)
 	require.NoError(t, err)
 	assert.Equal(t, coverLetter.ID, got.CurrentCoverLetterID)
 	assert.Equal(t, "pending", got.ApprovalStatus)
+	assert.Equal(t, "https://jobs.ashbyhq.com/acme/1/application", got.ApplyURL)
 	assert.Equal(t, domain.ApplicationStateDiscovered, got.State, "Update must never change State")
 }
 

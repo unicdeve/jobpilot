@@ -63,8 +63,15 @@ type BrowserWorker interface {
 	// blocking condition (e.g. a CAPTCHA challenge). This is a best-effort
 	// heuristic, not an anti-bot solver — architecture principle "never
 	// bypass CAPTCHAs or anti-bot protections" means we only ever detect
-	// and stop, never attempt to defeat one.
+	// and wait for the user, never attempt to defeat one (ADR-0033).
 	DetectBlocker(ctx context.Context) (reason string, blocked bool)
+	// Focus brings this worker's page to the front, for a check only the
+	// user can solve.
+	Focus(ctx context.Context) error
+	// PageLoads is how many documents this worker's page has finished
+	// loading. It means nothing on its own: core compares two readings to
+	// tell whether the page reloaded in between.
+	PageLoads(ctx context.Context) int
 	ExtractForm(ctx context.Context) ([]FormField, error)
 	// CurrentURL is where the page has ended up, which is not necessarily
 	// where it was sent: an apply link commonly redirects to the employer's

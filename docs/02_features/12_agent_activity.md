@@ -37,10 +37,14 @@ The policy result of a step is the verdict of a deterministic rule, `allowed` or
 | --- | --- |
 | `job_rejected`, `application_created`, `ceiling_reached` | a scout's eligibility rules (ADR-0018) |
 | `extract_form` | the application-form gate (ADR-0013) |
-| `detect_blocker` | JobPilot never gets past an anti-bot measure (ADR-0014) |
+| `detect_blocker` | JobPilot never gets past an anti-bot measure: it waits for the user, or stops (ADR-0014, ADR-0033) |
+| `solve_check` | the user answered the check, and the run carried on (ADR-0033) |
 | `skip_field` | an answer is not one of the choices a field offers |
 
 A step no rule decided has no policy result.
+
+A run is `running`, `waiting_for_user` while it waits for the user to answer a check in the browser window, or finished as `completed`, `blocked` or `failed`.
+A run still `running` or `waiting_for_user` when its workspace opens was cut off by a daemon that stopped without closing it, and is closed as `failed` (ADR-0033 §5).
 
 A filled field's step records the field's label and nothing else.
 The answer that was typed is stored on the application's question, which is where the user reviews it; a copy in the trail would put an email address, a phone number or a work authorization on a screen that has no reason to show them.

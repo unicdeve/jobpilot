@@ -46,7 +46,8 @@
 - Question asks for sensitive information
 - Question requires a factual answer not present in profile
 - Browser closes
-- CAPTCHA appears
+- CAPTCHA appears, or the page is a site's human check (ADR-0033)
+- A site refuses JobPilot's browser even after its check is answered
 - Session expires
 - Form changes
 - The user's submission in the external browser fails

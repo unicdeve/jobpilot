@@ -49,6 +49,9 @@ IDs in the examples are placeholders; use the IDs printed by the corresponding l
 - `jobpilot-cli application prepare-in-browser <application-id>`: Fill known answers in the dedicated Chrome profile and leave the browser open for your review and submission.
   Assist applications cannot use this command.
   JobPilot never clicks Submit; inspect the application and run trail if preparation fails.
+  The command follows the run until it ends: if a page asks whether you're a person, answer it in the browser window and the run carries on, and Ctrl-C stops the run.
+  `--from <url>` starts from that application form address instead of the job's own link, and keeps it for later runs — the way round a site that refuses JobPilot's browser.
+- `jobpilot-cli application apply-url <application-id> <url>`: Set the address later runs start from; `--clear` goes back to the job's own link.
 - `jobpilot-cli application submitted <application-id>`: Record that you submitted it yourself after the application is `APPROVED`; `--reason` records a note.
 - `jobpilot-cli application agent-runs <application-id>`: Show browser preparation runs for this application.
 

@@ -10,7 +10,7 @@ import { actionLabel, formatDuration, runDuration, runKind, runSubject, stepOutp
 import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
 import { useActivityRun } from "../lib/queries/activity.queries";
-import type { AgentEvent, AgentRunSummary } from "../lib/types";
+import { type AgentEvent, type AgentRunSummary, isRunInProgress } from "../lib/types";
 
 /// ActivityRun shows one agent run and every step it recorded, in order.
 ///
@@ -63,7 +63,7 @@ export function ActivityRun() {
           </div>
           <p className="mt-1 text-sm text-subtle-foreground">
             {runKind(run)} · {dateTime(run.started_at)}
-            {duration ? <> · took {duration}</> : run.status === "running" && <> · still running</>}
+            {duration ? <> · took {duration}</> : isRunInProgress(run.status) && <> · still running</>}
           </p>
           <p className="mt-1 font-mono text-[11px] text-muted-foreground select-text">{run.id}</p>
         </header>

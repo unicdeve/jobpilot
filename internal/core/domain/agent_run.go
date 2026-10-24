@@ -8,11 +8,19 @@ type AgentRunStatus string
 
 // Agent run statuses.
 const (
-	AgentRunStatusRunning   AgentRunStatus = "running"
-	AgentRunStatusCompleted AgentRunStatus = "completed"
-	AgentRunStatusBlocked   AgentRunStatus = "blocked"
-	AgentRunStatusFailed    AgentRunStatus = "failed"
+	AgentRunStatusRunning AgentRunStatus = "running"
+	// AgentRunStatusWaitingForUser is a run paused on a check only the user
+	// can solve, in the browser window it brought forward (ADR-0033 §2).
+	AgentRunStatusWaitingForUser AgentRunStatus = "waiting_for_user"
+	AgentRunStatusCompleted      AgentRunStatus = "completed"
+	AgentRunStatusBlocked        AgentRunStatus = "blocked"
+	AgentRunStatusFailed         AgentRunStatus = "failed"
 )
+
+// InProgress reports whether a run with this status has not finished yet.
+func (s AgentRunStatus) InProgress() bool {
+	return s == AgentRunStatusRunning || s == AgentRunStatusWaitingForUser
+}
 
 // RunTrigger is what started a run (ADR-0027 §9).
 type RunTrigger string
@@ -77,7 +85,8 @@ const (
 // ValidAgentRunStatus reports whether s is a known run status.
 func ValidAgentRunStatus(s AgentRunStatus) bool {
 	switch s {
-	case AgentRunStatusRunning, AgentRunStatusCompleted, AgentRunStatusBlocked, AgentRunStatusFailed:
+	case AgentRunStatusRunning, AgentRunStatusWaitingForUser, AgentRunStatusCompleted,
+		AgentRunStatusBlocked, AgentRunStatusFailed:
 		return true
 	}
 	return false

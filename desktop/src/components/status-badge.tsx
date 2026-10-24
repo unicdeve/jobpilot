@@ -40,6 +40,7 @@ const tones: Record<string, Tone> = {
   answered: "success",
   // agent runs and steps
   running: "info",
+  waiting_for_user: "warning",
   completed: "success",
   blocked: "warning",
   failed: "solidDanger",
@@ -56,6 +57,7 @@ const labels: Record<string, string> = {
   generated: "Generated",
   needs_user_input: "Needs you",
   NO_RESPONSE: "No response",
+  waiting_for_user: "Waiting for you",
 };
 
 export function statusLabel(value: string): string {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -294,6 +295,135 @@ func TestPlaywrightWorker_DetectBlocker(t *testing.T) {
 			}
 		})
 	}
+}
+
+// cloudflareChallengeBody is Cloudflare's challenge page as it stood in front
+// of a Himalayas posting on 2026-10-24, reduced to what DetectBlocker could
+// read: the visible text, and the script variable only that page defines.
+// The checkbox itself sits in a closed shadow root no selector can reach,
+// so it is left out — as it is, in effect, for the worker.
+const cloudflareChallengeBody = `<div class="main-wrapper">
+	<h1>himalayas.app</h1>
+	<h2>Performing security verification</h2>
+	<p>This website uses a security service to protect against malicious bots.
+	This page is displayed while the website verifies you are not a bot.</p>
+	<p>Ray ID: a4fab21bba3cb97b</p><p>Performance and Security by Cloudflare</p>
+</div>`
+
+// TestPlaywrightWorker_DetectsAPageThatIsTheCheck covers ADR-0033 §1: the
+// page Cloudflare serves instead of the one asked for. Each signal is
+// tested alone, since each is the one left when the others change.
+func TestPlaywrightWorker_DetectsAPageThatIsTheCheck(t *testing.T) {
+	tests := []struct {
+		name        string
+		header      string
+		body        string
+		wantBlocked bool
+	}{
+		{
+			name:        "the page as measured",
+			header:      "challenge",
+			body:        cloudflareChallengeBody + `<script>window._cf_chl_opt = {};</script>`,
+			wantBlocked: true,
+		},
+		{
+			name:        "Cloudflare's header alone",
+			header:      "challenge",
+			body:        `<p>Just a moment...</p>`,
+			wantBlocked: true,
+		},
+		{
+			name:        "the challenge page's script alone",
+			body:        `<script>window._cf_chl_opt = {cType: 'managed'};</script>`,
+			wantBlocked: true,
+		},
+		{
+			name:        "its visible text alone",
+			body:        cloudflareChallengeBody,
+			wantBlocked: true,
+		},
+		{
+			// Turnstile on an ordinary form is a checkbox the user ticks
+			// before submitting, like reCAPTCHA's (ADR-0013 §4).
+			name: "a Turnstile widget beside a form is not a blocker",
+			body: `<iframe src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile/if/ov2"
+				style="width:300px;height:65px"></iframe>
+				<form><label for="n">Full name</label><input id="n"></form>`,
+			wantBlocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				status := http.StatusOK
+				if tt.header != "" {
+					w.Header().Set("cf-mitigated", tt.header)
+					status = http.StatusForbidden
+				}
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("<!doctype html><html><head><title>Just a moment...</title></head><body>" +
+					tt.body + "</body></html>"))
+			}))
+			t.Cleanup(server.Close)
+			worker := newTestWorker(t)
+			ctx := context.Background()
+			require.NoError(t, worker.Navigate(ctx, server.URL))
+
+			reason, blocked := worker.DetectBlocker(ctx)
+
+			assert.Equal(t, tt.wantBlocked, blocked, "reason: %q", reason)
+			if tt.wantBlocked {
+				assert.Equal(t, "127.0.0.1 is checking that you're a person", reason,
+					"the reason names the site, so the user knows which window to look in")
+			}
+		})
+	}
+}
+
+// TestPlaywrightWorker_ACheckThatPassesClears is the other half: a check
+// served again is still seen, and once the page is the one asked for nothing
+// is blocking: the header belongs to its document, not the tab. Every reload
+// is counted.
+func TestPlaywrightWorker_ACheckThatPassesClears(t *testing.T) {
+	var passed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if !passed.Load() {
+			w.Header().Set("cf-mitigated", "challenge")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte("<!doctype html><html><body>" + cloudflareChallengeBody + "</body></html>"))
+			return
+		}
+		_, _ = w.Write([]byte(`<!doctype html><html><body><h1>Frontend engineer</h1>
+			<a href="/apply">Apply</a></body></html>`))
+	}))
+	t.Cleanup(server.Close)
+	worker := newTestWorker(t)
+	ctx := context.Background()
+	require.NoError(t, worker.Navigate(ctx, server.URL))
+
+	_, blocked := worker.DetectBlocker(ctx)
+	require.True(t, blocked)
+	loads := worker.PageLoads(ctx)
+	require.NoError(t, worker.Focus(ctx))
+
+	// Turned down: the page reloads, and the check is back.
+	_, err := worker.page.Reload()
+	require.NoError(t, err)
+	_, blocked = worker.DetectBlocker(ctx)
+	assert.True(t, blocked, "a check served again is still a check")
+	assert.Greater(t, worker.PageLoads(ctx), loads, "the reload is what core compares to tell a refusal apart")
+	loads = worker.PageLoads(ctx)
+
+	passed.Store(true)
+	_, err = worker.page.Reload()
+	require.NoError(t, err)
+
+	reason, blocked := worker.DetectBlocker(ctx)
+	assert.False(t, blocked, "the page asked for is not a check: %q", reason)
+	assert.Greater(t, worker.PageLoads(ctx), loads)
 }
 
 // TestPlaywrightWorker_FollowsApplyControlAcrossPages is the browser half of

@@ -1,6 +1,6 @@
 import { skipToken, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useApi } from "../daemon";
-import type { AgentRunDetail, AgentRunFilter } from "../types";
+import { type AgentRunDetail, type AgentRunFilter, isRunInProgress } from "../types";
 import { keys } from "./keys";
 
 /// useInfiniteActivity pages through every agent run, newest first, the
@@ -18,11 +18,14 @@ export function useInfiniteActivity(filter: AgentRunFilter, pageSize: number) {
   });
 }
 
-/// useActivityRun loads one run with every step it recorded.
+/// useActivityRun loads one run with every step it recorded, and reads it
+/// again every two seconds while it is in progress, so its steps appear as
+/// it takes them.
 export function useActivityRun(id: string | undefined) {
   const api = useApi();
   return useQuery<AgentRunDetail>({
     queryKey: keys.activity.detail(id ?? ""),
     queryFn: id ? () => api.getActivityRun(id) : skipToken,
+    refetchInterval: (query) => (query.state.data && isRunInProgress(query.state.data.run.status) ? 2000 : false),
   });
 }

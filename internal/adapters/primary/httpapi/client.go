@@ -576,14 +576,32 @@ func (c *Client) SetQuestionAnswer(ctx context.Context, questionID, answer strin
 	return &question, nil
 }
 
-// PrepareInBrowser navigates to the application's job posting in a real,
-// visible browser window, extracts and fills its form, and returns the
-// application's state afterward (READY_FOR_REVIEW on success, FAILED with a
-// reason recorded in its history/agent runs if blocked). The browser window
-// is left open either way for the user to review and submit themselves.
-func (c *Client) PrepareInBrowser(ctx context.Context, applicationID string) (*domain.Application, error) {
+// PrepareInBrowser starts preparing the application in a real, visible
+// browser window and returns the run as it began. The run goes on in the
+// daemon; follow it with GetActivityRun, and stop it with StopAgentRun
+// (ADR-0033 §5). The browser window is left open however it ends, for the
+// user to review and submit themselves.
+func (c *Client) PrepareInBrowser(ctx context.Context, applicationID string) (*domain.AgentRun, error) {
+	var run domain.AgentRun
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/prepare-in-browser", nil, &run)
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+// StopAgentRun stops a browser run in progress.
+func (c *Client) StopAgentRun(ctx context.Context, runID string) error {
+	_, err := c.do(ctx, http.MethodPost, "/v1/agent-runs/"+url.PathEscape(runID)+"/stop", nil, nil)
+	return err
+}
+
+// SetApplyURL records where the application's form is, for a browser run
+// to start from instead of the job's own link. An empty link clears it.
+func (c *Client) SetApplyURL(ctx context.Context, applicationID, applyURL string) (*domain.Application, error) {
 	var app domain.Application
-	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/prepare-in-browser", nil, &app)
+	_, err := c.do(ctx, http.MethodPut, "/v1/applications/"+url.PathEscape(applicationID)+"/apply-url",
+		setApplyURLRequest{URL: applyURL}, &app)
 	if err != nil {
 		return nil, err
 	}

@@ -75,6 +75,11 @@ See [discovery](../02_features/04_job_discovery.md), [matching](../02_features/0
   Apply-control rules choose the route to a form, with a constrained model fallback; a form gate prevents filling unrelated signup boxes (ADR-0013).
 - Resolved fields are filled; unanswered questions remain for the user.
   Success, detected blockers and failures leave the preparation browser window open, and no submit control is clicked.
+- Preparation runs in the daemon's background, and starting it moves a matched or failed application into PREPARING.
+  A page asking whether the user is a person — Cloudflare's challenge page included — pauses the run until the user answers it in the browser window; the user can stop the run, and it stops by itself after five minutes (ADR-0033).
+  A site that asks again after its check is answered is refusing JobPilot's browser, which is never disguised; the run stops, and the user can continue from their own browser by pasting the application form's address, which later runs start from.
+  Himalayas postings are behind such a check and take that hand-off.
+- Chrome runs with its sandbox on.
   Custom job import closes its reading window after extraction.
 - Recorded Ashby, Greenhouse and Lever forms and negative posting-page fixtures exercise extraction and routing offline.
 
@@ -145,6 +150,7 @@ See [testing](../08_development/testing.md) for check coverage and [packaging](.
   Application modes and Scout eligibility can already be chosen on their own records.
 - Resume/model work can still show only a busy label for a long operation; discovery has queue/progress feedback.
 - Browser CAPTCHA detection and radio labeling are heuristic.
+  A check is recognised by its frame's size, Cloudflare's signals and a short list of phrases; a vendor that uses none of them is not.
   Machine-identifier-only fields can be skipped without a reported count; there is no vision-based field understanding or guided first-use board login.
 - Answer derivation is limited, and draft checks do not cover “Never mention” or claims beyond years.
 - Only Ollama uses response schemas as sampling constraints; other providers rely on validation after decoding.

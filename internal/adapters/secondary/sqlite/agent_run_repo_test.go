@@ -73,6 +73,44 @@ func TestAgentRunRepository_Update(t *testing.T) {
 	require.NotNil(t, got.CompletedAt)
 }
 
+func TestAgentRunRepository_CloseUnfinished(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	candidate := saveTestCandidate(t, db)
+	job := saveTestJob(t, db, "https://acme.example/job-1")
+	app := saveTestApplication(t, db, candidate.ID, job.ID)
+	repo := NewAgentRunRepository(db.Conn())
+	ctx := context.Background()
+
+	byStatus := map[domain.AgentRunStatus]*domain.AgentRun{}
+	for _, status := range []domain.AgentRunStatus{
+		domain.AgentRunStatusRunning, domain.AgentRunStatusWaitingForUser,
+		domain.AgentRunStatusCompleted, domain.AgentRunStatusBlocked,
+	} {
+		run := &domain.AgentRun{ApplicationID: app.ID, TaskType: "prepare_application", Status: status}
+		require.NoError(t, repo.Save(ctx, run))
+		byStatus[status] = run
+	}
+
+	closed, err := repo.CloseUnfinished(ctx, "JobPilot stopped while this run was in progress", time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, 2, closed)
+
+	for _, status := range []domain.AgentRunStatus{domain.AgentRunStatusRunning, domain.AgentRunStatusWaitingForUser} {
+		got, err := repo.GetByID(ctx, byStatus[status].ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.AgentRunStatusFailed, got.Status, "a %s run is closed", status)
+		assert.Equal(t, "JobPilot stopped while this run was in progress", got.Error)
+		assert.NotNil(t, got.CompletedAt)
+	}
+	for _, status := range []domain.AgentRunStatus{domain.AgentRunStatusCompleted, domain.AgentRunStatusBlocked} {
+		got, err := repo.GetByID(ctx, byStatus[status].ID)
+		require.NoError(t, err)
+		assert.Equal(t, status, got.Status, "a finished run keeps how it finished")
+	}
+}
+
 func TestAgentRunRepository_ListByApplication(t *testing.T) {
 	t.Parallel()
 

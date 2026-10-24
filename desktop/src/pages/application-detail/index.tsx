@@ -111,7 +111,7 @@ export function ApplicationDetail() {
         {/* Assist never touches an employer's form
             (docs/00_product/04_application_modes.md), so it has no browser
             preparation to offer. */}
-        {application.mode === "review" && <BrowserSection applicationId={id} runs={agentRuns ?? []} />}
+        {application.mode === "review" && <BrowserSection application={application} job={job} runs={agentRuns ?? []} />}
 
         {history && history.length > 0 && <HistorySection history={history} />}
       </article>

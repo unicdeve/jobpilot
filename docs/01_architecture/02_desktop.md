@@ -122,8 +122,11 @@ What that buys, beyond avoiding a hand-written `useEffect` per screen:
 - **Declared invalidation.** A mutation names the queries it affects, so
   panels no longer reload everything after every action. Invalidation
   belongs on settle rather than on success wherever a *failed* call still
-  changed server state — `usePrepareInBrowser` is the example: a blocked
-  browser run moves the application to FAILED and records why.
+  changed server state — `usePrepareInBrowser` is the example: a start the
+  daemon refuses may still have moved the application into PREPARING.
+- **Polling while the daemon works.** A browser run goes on in the daemon
+  after the request that started it, so `useAgentRuns` reads the runs again
+  every two seconds while one is in progress, and stops when none is.
 
 Cached data belongs to one daemon, so reconnecting with Retry clears the cache
 rather than showing a previous daemon's data.

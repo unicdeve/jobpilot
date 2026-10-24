@@ -602,6 +602,17 @@ func (f *fakeAgentRunRepository) LastScoutStart(_ context.Context, scoutID strin
 	return last, nil
 }
 
+func (f *fakeAgentRunRepository) CloseUnfinished(_ context.Context, reason string, at time.Time) (int, error) {
+	closed := 0
+	for _, run := range f.runs {
+		if run.Status.InProgress() {
+			run.Status, run.Error, run.CompletedAt = domain.AgentRunStatusFailed, reason, &at
+			closed++
+		}
+	}
+	return closed, nil
+}
+
 func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, _ int) ([]*domain.AgentRun, error) {
 	var out []*domain.AgentRun
 	for _, run := range f.runs {
@@ -690,6 +701,10 @@ func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return
 
 func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) { return "", false }
 
+func (f *fakeBrowserWorker) Focus(_ context.Context) error { return nil }
+
+func (f *fakeBrowserWorker) PageLoads(_ context.Context) int { return 0 }
+
 func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
 	return f.fields, nil
 }
@@ -772,6 +787,14 @@ func (f *fakeCredentialNames) List(_ context.Context) ([]domain.CredentialRef, e
 
 func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource) {
 	t.Helper()
+	client, _, candRepo, source := testServerWithServices(t)
+	return client, candRepo, source
+}
+
+// testServerWithServices is testServer, with the services it serves, for a
+// test that has to wait on work the daemon does in the background.
+func testServerWithServices(t *testing.T) (*Client, Services, *fakeCandidateRepository, *fakeJobSource) {
+	t.Helper()
 
 	candRepo := newFakeCandidateRepository()
 	resRepo := newFakeResumeRepository()
@@ -845,7 +868,7 @@ func testServer(t *testing.T) (*Client, *fakeCandidateRepository, *fakeJobSource
 	port, err := strconv.Atoi(portStr)
 	require.NoError(t, err)
 
-	return NewClient(port), candRepo, source
+	return NewClient(port), svc, candRepo, source
 }
 
 func TestClient_Health(t *testing.T) {
@@ -1411,7 +1434,7 @@ func TestClient_QuestionResolution(t *testing.T) {
 }
 
 func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
-	client, candRepo, source := testServer(t)
+	client, svc, candRepo, source := testServerWithServices(t)
 	ctx := context.Background()
 
 	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
@@ -1422,9 +1445,11 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
 	require.NoError(t, err)
 
+	_, err = client.PrepareInBrowser(ctx, app.ID)
+	require.ErrorContains(t, err, "only a matched, preparing or failed application",
+		"a discovered application is refused before a browser opens")
+
 	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStateMatched, "matched")
-	require.NoError(t, err)
-	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStatePreparing, "preparing")
 	require.NoError(t, err)
 
 	// testServer's fake browser worker reports a page with no fields and no
@@ -1432,9 +1457,11 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	// the endpoint/JSON contract end to end; reaching the form and the
 	// resolver/fill orchestration are covered in
 	// internal/core/services/browserworker_test.go.
-	_, err = client.PrepareInBrowser(ctx, app.ID)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "could not find a way to the application form")
+	run, err := client.PrepareInBrowser(ctx, app.ID)
+	require.NoError(t, err, "the run starts, and goes on in the daemon")
+	assert.Equal(t, domain.AgentRunStatusRunning, run.Status)
+	assert.Equal(t, app.ID, run.ApplicationID)
+	svc.Browser.Wait()
 
 	got, err := client.GetApplication(ctx, app.ID)
 	require.NoError(t, err)
@@ -1444,14 +1471,47 @@ func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	require.Equal(t, domain.AgentRunStatusBlocked, runs[0].Run.Status)
+	require.Contains(t, runs[0].Run.Error, "could not find a way to the application form")
 	require.NotEmpty(t, runs[0].Events)
+
+	assert.ErrorContains(t, client.StopAgentRun(ctx, run.ID), "not in progress")
+}
+
+func TestClient_SetApplyURL(t *testing.T) {
+	client, candRepo, source := testServer(t)
+	ctx := context.Background()
+
+	candidate := domain.Candidate{FirstName: "Katherine"}
+	require.NoError(t, candRepo.Save(ctx, &candidate))
+	source.getJobResult = &domain.Job{CanonicalURL: "https://board.example/job-6", Title: "Mathematician"}
+	job, err := client.ImportJob(ctx, "https://board.example/job-6")
+	require.NoError(t, err)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.NoError(t, err)
+
+	got, err := client.SetApplyURL(ctx, app.ID, " https://jobs.ashbyhq.com/acme/1/application ")
+	require.NoError(t, err)
+	assert.Equal(t, "https://jobs.ashbyhq.com/acme/1/application", got.ApplyURL)
+
+	stored, err := client.GetApplication(ctx, app.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "https://jobs.ashbyhq.com/acme/1/application", stored.ApplyURL)
+
+	for _, refused := range []string{"jobs.ashbyhq.com/acme/1", "javascript:alert(1)", "file:///etc/passwd"} {
+		_, err = client.SetApplyURL(ctx, app.ID, refused)
+		assert.ErrorContains(t, err, "full http or https address", refused)
+	}
+
+	cleared, err := client.SetApplyURL(ctx, app.ID, "")
+	require.NoError(t, err)
+	assert.Empty(t, cleared.ApplyURL)
 }
 
 // TestClient_AgentActivity covers the activity endpoints over a run the
 // browser worker really recorded: the same trail the application's own
 // panel reads, listed across every run and read back one at a time.
 func TestClient_AgentActivity(t *testing.T) {
-	client, candRepo, source := testServer(t)
+	client, svc, candRepo, source := testServerWithServices(t)
 	ctx := context.Background()
 
 	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
@@ -1466,7 +1526,8 @@ func TestClient_AgentActivity(t *testing.T) {
 		require.NoError(t, err)
 	}
 	_, err = client.PrepareInBrowser(ctx, app.ID)
-	require.Error(t, err, "the fake page has no form, so the run is blocked")
+	require.NoError(t, err)
+	svc.Browser.Wait() // the fake page has no form, so the run is blocked
 
 	page, err := client.ListActivity(ctx, domain.AgentRunFilter{})
 	require.NoError(t, err)

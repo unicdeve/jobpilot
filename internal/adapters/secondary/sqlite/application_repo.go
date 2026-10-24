@@ -37,14 +37,14 @@ func (r *ApplicationRepository) Save(ctx context.Context, application *domain.Ap
 	query := `INSERT INTO applications (
 		id, job_id, candidate_id, resume_id, mode, state,
 		policy_result, approval_status, submitted_at, failure_reason,
-		current_cover_letter_id, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		current_cover_letter_id, apply_url, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := r.db.ExecContext(ctx, query,
 		application.ID, application.JobID, application.CandidateID, nullableString(application.ResumeID),
 		application.Mode, application.State, application.PolicyResult, application.ApprovalStatus,
 		application.SubmittedAt, application.FailureReason, nullableString(application.CurrentCoverLetterID),
-		application.CreatedAt, application.UpdatedAt,
+		application.ApplyURL, application.CreatedAt, application.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save application: %w", err)
@@ -56,7 +56,7 @@ func (r *ApplicationRepository) Save(ctx context.Context, application *domain.Ap
 const applicationColumns = `
 	id, job_id, candidate_id, resume_id, mode, state,
 	policy_result, approval_status, submitted_at, failure_reason,
-	current_cover_letter_id, created_at, updated_at`
+	current_cover_letter_id, apply_url, created_at, updated_at`
 
 func scanApplication(scanner interface{ Scan(...any) error }) (*domain.Application, error) {
 	var a domain.Application
@@ -64,7 +64,7 @@ func scanApplication(scanner interface{ Scan(...any) error }) (*domain.Applicati
 	err := scanner.Scan(
 		&a.ID, &a.JobID, &a.CandidateID, &resumeID, &a.Mode, &a.State,
 		&a.PolicyResult, &a.ApprovalStatus, &a.SubmittedAt, &a.FailureReason,
-		&currentCoverLetterID, &a.CreatedAt, &a.UpdatedAt,
+		&currentCoverLetterID, &a.ApplyURL, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -97,13 +97,13 @@ func (r *ApplicationRepository) Update(ctx context.Context, application *domain.
 
 	query := `UPDATE applications SET
 		resume_id = ?, mode = ?, policy_result = ?, approval_status = ?,
-		failure_reason = ?, current_cover_letter_id = ?, updated_at = ?
+		failure_reason = ?, current_cover_letter_id = ?, apply_url = ?, updated_at = ?
 	WHERE id = ?`
 
 	_, err := r.db.ExecContext(ctx, query,
 		nullableString(application.ResumeID), application.Mode, application.PolicyResult, application.ApprovalStatus,
-		application.FailureReason, nullableString(application.CurrentCoverLetterID), application.UpdatedAt,
-		application.ID,
+		application.FailureReason, nullableString(application.CurrentCoverLetterID), application.ApplyURL,
+		application.UpdatedAt, application.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update application: %w", err)

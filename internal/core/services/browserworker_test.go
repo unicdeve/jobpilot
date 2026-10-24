@@ -2,8 +2,10 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,6 +72,25 @@ func applicationFormFields() []ports.FormField {
 	}
 }
 
+// prepareAndWait starts a run, waits for it to finish, and returns how it
+// ended as an error: nil for a completed run, its recorded reason for any
+// other, or the refusal to start.
+func prepareAndWait(svc *BrowserWorkerService, applicationID string) error {
+	run, err := svc.StartPreparation(context.Background(), applicationID)
+	if err != nil {
+		return err
+	}
+	svc.Wait()
+	finished, err := svc.runRepo.GetByID(context.Background(), run.ID)
+	if err != nil {
+		return err
+	}
+	if finished.Status != domain.AgentRunStatusCompleted {
+		return errors.New(finished.Error)
+	}
+	return nil
+}
+
 func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 	t.Parallel()
 
@@ -88,7 +109,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 			{Ref: "3", Label: "Phone", Kind: ports.FormFieldKindText},
 		}
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 		require.NoError(t, err)
 
 		assert.Equal(t, domain.ApplicationStateReadyForReview, appRepo.applications[appID].State)
@@ -117,7 +138,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		appRepo.applications[appID].Mode = domain.ApplicationModeAssist
 		worker.fields = applicationFormFields()
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 		require.ErrorIs(t, err, ErrAssistDoesNotFillForms)
 
 		assert.Empty(t, worker.navigated, "no page was opened")
@@ -126,31 +147,6 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		runs, err := runRepo.ListByApplication(context.Background(), appID)
 		require.NoError(t, err)
 		assert.Empty(t, runs)
-	})
-
-	t.Run("a detected blocker stops the run and fails the application without closing the browser", func(t *testing.T) {
-		t.Parallel()
-		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
-
-		candidate := &domain.Candidate{}
-		job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
-		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
-
-		worker.blocked = true
-		worker.blockedReason = "a recaptcha challenge is present on the page"
-
-		err := svc.PrepareApplication(context.Background(), appID)
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "recaptcha")
-
-		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
-		assert.False(t, worker.closed)
-
-		runs, err := runRepo.ListByApplication(context.Background(), appID)
-		require.NoError(t, err)
-		require.Len(t, runs, 1)
-		assert.Equal(t, domain.AgentRunStatusBlocked, runs[0].Status)
-		assert.Contains(t, runs[0].Error, "recaptcha")
 	})
 
 	t.Run("a page that is not an application form is not filled in", func(t *testing.T) {
@@ -163,7 +159,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 
 		worker.fields = nil
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "could not find a way to the application form")
 		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
@@ -185,15 +181,15 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		worker.navigateErr = assert.AnError
 		worker.fields = applicationFormFields()
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 		require.Error(t, err)
 		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
 		assert.Empty(t, worker.filled)
 	})
 
-	t.Run("application not currently in PREPARING is rejected by the existing state machine, not duplicated here", func(t *testing.T) {
+	t.Run("an application that cannot be prepared is refused before a run starts", func(t *testing.T) {
 		t.Parallel()
-		svc, appRepo, jobRepo, candRepo, _, worker := newTestBrowserWorkerService(t)
+		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
 
 		candidate := &domain.Candidate{}
 		job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
@@ -202,9 +198,40 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 
 		worker.fields = applicationFormFields()
 
-		err := svc.PrepareApplication(context.Background(), appID)
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "cannot transition application")
+		err := prepareAndWait(svc, appID)
+		require.ErrorIs(t, err, ErrCannotPrepare)
+		assert.ErrorContains(t, err, "this one is discovered")
+
+		assert.Empty(t, worker.navigated, "no page was opened")
+		runs, err := runRepo.ListByApplication(context.Background(), appID)
+		require.NoError(t, err)
+		assert.Empty(t, runs)
+	})
+
+	t.Run("a failed application is moved back to preparing and tried again", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, jobRepo, candRepo, _, worker := newTestBrowserWorkerService(t)
+
+		job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{FirstName: "Ada"}, job)
+		appRepo.applications[appID].State = domain.ApplicationStateFailed
+		worker.fields = applicationFormFields()
+
+		require.NoError(t, prepareAndWait(svc, appID))
+		assert.Equal(t, domain.ApplicationStateReadyForReview, appRepo.applications[appID].State)
+	})
+
+	t.Run("starts from the link the user gave rather than the job's own", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, jobRepo, candRepo, _, worker := newTestBrowserWorkerService(t)
+
+		job := &domain.Job{CanonicalURL: "https://board.example/jobs/1"}
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{FirstName: "Ada"}, job)
+		appRepo.applications[appID].ApplyURL = "https://jobs.ashbyhq.com/acme/1/application"
+		worker.fields = applicationFormFields()
+
+		require.NoError(t, prepareAndWait(svc, appID))
+		assert.Equal(t, []string{"https://jobs.ashbyhq.com/acme/1/application"}, worker.navigated)
 	})
 
 	t.Run("a browser that fails to launch is recorded as a failed run, distinct from a content blocker", func(t *testing.T) {
@@ -226,7 +253,7 @@ func TestBrowserWorkerService_PrepareApplication(t *testing.T) {
 		job := &domain.Job{CanonicalURL: "https://acme.example/jobs/1"}
 		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "failed to launch the browser")
 
@@ -255,7 +282,7 @@ func TestBrowserWorkerService_TrailHoldsNoAnswers(t *testing.T) {
 	appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, candidate, job)
 	worker.fields = applicationFormFields()
 
-	require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+	require.NoError(t, prepareAndWait(svc, appID))
 	require.Equal(t, "ada@example.com", worker.filled["1"], "the answer did reach the form")
 
 	runs, err := svc.ListRuns(context.Background(), appID)
@@ -307,7 +334,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 			{Ref: "1", Text: "Apply Now", URL: "https://jobs.ashbyhq.com/acme/1/application"},
 		}
 
-		require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+		require.NoError(t, prepareAndWait(svc, appID))
 
 		assert.Equal(t, []string{"1"}, worker.followed, "it must follow the apply control, not the city link")
 		assert.Equal(t, domain.ApplicationStateReadyForReview, appRepo.applications[appID].State)
@@ -327,7 +354,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 			{Ref: "0", Text: "Apply Now", URL: "https://board.example/jobs/1/apply"},
 		}
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "could not find the application form")
@@ -346,7 +373,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 			{Ref: "0", Text: "Apply", URL: "https://board.example/loop"},
 		}
 
-		require.Error(t, svc.PrepareApplication(context.Background(), appID))
+		require.Error(t, prepareAndWait(svc, appID))
 
 		assert.Len(t, worker.followed, maxApplyHops, "a redirect loop must not be followed forever")
 	})
@@ -360,7 +387,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 		worker.pages = [][]ports.FormField{newsletterOnly}
 		worker.controls = []ports.ApplyControl{{Ref: "0", Text: "Privacy policy", URL: "https://board.example/privacy"}}
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "no link or button on it looks like an apply control")
@@ -375,7 +402,7 @@ func TestBrowserWorkerService_ReachesTheApplicationForm(t *testing.T) {
 
 		worker.pages = [][]ports.FormField{applicationFormFields()}
 
-		require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+		require.NoError(t, prepareAndWait(svc, appID))
 		assert.Empty(t, worker.followed, "a company career page often holds the form itself")
 	})
 }
@@ -439,7 +466,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 			{Ref: "1", Text: "Apply Now", URL: "https://jobs.ashbyhq.com/acme/1/application"},
 		}
 
-		require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+		require.NoError(t, prepareAndWait(svc, appID))
 
 		assert.Equal(t, []string{"1"}, worker.followed)
 		assert.Zero(t, llm.generateCalls, "the common case must stay deterministic and offline")
@@ -455,7 +482,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		worker.pages = [][]ports.FormField{newsletterOnly, applicationFormFields()}
 		worker.controls = unreadableWayIn
 
-		require.NoError(t, svc.PrepareApplication(context.Background(), appID))
+		require.NoError(t, prepareAndWait(svc, appID))
 
 		assert.Equal(t, 1, llm.generateCalls)
 		assert.Equal(t, []string{"1"}, worker.followed)
@@ -481,7 +508,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		worker.pages = [][]ports.FormField{newsletterOnly}
 		worker.controls = unreadableWayIn
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "no link or button on it looks like an apply control")
@@ -499,7 +526,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		worker.pages = [][]ports.FormField{newsletterOnly}
 		worker.controls = unreadableWayIn
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "no link or button on it looks like an apply control",
@@ -524,7 +551,7 @@ func TestBrowserWorkerService_ApplyControlFallback(t *testing.T) {
 		worker.pages = [][]ports.FormField{newsletterOnly}
 		worker.controls = unreadableWayIn
 
-		err := svc.PrepareApplication(context.Background(), appID)
+		err := prepareAndWait(svc, appID)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "could not find the application form")
@@ -549,4 +576,171 @@ func hasEventOutputContaining(events []*domain.AgentEvent, action, want string) 
 		}
 	}
 	return false
+}
+
+// TestBrowserWorkerService_WaitsForTheUser covers ADR-0033: a page asking
+// whether the user is a person pauses the run until they answer it, and a
+// site that asks again after being answered is refusing JobPilot's browser.
+func TestBrowserWorkerService_WaitsForTheUser(t *testing.T) {
+	t.Parallel()
+
+	const checking = "board.example is checking that you're a person"
+
+	// newWaitingService is the service with waits short enough for a test,
+	// and a job whose posting is the application form once the check is out
+	// of the way.
+	newWaitingService := func(t *testing.T, timeout time.Duration) (
+		*BrowserWorkerService, *fakeApplicationRepository, *fakeAgentRunRepository, *fakeBrowserWorker, string,
+	) {
+		t.Helper()
+		svc, appRepo, jobRepo, candRepo, runRepo, worker := newTestBrowserWorkerService(t)
+		svc.challengePoll = time.Millisecond
+		svc.challengeTimeout = timeout
+		job := &domain.Job{CanonicalURL: "https://board.example/jobs/1"}
+		appID := seedPreparingApplication(t, appRepo, jobRepo, candRepo, &domain.Candidate{FirstName: "Ada"}, job)
+		worker.fields = applicationFormFields()
+		worker.currentURL = job.CanonicalURL
+		return svc, appRepo, runRepo, worker, appID
+	}
+
+	// alwaysChecking is a check nobody answers. asked is closed the first
+	// time the run looks while waiting, so a test can act on a waiting run
+	// without reading what the run goroutine is writing.
+	alwaysChecking := func(asked chan<- struct{}) func(int) (string, bool) {
+		return func(call int) (string, bool) {
+			if call == 1 {
+				close(asked)
+			}
+			return checking, true
+		}
+	}
+
+	t.Run("a check the user answers pauses the run, which then carries on", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, runRepo, worker, appID := newWaitingService(t, time.Minute)
+		// Checking for the first look and three while waiting, then gone.
+		worker.detect = func(call int) (string, bool) { return checking, call < 4 }
+
+		require.NoError(t, prepareAndWait(svc, appID))
+
+		assert.True(t, worker.focused, "the window the user has to answer in is brought forward")
+		assert.Equal(t, "Ada", worker.filled["0"])
+		assert.Equal(t, domain.ApplicationStateReadyForReview, appRepo.applications[appID].State)
+
+		runs, err := runRepo.ListByApplication(context.Background(), appID)
+		require.NoError(t, err)
+		require.Len(t, runs, 1)
+		assert.Equal(t, domain.AgentRunStatusCompleted, runs[0].Status)
+		events, err := svc.ListEvents(context.Background(), runs[0].ID)
+		require.NoError(t, err)
+		assert.True(t, hasEventOutputContaining(events, "detect_blocker", "waiting for you"))
+		assert.True(t, hasEvent(events, "solve_check", "user"), "the trail says the user answered it, not JobPilot")
+	})
+
+	t.Run("one clear look is not an answer: the page may be between documents", func(t *testing.T) {
+		t.Parallel()
+		svc, _, _, worker, appID := newWaitingService(t, 50*time.Millisecond)
+		// Every other look comes back clear, as a page mid-reload can.
+		worker.detect = func(call int) (string, bool) { return checking, call%2 == 0 }
+
+		err := prepareAndWait(svc, appID)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "was not answered within")
+		assert.Empty(t, worker.filled)
+	})
+
+	t.Run("a check still there after the page reloads is the site refusing the browser", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, runRepo, worker, appID := newWaitingService(t, time.Minute)
+		worker.detect = func(call int) (string, bool) {
+			if call == 3 {
+				worker.loads++ // the user's answer was sent, and the check came back
+			}
+			return checking, true
+		}
+
+		err := prepareAndWait(svc, appID)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "board.example asked again after its check was answered")
+		assert.Empty(t, worker.filled)
+		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
+		runs, err := runRepo.ListByApplication(context.Background(), appID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.AgentRunStatusBlocked, runs[0].Status)
+	})
+
+	t.Run("a check that clears and comes back on the same page is the site refusing the browser", func(t *testing.T) {
+		t.Parallel()
+		svc, _, _, worker, appID := newWaitingService(t, time.Minute)
+		// Checking, then two clear looks, then checking again when the run
+		// looks at the page before reading it.
+		worker.detect = func(call int) (string, bool) { return checking, call == 0 || call >= 3 }
+
+		err := prepareAndWait(svc, appID)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "asked again after its check was answered")
+		assert.Empty(t, worker.filled)
+	})
+
+	t.Run("a check nobody answers ends the run when the wait runs out", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, _, worker, appID := newWaitingService(t, 20*time.Millisecond)
+		worker.blocked, worker.blockedReason = true, checking
+
+		err := prepareAndWait(svc, appID)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, checking+", and it was not answered within")
+		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
+	})
+
+	t.Run("the user can stop a waiting run, and only once", func(t *testing.T) {
+		t.Parallel()
+		svc, appRepo, runRepo, worker, appID := newWaitingService(t, time.Minute)
+		asked := make(chan struct{})
+		worker.detect = alwaysChecking(asked)
+
+		run, err := svc.StartPreparation(context.Background(), appID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.AgentRunStatusRunning, run.Status)
+		<-asked
+
+		_, err = svc.StartPreparation(context.Background(), appID)
+		require.ErrorIs(t, err, ErrPreparationInProgress, "one run per application at a time")
+
+		require.NoError(t, svc.StopPreparation(run.ID))
+		svc.Wait()
+
+		finished, err := runRepo.GetByID(context.Background(), run.ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.AgentRunStatusBlocked, finished.Status)
+		assert.Equal(t, "you stopped this run", finished.Error)
+		assert.Equal(t, domain.ApplicationStateFailed, appRepo.applications[appID].State)
+		assert.False(t, worker.closed, "the window stays open for the user")
+
+		assert.ErrorIs(t, svc.StopPreparation(run.ID), ErrRunNotInProgress)
+	})
+
+	t.Run("a run in progress when JobPilot stops says so", func(t *testing.T) {
+		t.Parallel()
+		svc, _, runRepo, worker, appID := newWaitingService(t, time.Minute)
+		daemon, stopDaemon := context.WithCancel(context.Background())
+		svc.Start(daemon)
+		asked := make(chan struct{})
+		worker.detect = alwaysChecking(asked)
+
+		run, err := svc.StartPreparation(context.Background(), appID)
+		require.NoError(t, err)
+		<-asked
+		stopDaemon()
+		svc.Wait()
+
+		finished, err := runRepo.GetByID(context.Background(), run.ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.AgentRunStatusBlocked, finished.Status)
+		assert.Equal(t, "JobPilot stopped", finished.Error)
+	})
 }

@@ -2,8 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -112,6 +115,42 @@ func (s *ApplicationService) GetApplication(ctx context.Context, id string) (*do
 		return nil, fmt.Errorf("failed to get application: %w", err)
 	}
 	return application, nil
+}
+
+// ErrInvalidApplyURL is returned for an apply link that is not an absolute
+// http or https address.
+var ErrInvalidApplyURL = errors.New("the application link must be a full http or https address")
+
+// SetApplyURL records where the user says an application's form is, or
+// clears it with an empty link, so a browser run starts from the job's own
+// link again (ADR-0033 §4).
+//
+// The link is the user's, not a page's, but it is held to the same rule
+// every hop is (ADR-0013 §2): a web address, and nothing the browser would
+// hand to another program or treat as content of its own.
+func (s *ApplicationService) SetApplyURL(ctx context.Context, id, rawURL string) (*domain.Application, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL != "" && !isWebAddress(rawURL) {
+		return nil, ErrInvalidApplyURL
+	}
+
+	application, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get application: %w", err)
+	}
+	application.ApplyURL = rawURL
+	if err := s.repo.Update(ctx, application); err != nil {
+		return nil, fmt.Errorf("failed to save the application link: %w", err)
+	}
+	return application, nil
+}
+
+func isWebAddress(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 // ListApplications retrieves all applications for a candidate.

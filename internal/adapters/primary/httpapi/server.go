@@ -94,6 +94,7 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/agent-runs", handleListActivity(svc.Activity))
 	mux.HandleFunc("GET /v1/agent-runs/{id}", handleGetActivityRun(svc.Activity))
+	mux.HandleFunc("POST /v1/agent-runs/{id}/stop", handleStopAgentRun(svc.Browser))
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))
@@ -129,7 +130,8 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("POST /v1/questions/{id}/resolve", handleResolveQuestion(svc.Answers))
 	mux.HandleFunc("PUT /v1/questions/{id}/answer", handleSetQuestionAnswer(svc.Answers))
 
-	mux.HandleFunc("POST /v1/applications/{id}/prepare-in-browser", handlePrepareInBrowser(svc.Browser, svc.Application))
+	mux.HandleFunc("PUT /v1/applications/{id}/apply-url", handleSetApplyURL(svc.Application))
+	mux.HandleFunc("POST /v1/applications/{id}/prepare-in-browser", handlePrepareInBrowser(svc.Browser))
 	mux.HandleFunc("GET /v1/applications/{id}/agent-runs", handleListAgentRuns(svc.Browser))
 
 	registerDeletions(mux, svc.Deletion)

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -22,6 +24,7 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(newCoverLetterCmd(client))
 	cmd.AddCommand(newQuestionCmd(client))
 	cmd.AddCommand(newApplicationPrepareInBrowserCmd(client))
+	cmd.AddCommand(newApplicationApplyURLCmd(client))
 	cmd.AddCommand(newApplicationAgentRunsCmd(client))
 	cmd.AddCommand(deleteCmd(client, "delete [application-id]", "Delete an application, with its answers, cover letters and history",
 		domain.DeleteApplication, func(args []string) string { return "application " + args[0] }))
@@ -102,6 +105,9 @@ func newApplicationShowCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("fetching application: %w", err)
 			}
 			fmt.Printf("Application %s\nJob: %s\nState: %s\nMode: %s\n", app.ID, app.JobID, app.State, app.Mode)
+			if app.ApplyURL != "" {
+				fmt.Printf("Browser starts from: %s\n", app.ApplyURL)
+			}
 			if app.SubmittedAt != nil {
 				fmt.Printf("Submitted: %s\n", app.SubmittedAt.Format(time.RFC1123))
 			}
@@ -217,21 +223,114 @@ func newApplicationSubmittedCmd(client *httpapi.Client) *cobra.Command {
 }
 
 func newApplicationPrepareInBrowserCmd(client *httpapi.Client) *cobra.Command {
-	return &cobra.Command{
+	var from string
+
+	cmd := &cobra.Command{
 		Use:   "prepare-in-browser [application-id]",
 		Short: "Open the job posting in a real browser, extract its form, and fill in known answers",
-		Args:  cobra.ExactArgs(1),
+		Long: "Open the job posting in a real browser, extract its form, and fill in known answers.\n\n" +
+			"If a page asks whether you're a person, answer it in the browser window and the run carries on. " +
+			"Press Ctrl-C to stop the run; the window stays open either way.\n\n" +
+			"If a site won't let JobPilot's browser through, open the posting in your own browser, " +
+			"follow its apply button, and pass the application form's address with --from.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			app, err := client.PrepareInBrowser(ctx, args[0])
+			id := args[0]
+			if from != "" {
+				if _, err := client.SetApplyURL(context.Background(), id, from); err != nil {
+					return fmt.Errorf("recording the application link: %w", err)
+				}
+			}
+
+			run, err := client.PrepareInBrowser(context.Background(), id)
 			if err != nil {
-				fmt.Printf("⚠️  %v\nRun 'application agent-runs %s' to see what happened, or 'application show %s' for details.\n", err, args[0], args[0])
+				return fmt.Errorf("starting the browser: %w", err)
+			}
+			run, err = followBrowserRun(client, run)
+			if err != nil {
+				return err
+			}
+
+			if run.Status != domain.AgentRunStatusCompleted {
+				fmt.Printf("⚠️  %s\nRun 'application agent-runs %s' to see what happened, or 'application show %s' for details.\n", run.Error, id, id)
 				return nil
 			}
-			fmt.Printf("✅ Application %s is now %s. The browser window was left open for you to review and submit.\n", app.ID, app.State)
+			fmt.Printf("✅ Application %s is ready for review. The browser window was left open for you to review and submit.\n", id)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&from, "from", "", "start from this application form address instead of the job's own link, and keep it for later runs")
+	return cmd
+}
+
+func newApplicationApplyURLCmd(client *httpapi.Client) *cobra.Command {
+	var useJobLink bool
+
+	cmd := &cobra.Command{
+		Use:   "apply-url [application-id] [url]",
+		Short: "Set where the browser starts for this application, or clear it to use the job's own link",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if useJobLink {
+				return cobra.ExactArgs(1)(cmd, args)
+			}
+			return cobra.ExactArgs(2)(cmd, args)
+		},
+		RunE: func(_ *cobra.Command, args []string) error {
+			applyURL := ""
+			if !useJobLink {
+				applyURL = args[1]
+			}
+			app, err := client.SetApplyURL(context.Background(), args[0], applyURL)
+			if err != nil {
+				return fmt.Errorf("recording the application link: %w", err)
+			}
+			if app.ApplyURL == "" {
+				fmt.Printf("✅ Application %s starts from the job's own link again.\n", app.ID)
+				return nil
+			}
+			fmt.Printf("✅ Application %s starts from %s.\n", app.ID, app.ApplyURL)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&useJobLink, "clear", false, "start from the job's own link again")
+	return cmd
+}
+
+// browserRunPoll is how often the CLI reads a run in progress, as the
+// desktop does.
+const browserRunPoll = 2 * time.Second
+
+// followBrowserRun reads the run until it finishes, saying when it is
+// waiting for the user, and stops it if the user interrupts the command.
+func followBrowserRun(client *httpapi.Client, run *domain.AgentRun) (*domain.AgentRun, error) {
+	interrupted, stopListening := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stopListening()
+
+	ctx := context.Background()
+	stopSent := false
+	fmt.Println("Preparing in the browser…")
+	for run.Status.InProgress() {
+		select {
+		case <-interrupted.Done():
+			if !stopSent {
+				stopSent = true
+				if err := client.StopAgentRun(ctx, run.ID); err != nil {
+					return nil, fmt.Errorf("stopping the run: %w", err)
+				}
+			}
+		case <-time.After(browserRunPoll):
+		}
+
+		detail, err := client.GetActivityRun(ctx, run.ID)
+		if err != nil {
+			return nil, fmt.Errorf("reading the run: %w", err)
+		}
+		if detail.Run.Status == domain.AgentRunStatusWaitingForUser && run.Status != domain.AgentRunStatusWaitingForUser {
+			fmt.Println("🧍 The page is asking whether you're a person. Answer it in the browser window, and the run carries on.")
+		}
+		run = &detail.Run.AgentRun
+	}
+	return run, nil
 }
 
 func newApplicationAgentRunsCmd(client *httpapi.Client) *cobra.Command {

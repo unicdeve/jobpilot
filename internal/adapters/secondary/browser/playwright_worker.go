@@ -8,11 +8,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
@@ -59,12 +61,58 @@ const challengeMinHeight = 200
 // blockerPhrases appear on interstitial pages that replace the content
 // entirely. They are matched against rendered text, never page source: the
 // same words sit in the scripts of pages that are working perfectly well.
-var blockerPhrases = []string{"verify you are human", "are you a robot", "unusual traffic"}
+//
+// "performing security verification" is Cloudflare's challenge page, whose
+// "Verify you are human" lives inside its widget's frame and so is not part
+// of the page's own text (measured on himalayas.app, ADR-0033).
+var blockerPhrases = []string{
+	"verify you are human", "are you a robot", "unusual traffic", "performing security verification",
+}
+
+// challengePageScript reports whether the page is Cloudflare's challenge
+// page, which defines this and nothing else does. Its checkbox is in a
+// closed shadow root, so no selector can see the frame (ADR-0033 §1).
+const challengePageScript = `() => typeof window._cf_chl_opt !== 'undefined'`
 
 // PlaywrightWorker is a ports.BrowserWorker driving one page (one tab) of
 // the shared JobPilot Chrome session.
 type PlaywrightWorker struct {
-	page playwright.Page
+	page  playwright.Page
+	watch *pageWatch
+}
+
+// pageWatch is what the page's own events say about it, recorded as they
+// arrive. Handlers run on Playwright's dispatcher, where a call back into
+// the browser would deadlock, so they only ever store what the event
+// already carries.
+type pageWatch struct {
+	// challenged is whether the page's current document arrived marked
+	// "cf-mitigated: challenge", Cloudflare's own signal that the response
+	// is a challenge rather than the page asked for.
+	challenged atomic.Bool
+	loads      atomic.Int64
+}
+
+func newPlaywrightWorker(page playwright.Page) *PlaywrightWorker {
+	return &PlaywrightWorker{page: page, watch: watchPage(page)}
+}
+
+func watchPage(page playwright.Page) *pageWatch {
+	watch := &pageWatch{}
+	page.OnResponse(func(response playwright.Response) {
+		request := response.Request()
+		if !request.IsNavigationRequest() {
+			return
+		}
+		if frame := request.Frame(); frame == nil || frame.ParentFrame() != nil {
+			return
+		}
+		watch.challenged.Store(strings.EqualFold(response.Headers()["cf-mitigated"], "challenge"))
+	})
+	page.OnLoad(func(playwright.Page) {
+		watch.loads.Add(1)
+	})
+	return watch
 }
 
 // ChromeSession owns the single Chrome process behind every browser task.
@@ -116,7 +164,7 @@ func (s *ChromeSession) NewWorker() (ports.BrowserWorker, error) {
 	if s.context != nil {
 		page, err := s.pageLocked()
 		if err == nil {
-			return &PlaywrightWorker{page: page}, nil
+			return newPlaywrightWorker(page), nil
 		}
 		// The user closed the window, so these handles are dead. Drop them
 		// and start over rather than reporting their failure as this run's.
@@ -131,7 +179,7 @@ func (s *ChromeSession) NewWorker() (ports.BrowserWorker, error) {
 		s.discardLocked()
 		return nil, err
 	}
-	return &PlaywrightWorker{page: page}, nil
+	return newPlaywrightWorker(page), nil
 }
 
 // Shutdown closes the browser, if one is running. It is for daemon
@@ -183,9 +231,12 @@ func (s *ChromeSession) launchLocked() error {
 		return fmt.Errorf("failed to start playwright: %w", err)
 	}
 
+	// ChromiumSandbox: Playwright passes --no-sandbox unless asked not to,
+	// and this browser reads untrusted pages (ADR-0033 §6).
 	browserContext, err := pw.Chromium.LaunchPersistentContext(s.profileDir, playwright.BrowserTypeLaunchPersistentContextOptions{
-		Channel:  new("chrome"),
-		Headless: new(s.headless),
+		Channel:         new("chrome"),
+		Headless:        new(s.headless),
+		ChromiumSandbox: new(true),
 	})
 	if err != nil {
 		_ = pw.Stop()
@@ -249,8 +300,15 @@ func (w *PlaywrightWorker) Navigate(_ context.Context, url string) error {
 
 // DetectBlocker reports whether the page is posing a challenge the run
 // cannot get past. See challengeMinHeight for why presence of a CAPTCHA is
-// not itself the test.
+// not itself the test, and ADR-0033 §1 for a page that is the challenge.
 func (w *PlaywrightWorker) DetectBlocker(_ context.Context) (string, bool) {
+	if w.watch.challenged.Load() {
+		return w.checkingReason(), true
+	}
+	if isChallenge, err := w.page.Evaluate(challengePageScript); err == nil && isChallenge == true {
+		return w.checkingReason(), true
+	}
+
 	frames := w.page.Locator(captchaFrameSelector)
 	count, err := frames.Count()
 	if err != nil {
@@ -273,12 +331,35 @@ func (w *PlaywrightWorker) DetectBlocker(_ context.Context) (string, bool) {
 		lower := strings.ToLower(text)
 		for _, phrase := range blockerPhrases {
 			if strings.Contains(lower, phrase) {
-				return fmt.Sprintf("the page contains blocking text: %q", phrase), true
+				return w.checkingReason(), true
 			}
 		}
 	}
 
 	return "", false
+}
+
+// checkingReason names the site doing the checking, which is what the user
+// needs to know to recognise the window it is in.
+func (w *PlaywrightWorker) checkingReason() string {
+	site := "the site"
+	if parsed, err := url.Parse(w.page.URL()); err == nil && parsed.Hostname() != "" {
+		site = parsed.Hostname()
+	}
+	return site + " is checking that you're a person"
+}
+
+// Focus brings the worker's tab to the front of its window.
+func (w *PlaywrightWorker) Focus(_ context.Context) error {
+	if err := w.page.BringToFront(); err != nil {
+		return fmt.Errorf("failed to bring the browser tab forward: %w", err)
+	}
+	return nil
+}
+
+// PageLoads is how many documents the worker's current page has loaded.
+func (w *PlaywrightWorker) PageLoads(_ context.Context) int {
+	return int(w.watch.loads.Load())
 }
 
 // applyControlSelector matches anything a page might use as a way in. It is
@@ -372,8 +453,12 @@ func (w *PlaywrightWorker) FollowControl(_ context.Context, ref string) error {
 	// usually not the page it clicked. Without adopting the new tab the
 	// worker reads the posting again, decides it still is not a form, and
 	// clicks apply a second time.
+	//
+	// The new tab may have received its first response before it could be
+	// watched, so a challenge on it is found by its page script and text
+	// rather than by its header.
 	if adopted := waitForNewPage(browserContext, before); adopted != nil {
-		w.page = adopted
+		w.page, w.watch = adopted, watchPage(adopted)
 	}
 
 	// A control may navigate, may open a tab, may swap the form in without

@@ -419,6 +419,10 @@ export interface Application {
   approval_status: string;
   submitted_at?: string;
   failure_reason: string;
+  /// Where the user said the application form is, when the job's own link
+  /// does not get there. A browser run starts here when it is set
+  /// (ADR-0033 §4).
+  apply_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -528,7 +532,14 @@ export interface ApplicationQuestion {
   flags?: DraftFlag[];
 }
 
-export type AgentRunStatus = "running" | "completed" | "blocked" | "failed";
+/// waiting_for_user is a run paused on a check only the user can answer, in
+/// the browser window it brought forward (ADR-0033 §2).
+export type AgentRunStatus = "running" | "waiting_for_user" | "completed" | "blocked" | "failed";
+
+/// isRunInProgress reports whether a run has not finished yet.
+export function isRunInProgress(status: AgentRunStatus): boolean {
+  return status === "running" || status === "waiting_for_user";
+}
 
 /// What a run was doing. Mirrors domain.AgentTask* in the daemon.
 export type AgentTaskType = "prepare_application" | "scout_run";

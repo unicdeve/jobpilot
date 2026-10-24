@@ -188,6 +188,23 @@ func (r *AgentRunRepository) LastScoutStart(ctx context.Context, scoutID string)
 	return &started, nil
 }
 
+// CloseUnfinished ends every run still running or waiting for the user.
+func (r *AgentRunRepository) CloseUnfinished(ctx context.Context, reason string, at time.Time) (int, error) {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE agent_runs SET status = ?, completed_at = ?, error = ? WHERE status IN (?, ?)`,
+		domain.AgentRunStatusFailed, at, reason,
+		domain.AgentRunStatusRunning, domain.AgentRunStatusWaitingForUser,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to close unfinished agent runs: %w", err)
+	}
+	closed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to count closed agent runs: %w", err)
+	}
+	return int(closed), nil
+}
+
 // agentRunSummaryQuery selects a run with what it served: the scout that
 // started it, or the job its application is for. Both are LEFT JOINs, so
 // a run whose scout or application has since been deleted is still listed.

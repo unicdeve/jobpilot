@@ -31,6 +31,9 @@ type AgentRunRepository interface {
 	// LastScoutStart returns when a scout's most recent run started, or
 	// nil if it has never run.
 	LastScoutStart(ctx context.Context, scoutID string) (*time.Time, error)
+	// CloseUnfinished ends every run still in progress as failed, with
+	// reason, at the given time, and reports how many it closed.
+	CloseUnfinished(ctx context.Context, reason string, at time.Time) (int, error)
 }
 
 // AgentEventRepository persists and retrieves the structured steps within

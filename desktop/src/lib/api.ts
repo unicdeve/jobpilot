@@ -253,7 +253,11 @@ export interface ApiClient {
   resolveQuestion(questionId: string): Promise<ApplicationQuestion>;
   setQuestionAnswer(questionId: string, answer: string): Promise<ApplicationQuestion>;
 
-  prepareInBrowser(applicationId: string): Promise<Application>;
+  /// prepareInBrowser starts a run and answers with it at once; the run goes
+  /// on in the daemon, and listAgentRuns follows it (ADR-0033 §5).
+  prepareInBrowser(applicationId: string): Promise<AgentRun>;
+  stopAgentRun(runId: string): Promise<void>;
+  setApplyUrl(applicationId: string, url: string): Promise<Application>;
   listAgentRuns(applicationId: string): Promise<AgentRunWithEvents[]>;
 }
 
@@ -558,7 +562,10 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
       }),
 
     prepareInBrowser: (applicationId) =>
-      request<Application>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`),
+      request<AgentRun>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`),
+    stopAgentRun: (runId) => request<void>(daemon, "POST", `/v1/agent-runs/${encodeURIComponent(runId)}/stop`),
+    setApplyUrl: (applicationId, url) =>
+      request<Application>(daemon, "PUT", `/v1/applications/${encodeURIComponent(applicationId)}/apply-url`, { url }),
     listAgentRuns: (applicationId) =>
       request<AgentRunWithEvents[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`),
   };

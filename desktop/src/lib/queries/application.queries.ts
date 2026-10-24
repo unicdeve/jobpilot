@@ -1,11 +1,13 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../daemon";
-import type {
-  AgentRunWithEvents,
-  Application,
-  ApplicationMode,
-  ApplicationState,
-  ApplicationStateTransition,
+import {
+  type AgentRun,
+  type AgentRunWithEvents,
+  type Application,
+  type ApplicationMode,
+  type ApplicationState,
+  type ApplicationStateTransition,
+  isRunInProgress,
 } from "../types";
 import { keys } from "./keys";
 import type { MutationOpts } from "./mutation";
@@ -46,12 +48,16 @@ export function useAllowedTransitions(id: string | undefined) {
   });
 }
 
-/// useAgentRuns loads the browser runs that prepared one application.
+/// useAgentRuns loads the browser runs that prepared one application. A run
+/// goes on in the daemon after the request that started it, so while one is
+/// in progress the list is read again every two seconds, which is how the
+/// screen learns that it is waiting for the user, or has finished.
 export function useAgentRuns(id: string | undefined) {
   const api = useApi();
   return useQuery<AgentRunWithEvents[]>({
     queryKey: keys.applications.agentRuns(id ?? ""),
     queryFn: id ? () => api.listAgentRuns(id) : skipToken,
+    refetchInterval: (query) => (query.state.data?.some(({ run }) => isRunInProgress(run.status)) ? 2000 : false),
   });
 }
 
@@ -99,21 +105,51 @@ export function useTransitionApplication(opts?: MutationOpts<Application, Transi
   });
 }
 
-export function usePrepareInBrowser(opts?: MutationOpts<Application, string>) {
+export function usePrepareInBrowser(opts?: MutationOpts<AgentRun, string>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (applicationId: string) => api.prepareInBrowser(applicationId),
     ...opts,
-    // Invalidation happens on settle rather than on success because a failed
-    // run still changes server state: the application moves to FAILED and
-    // the agent run recording why is exactly what the user needs to see.
-    // keys.applications.all covers the application, its questions, its
-    // runs and its history.
+    // Starting moves the application into PREPARING, and the new run is
+    // what useAgentRuns then follows. keys.applications.all covers the
+    // application, its runs and its history.
     onSettled: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.applications.all });
       void queryClient.invalidateQueries({ queryKey: keys.activity.all });
       opts?.onSettled?.(...args);
+    },
+  });
+}
+
+export function useStopAgentRun(opts?: MutationOpts<void, string>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => api.stopAgentRun(runId),
+    ...opts,
+    onSettled: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: keys.applications.all });
+      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
+      opts?.onSettled?.(...args);
+    },
+  });
+}
+
+interface SetApplyUrlVars {
+  applicationId: string;
+  url: string;
+}
+
+export function useSetApplyUrl(opts?: MutationOpts<Application, SetApplyUrlVars>) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, url }: SetApplyUrlVars) => api.setApplyUrl(applicationId, url),
+    ...opts,
+    onSuccess: (application, variables, ...rest) => {
+      queryClient.setQueryData(keys.applications.detail(variables.applicationId), application);
+      opts?.onSuccess?.(application, variables, ...rest);
     },
   });
 }

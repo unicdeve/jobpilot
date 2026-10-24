@@ -17,6 +17,7 @@ const KIND_ITEMS: Record<string, string> = { [ALL]: "All kinds", ...TASK_LABELS 
 const STATUS_ITEMS: Record<string, string> = {
   [ALL]: "Any status",
   running: "Running",
+  waiting_for_user: "Waiting for you",
   completed: "Completed",
   blocked: "Blocked",
   failed: "Failed",
