@@ -3,6 +3,8 @@
 ## Status
 
 Accepted.
+Narrowed by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`) on 2026-11-06: application modes are gone, and JobPilot no longer fills a form for the user to submit.
+Scouts and the rule that nothing submits stand.
 Supersedes ADR-0007 ("Three Application Modes"), which stands as the record of what was decided before and why.
 
 ## Context

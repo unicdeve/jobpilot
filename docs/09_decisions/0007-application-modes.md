@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by ADR-0014 (`0014-scouts-and-no-unattended-submission.md`).
+Superseded by ADR-0014 (`0014-scouts-and-no-unattended-submission.md`), and in full by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`), which removes application modes.
 
 Assist and Review stand. Autopilot does not: unattended work moved to a
 Scout, and automatic submission was declined. This record is kept for what

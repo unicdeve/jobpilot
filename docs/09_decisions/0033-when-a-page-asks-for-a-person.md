@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`) on 2026-11-06 for preparing an application, which JobPilot no longer does.
+Part 1 still applies to importing a job from a URL, which stops on a page that is a human check rather than reading it as the posting, and part 6 still applies to the browser that reads it.
+
 Accepted on 2026-10-24.
 The user approved four parts together: recognise a page that is itself a human check, pause the run while the user solves it, hand off to the user's own browser when the site will not let JobPilot's through, and keep Chrome's sandbox on.
 

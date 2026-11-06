@@ -2,6 +2,8 @@
 
 ## Status
 
+Superseded by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`) on 2026-11-06: JobPilot no longer reaches or fills an application form, and this record is kept for why it once did.
+
 Accepted, and implemented in full.
 The user chose option C: heuristics decide where to go, and the LLM is consulted only when they find nothing.
 
