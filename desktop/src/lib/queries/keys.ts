@@ -62,8 +62,6 @@ export const keys = {
     transitions: (id: string) => ["applications", "transitions", id] as const,
     coverLetters: (id: string) => ["applications", "cover-letters", id] as const,
     questions: (id: string) => ["applications", "questions", id] as const,
-    personalQuestions: (id: string) => ["applications", "personal-questions", id] as const,
-    agentRuns: (id: string) => ["applications", "agent-runs", id] as const,
   },
   /// scouts covers the scouts and their recent runs, which a run changes
   /// together.

@@ -15,7 +15,7 @@ import { useMarkNotificationsSeen, useUnseenNotifications } from "../lib/queries
 import { useCandidateId, useProfile } from "../lib/queries/profile.queries";
 import type { Application, ApplicationState, Notification } from "../lib/types";
 
-const WAITING: ApplicationState[] = ["READY_FOR_REVIEW", "APPROVED"];
+const WAITING: ApplicationState[] = ["APPROVED", "MATCHED", "DISCOVERED"];
 const CLOSED: ApplicationState[] = ["REJECTED", "WITHDRAWN", "NO_RESPONSE"];
 
 /// Dashboard is where the day starts: what needs the user, what is worth
@@ -38,7 +38,7 @@ export function Dashboard() {
     return (
       <EmptyState
         title="Welcome to JobPilot"
-        description="Start by creating your candidate profile. JobPilot uses it to match you against jobs and to fill in applications on your behalf."
+        description="Start by creating your candidate profile. JobPilot uses it to match you against jobs, and keeps your details ready to copy when you apply."
         actionLabel="Create your profile"
         actionTo="/profile"
       />
@@ -53,8 +53,10 @@ export function Dashboard() {
   if (profilePending || jobs.data === undefined || !matches.data || !applications.data) return <Loading />;
 
   const apps = applications.data;
-  const waiting = apps.filter((a) => WAITING.includes(a.state));
-  const failed = apps.filter((a) => a.state === "FAILED");
+  // Ready to send leads: it is the state an application gets lost in.
+  const waiting = apps
+    .filter((a) => WAITING.includes(a.state))
+    .sort((a, b) => WAITING.indexOf(a.state) - WAITING.indexOf(b.state));
   const open = apps.filter((a) => !CLOSED.includes(a.state));
   const appliedJobs = new Set(apps.map((a) => a.job_id));
 
@@ -69,7 +71,7 @@ export function Dashboard() {
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2">
         <div>
-          <NeedsYou waiting={waiting} failed={failed} />
+          <NeedsYou waiting={waiting} />
           <BestMatches matches={matches.data.filter((m) => !appliedJobs.has(m.job_id))} />
         </div>
         <div>
@@ -107,11 +109,10 @@ function RowLink({ to, children, trailing }: { to: string; children: ReactNode; 
 }
 
 /// NeedsYou is the part of the dashboard that asks for something: an
-/// application JobPilot has finished and a person has not, or one that
-/// could not be prepared. Approved-but-not-sent is the state an
-/// application gets lost in, so it leads.
-function NeedsYou({ waiting, failed }: { waiting: Application[]; failed: Application[] }) {
-  const items = [...waiting, ...failed];
+/// application the candidate has not sent yet. Ready-to-send is the state
+/// an application gets lost in, so it leads.
+function NeedsYou({ waiting }: { waiting: Application[] }) {
+  const items = waiting;
   const jobs = useJobsByID(items.map((a) => a.job_id));
 
   return (
@@ -129,8 +130,7 @@ function NeedsYou({ waiting, failed }: { waiting: Application[]; failed: Applica
                 <p className="truncate text-[13px] font-medium">{job?.title ?? "Loading…"}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {job?.company_name}
-                  {app.state === "APPROVED" && " · approved — did you send it?"}
-                  {app.state === "FAILED" && " · couldn’t be prepared"}
+                  {app.state === "APPROVED" && " · ready to send. Did you send it?"}
                 </p>
               </RowLink>
             );
@@ -282,7 +282,7 @@ function RecentActivity() {
       ) : runs.length === 0 ? (
         <Panel className="px-4 py-3">
           <p className="text-sm text-muted-foreground">
-            Nothing has run yet. Runs appear here when JobPilot prepares an application or a scout looks for jobs.
+            Nothing has run yet. Runs appear here when a scout looks for jobs.
           </p>
         </Panel>
       ) : (

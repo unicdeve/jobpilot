@@ -41,8 +41,8 @@ export function useDeleteKeptAnswer(opts?: MutationOpts<void, string>) {
   });
 }
 
-/// useKeepAnswer keeps an answer given on one application, so later ones
-/// can use it.
+/// useKeepAnswer keeps an answer given on one application, so a similar
+/// question on another is offered it.
 export function useKeepAnswer(opts?: MutationOpts<PersonalAnswer, string>) {
   const api = useApi();
   const queryClient = useQueryClient();
@@ -51,6 +51,9 @@ export function useKeepAnswer(opts?: MutationOpts<PersonalAnswer, string>) {
     ...opts,
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: keys.aboutYou });
+      // A kept answer is suggested for similar questions on every
+      // application, so their suggestions are read again.
+      void queryClient.invalidateQueries({ queryKey: keys.applications.all });
       opts?.onSuccess?.(...args);
     },
   });

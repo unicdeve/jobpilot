@@ -1,10 +1,9 @@
 // Wording for the agent trail, shared by the Activity screens and the
-// per-application and per-scout views that link to them.
+// per-scout views that link to them.
 
 import type { AgentRunSummary, AgentTaskType } from "./types";
 
 export const TASK_LABELS: Record<AgentTaskType, string> = {
-  prepare_application: "Prepared in browser",
   scout_run: "Scout run",
 };
 
@@ -19,15 +18,11 @@ export function runKind(run: Pick<AgentRunSummary, "task_type" | "trigger">): st
   return run.trigger === "schedule" ? `${label}, on schedule` : label;
 }
 
-/// runSubject names what a run served: its scout, or its application's job.
-/// Either can be deleted after the run, which keeps its record regardless.
+/// runSubject names what a run served: its scout, which can be deleted
+/// after the run, which keeps its record regardless.
 export function runSubject(run: AgentRunSummary): string {
   if (run.task_type === "scout_run") {
     return run.scout_name ? `Scout “${run.scout_name}”` : "Deleted scout";
-  }
-  if (run.task_type === "prepare_application") {
-    if (!run.job_title) return "Deleted application";
-    return run.company ? `${run.job_title} at ${run.company}` : run.job_title;
   }
   return taskLabel(run.task_type);
 }
@@ -36,16 +31,6 @@ export function runSubject(run: AgentRunSummary): string {
 /// A step not listed here is shown by its recorded name, so a step added by
 /// a later daemon is still displayed rather than dropped.
 const ACTION_LABELS: Record<string, string> = {
-  navigate: "Opened the job posting",
-  detect_blocker: "Met a check only you can answer",
-  solve_check: "You answered the check",
-  extract_form: "Read the page",
-  follow_apply: "Followed an apply link",
-  choose_apply: "Asked the model for the way in",
-  extract_question: "Found a question",
-  resolve_question: "Worked out an answer",
-  skip_field: "Left a field for you",
-  fill_field: "Filled a field",
   scout_started: "Started",
   source_unreachable: "Could not reach a job source",
   source_failed: "A job source answered with an error",
@@ -61,23 +46,6 @@ const ACTION_LABELS: Record<string, string> = {
 
 export function actionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action.replace(/_/g, " ");
-}
-
-/// ANSWER_SOURCES reads a resolve_question step's output, which is where
-/// the answer came from rather than what it was.
-const ANSWER_SOURCES: Record<string, string> = {
-  profile_fact: "From your profile",
-  derived: "Derived from your profile",
-  generated: "Written by the model",
-  needs_user_input: "Left for you to answer",
-};
-
-/// stepOutput is a step's recorded output as a person reads it.
-export function stepOutput(action: string, output: string | undefined): string | undefined {
-  if (!output) return undefined;
-  if (action === "resolve_question") return ANSWER_SOURCES[output] ?? output;
-  if (action === "extract_question") return `A ${output} field`;
-  return output;
 }
 
 /// formatDuration renders milliseconds at the precision a person reads:

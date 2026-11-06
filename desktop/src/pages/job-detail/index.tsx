@@ -226,7 +226,7 @@ function ExistingApplications({ applications }: { applications: Application[] })
           className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-accent/60"
         >
           <span>
-            {app.mode === "assist" ? "Assist" : "Review"} application
+            Application
             <span className="text-muted-foreground"> · updated {relativeTime(app.updated_at) ?? "recently"}</span>
           </span>
           <StatusBadge value={app.state} />

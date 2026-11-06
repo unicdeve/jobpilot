@@ -5,34 +5,29 @@ import { ListItem, ListNote, ListPane, NoSelection } from "../components/list-pa
 import { LoadMore } from "../components/load-more";
 import { SplitView } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
-import { runDuration, runKind, runSubject, TASK_LABELS } from "../lib/activity";
+import { runDuration, runKind, runSubject } from "../lib/activity";
 import { dateTime, relativeTime } from "../lib/format";
 import { useInfiniteActivity } from "../lib/queries/activity.queries";
-import type { AgentRunFilter, AgentRunStatus, AgentRunSummary, AgentTaskType } from "../lib/types";
+import type { AgentRunFilter, AgentRunStatus, AgentRunSummary } from "../lib/types";
 
 const PAGE_SIZE = 50;
-
-const KIND_ITEMS: Record<string, string> = { [ALL]: "All kinds", ...TASK_LABELS };
 
 const STATUS_ITEMS: Record<string, string> = {
   [ALL]: "Any status",
   running: "Running",
-  waiting_for_user: "Waiting for you",
   completed: "Completed",
-  blocked: "Blocked",
   failed: "Failed",
 };
 
-/// Activity lists every agent run, of every kind, newest first, beside the
-/// steps of the one selected (docs/02_features/12_agent_activity.md). The
-/// filters live in the URL, so a link can open a filtered list.
+/// Activity lists every Scout run, newest first, beside the steps of the
+/// one selected (docs/02_features/12_agent_activity.md). The filter lives
+/// in the URL, so a link can open a filtered list.
 export function Activity() {
   const hasSelection = useMatch("/activity/:id") !== null;
   const [params, setParams] = useSearchParams();
-  const kind = params.get("kind");
   const status = params.get("status");
   const filter: AgentRunFilter = {
-    task_type: kind && kind in TASK_LABELS ? (kind as AgentTaskType) : "",
+    task_type: "",
     status: status && status in STATUS_ITEMS && status !== ALL ? (status as AgentRunStatus) : "",
   };
 
@@ -54,22 +49,13 @@ export function Activity() {
         <ListPane
           title="Activity"
           controls={
-            <div className="flex gap-2">
-              <FilterSelect
-                label="Kind"
-                items={KIND_ITEMS}
-                value={filter.task_type}
-                onChange={(value) => setParam("kind", value)}
-                className="flex-1"
-              />
-              <FilterSelect
-                label="Status"
-                items={STATUS_ITEMS}
-                value={filter.status}
-                onChange={(value) => setParam("status", value)}
-                className="flex-1"
-              />
-            </div>
+            <FilterSelect
+              label="Status"
+              items={STATUS_ITEMS}
+              value={filter.status}
+              onChange={(value) => setParam("status", value)}
+              className="w-full"
+            />
           }
         >
           <RunList filter={filter} />
@@ -108,7 +94,7 @@ function RunList({ filter }: { filter: AgentRunFilter }) {
       <ListNote>
         {filtered
           ? "No runs match these filters."
-          : "Nothing has run yet. Each time JobPilot prepares an application in the browser or runs a scout, what it did is recorded here."}
+          : "Nothing has run yet. Each time a scout runs, what it did is recorded here."}
       </ListNote>
     );
   }

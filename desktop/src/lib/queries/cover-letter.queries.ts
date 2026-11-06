@@ -13,20 +13,24 @@ export function useCoverLetters(applicationId: string | undefined) {
   });
 }
 
-export function useGenerateCoverLetter(opts?: MutationOpts<CoverLetter, string>) {
+interface CreateCoverLetterVars {
+  applicationId: string;
+  content: string;
+}
+
+/// useCreateCoverLetter saves the candidate's letter as a new version.
+export function useCreateCoverLetter(opts?: MutationOpts<CoverLetter, CreateCoverLetterVars>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (applicationId: string) => api.generateCoverLetter(applicationId),
+    mutationFn: ({ applicationId, content }: CreateCoverLetterVars) => api.createCoverLetter(applicationId, content),
     ...opts,
-    onSuccess: (letter, applicationId, ...rest) => {
-      // Generating adds a version rather than replacing one, so the whole
-      // version list is refetched — and the application, which records the
-      // new version as current. Without it a rewrite kept showing the
-      // letter it replaced until the application happened to refetch.
-      void queryClient.invalidateQueries({ queryKey: keys.applications.coverLetters(applicationId) });
-      void queryClient.invalidateQueries({ queryKey: keys.applications.detail(applicationId) });
-      opts?.onSuccess?.(letter, applicationId, ...rest);
+    onSuccess: (letter, variables, ...rest) => {
+      // A new version is added rather than replacing one, and the
+      // application records it as current, so both are refetched.
+      void queryClient.invalidateQueries({ queryKey: keys.applications.coverLetters(variables.applicationId) });
+      void queryClient.invalidateQueries({ queryKey: keys.applications.detail(variables.applicationId) });
+      opts?.onSuccess?.(letter, variables, ...rest);
     },
   });
 }

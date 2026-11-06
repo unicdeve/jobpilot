@@ -8,40 +8,31 @@ import { useAboutYou, useDeleteKeptAnswer, useSaveAboutYou } from "../../lib/que
 import { useToast } from "../../lib/toast";
 import type { AboutYou, AboutYouUpdate, PersonalAnswerKey } from "../../lib/types";
 
-/// Draft is the editable form over what is saved: each answer by key, and
-/// the writing sample and preferences.
+/// Draft is the editable form over what is saved: each answer by key.
 interface Draft {
   answers: Record<PersonalAnswerKey, string>;
-  writing_sample: string;
-  writing_preferences: string;
 }
 
 function draftFrom(about: AboutYou): Draft {
-  return {
-    answers: Object.fromEntries(about.questions.map((question) => [question.key, question.answer])),
-    writing_sample: about.writing_sample,
-    writing_preferences: about.writing_preferences,
-  };
+  return { answers: Object.fromEntries(about.questions.map((question) => [question.key, question.answer])) };
 }
 
 /// changes is only what differs from what is saved, so saving one answer
 /// never rewrites the others.
 function changes(about: AboutYou, draft: Draft): AboutYouUpdate {
-  const update: AboutYouUpdate = {};
   const answers: Record<PersonalAnswerKey, string> = {};
   for (const question of about.questions) {
     if ((draft.answers[question.key] ?? "") !== question.answer)
       answers[question.key] = draft.answers[question.key] ?? "";
   }
-  if (Object.keys(answers).length > 0) update.answers = answers;
-  if (draft.writing_sample !== about.writing_sample) update.writing_sample = draft.writing_sample;
-  if (draft.writing_preferences !== about.writing_preferences) update.writing_preferences = draft.writing_preferences;
-  return update;
+  return { answers };
 }
 
-/// AboutYouPage is where the candidate says who they are, for letters and
-/// written answers to be built from (docs/02_features/16_about_you.md).
-/// Every question is optional, and the wording of each is the daemon's.
+/// AboutYouPage is where the candidate notes, in their own words, what they
+/// will want to say when they apply (docs/02_features/16_about_you.md).
+/// JobPilot writes nothing from it (ADR-0034 §5): it is their material, ready
+/// to copy on an application. Every question is optional, and the wording
+/// of each is the daemon's.
 export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
   const { notify, notifyError } = useToast();
   const { data: about, isPending, error } = useAboutYou();
@@ -51,7 +42,7 @@ export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
   const save = useSaveAboutYou({
     onSuccess: () => {
       setDraft(null);
-      notify("Saved. Letters and answers from now on use it.", "success");
+      notify("Saved.", "success");
     },
     onError,
   });
@@ -74,7 +65,7 @@ export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
   }
 
   const current = draft ?? draftFrom(about);
-  const dirty = draft !== null && Object.keys(changes(about, draft)).length > 0;
+  const dirty = draft !== null && Object.keys(changes(about, draft).answers).length > 0;
   const setAnswer = (key: PersonalAnswerKey, answer: string) =>
     setDraft({ ...current, answers: { ...current.answers, [key]: answer } });
 
@@ -101,8 +92,8 @@ export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
       {tabs}
 
       <p className="text-sm text-muted-foreground">
-        Cover letters and written answers are built from what you say here, in your words, and nothing is made up in its
-        place. Every question is optional, and it all stays on this machine.
+        Your own answers to the questions applications tend to ask, ready to copy when you write a letter or answer a
+        form. JobPilot never writes them for you. Every question is optional, and it all stays on this machine.
       </p>
 
       {about.questions.map((question) => (
@@ -117,37 +108,13 @@ export function AboutYouPage({ tabs }: { tabs: ReactNode }) {
       ))}
 
       <Section
-        title="How do you want to sound?"
-        description="Tone and length for letters and written answers: warm or formal, short or thorough."
-      >
-        <Textarea
-          aria-label="How do you want to sound?"
-          rows={2}
-          value={current.writing_preferences}
-          onChange={(e) => setDraft({ ...current, writing_preferences: e.target.value })}
-        />
-      </Section>
-
-      <Section
-        title="A writing sample"
-        description="Something you wrote and liked — an email, a post, a past letter. Letters match its voice; nothing in it is stated as a fact about you."
-      >
-        <Textarea
-          aria-label="A writing sample"
-          rows={6}
-          value={current.writing_sample}
-          onChange={(e) => setDraft({ ...current, writing_sample: e.target.value })}
-        />
-      </Section>
-
-      <Section
         title="Kept for similar questions"
-        description="Answers you wrote on applications and chose to keep. Written answers to similar questions draw on them."
+        description="Answers you wrote on applications and chose to keep. A similar question on another application suggests them."
       >
         {about.kept.length === 0 ? (
           <Panel className="px-4 py-3">
             <p className="text-sm text-muted-foreground">
-              None yet. When you write an answer on an application yourself, you can keep it from there, under{" "}
+              None yet. When you answer a question on an application, you can keep the answer from there, under{" "}
               <Link to="/applications" className="text-foreground underline">
                 Applications
               </Link>

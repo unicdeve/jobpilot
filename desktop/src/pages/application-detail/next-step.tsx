@@ -9,17 +9,14 @@ import type { Application, ApplicationState } from "../../lib/types";
 /// daemon's vocabulary; these are the actions a person recognises taking.
 const STATE_ACTIONS: Record<ApplicationState, string> = {
   DISCOVERED: "Move back to discovered",
-  MATCHED: "Mark as matched",
-  PREPARING: "Start preparing",
-  READY_FOR_REVIEW: "Mark ready for review",
-  APPROVED: "Approve",
-  SUBMITTED: "I submitted this",
+  MATCHED: "Not ready yet",
+  APPROVED: "Mark ready to send",
+  SUBMITTED: "I sent this",
   INTERVIEWING: "I'm interviewing",
   OFFERED: "I got an offer",
   NO_RESPONSE: "Never heard back",
   REJECTED: "I was rejected",
   WITHDRAWN: "Withdraw",
-  FAILED: "Mark as failed",
 };
 
 /// States that mean the employer's answer, rather than JobPilot's progress.
@@ -44,9 +41,10 @@ export function NextStep({ application }: { application: Application }) {
   const transition = (toState: ApplicationState) =>
     transitionApplication.mutate({ id: application.id, toState, reason });
 
-  // The whole point of the handoff: JobPilot filled the form and left the
-  // browser open, and only the user knows whether they pressed send.
+  // The candidate applies on the employer's site, and only they know
+  // whether they pressed send (ADR-0034 §3).
   const awaitingSubmission = application.state === "APPROVED";
+  const beforeSubmission = awaitingSubmission || application.state === "MATCHED";
   const afterSubmission = OUTCOME_STATES.includes(application.state);
 
   if (isPending) return null;
@@ -63,7 +61,7 @@ export function NextStep({ application }: { application: Application }) {
   }
 
   const primary: ApplicationState | undefined =
-    awaitingSubmission && allowed.includes("SUBMITTED") ? "SUBMITTED" : undefined;
+    beforeSubmission && allowed.includes("SUBMITTED") ? "SUBMITTED" : undefined;
 
   return (
     <div
@@ -76,10 +74,12 @@ export function NextStep({ application }: { application: Application }) {
       </p>
       <p className="mt-0.5 text-sm text-muted-foreground">
         {awaitingSubmission
-          ? "JobPilot never submits for you, so it cannot tell. Record it here and this stops waiting on you."
+          ? "You apply on the employer’s site, so JobPilot cannot tell. Record it here and this stops waiting on you."
           : afterSubmission
             ? "Tell JobPilot what the employer said, so a sent application does not go quiet in your list."
-            : "Where this application goes next."}
+            : beforeSubmission
+              ? "Apply on the employer’s site, then record that you sent it."
+              : "Where this application goes next."}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">

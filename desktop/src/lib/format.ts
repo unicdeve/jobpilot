@@ -1,7 +1,17 @@
 // How stored values read on screen. Sources report these fields in their own
 // vocabulary, so anything not recognised is shown as-is rather than guessed.
 
-import type { DiscoveryResult, Job, TimeZone, WorkingHours } from "./types";
+import type { DiscoveryResult, Job, LinkKind, TimeZone, WorkingHours } from "./types";
+
+/// LINK_LABELS names each kind of link the way the forms that ask for it do.
+export const LINK_LABELS: Record<LinkKind, string> = {
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  portfolio: "Portfolio",
+  website: "Website",
+  twitter: "Twitter",
+  other: "Other",
+};
 
 export const SOURCE_LABELS: Record<string, string> = {
   arbeitnow: "Arbeitnow",

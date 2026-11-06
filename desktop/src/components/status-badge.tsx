@@ -20,8 +20,6 @@ const tones: Record<string, Tone> = {
   // application states
   DISCOVERED: "neutral",
   MATCHED: "info",
-  PREPARING: "warning",
-  READY_FOR_REVIEW: "highlight",
   APPROVED: "success",
   SUBMITTED: "solidSuccess",
   INTERVIEWING: "info",
@@ -29,20 +27,9 @@ const tones: Record<string, Tone> = {
   NO_RESPONSE: "neutral",
   REJECTED: "danger",
   WITHDRAWN: "neutral",
-  FAILED: "solidDanger",
-  // where an answer came from
-  profile_fact: "success",
-  derived: "info",
-  generated: "highlight",
-  needs_user_input: "warning",
-  // question status
-  pending: "neutral",
-  answered: "success",
   // agent runs and steps
   running: "info",
-  waiting_for_user: "warning",
   completed: "success",
-  blocked: "warning",
   failed: "solidDanger",
   error: "danger",
   allowed: "success",
@@ -50,14 +37,10 @@ const tones: Record<string, Tone> = {
 };
 
 /// labels override the default wording, which is the value with its case
-/// and underscores tidied: READY_FOR_REVIEW reads "Ready for review".
+/// and underscores tidied: NO_RESPONSE would read "No response" anyway.
 const labels: Record<string, string> = {
-  profile_fact: "From profile",
-  derived: "Derived",
-  generated: "Generated",
-  needs_user_input: "Needs you",
+  APPROVED: "Ready to send",
   NO_RESPONSE: "No response",
-  waiting_for_user: "Waiting for you",
 };
 
 export function statusLabel(value: string): string {

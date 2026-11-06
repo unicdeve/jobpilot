@@ -16,12 +16,12 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { isNotFound } from "../../lib/api";
 import { dateTime, relativeTime } from "../../lib/format";
-import { useAgentRuns, useApplication, useApplicationHistory } from "../../lib/queries/application.queries";
+import { useApplication, useApplicationHistory } from "../../lib/queries/application.queries";
 import { useCoverLetters } from "../../lib/queries/cover-letter.queries";
 import { useJob } from "../../lib/queries/job.queries";
 import { useQuestions } from "../../lib/queries/question.queries";
 import { useToast } from "../../lib/toast";
-import { BrowserSection } from "./browser-section";
+import { ApplySection } from "./apply-section";
 import { CoverLetterSection } from "./cover-letter-section";
 import { HistorySection } from "./history-section";
 import { NextStep } from "./next-step";
@@ -37,7 +37,6 @@ export function ApplicationDetail() {
   const { data: history } = useApplicationHistory(id);
   const { data: coverLetters } = useCoverLetters(id);
   const { data: questions } = useQuestions(id);
-  const { data: agentRuns } = useAgentRuns(id);
   const { data: job } = useJob(application?.job_id);
 
   const back = (
@@ -91,8 +90,7 @@ export function ApplicationDetail() {
           </div>
           <p className="mt-1 text-sm text-subtle-foreground">{job?.company_name}</p>
           <p className="mt-3 text-xs text-muted-foreground">
-            {application.mode === "assist" ? "Assist mode — JobPilot writes, you fill in the form" : "Review mode"}
-            {" · "}started <span title={dateTime(application.created_at)}>{relativeTime(application.created_at)}</span>
+            Started <span title={dateTime(application.created_at)}>{relativeTime(application.created_at)}</span>
             {application.submitted_at && (
               <>
                 {" · "}submitted{" "}
@@ -104,14 +102,14 @@ export function ApplicationDetail() {
 
         <NextStep application={application} />
 
-        <QuestionsSection applicationId={id} questions={questions ?? []} />
+        {/* The candidate writes and sends the application themselves
+            (ADR-0034): the page to apply on and their details come first,
+            then their letter and answers. */}
+        <ApplySection application={application} job={job} />
 
         <CoverLetterSection applicationId={id} application={application} versions={coverLetters ?? []} />
 
-        {/* Assist never touches an employer's form
-            (docs/00_product/04_application_modes.md), so it has no browser
-            preparation to offer. */}
-        {application.mode === "review" && <BrowserSection application={application} job={job} runs={agentRuns ?? []} />}
+        <QuestionsSection applicationId={id} questions={questions ?? []} />
 
         {history && history.length > 0 && <HistorySection history={history} />}
       </article>

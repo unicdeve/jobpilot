@@ -10,19 +10,19 @@ import { useCandidateId } from "../lib/queries/profile.queries";
 import type { Application, ApplicationState, Job } from "../lib/types";
 
 /// Applications are grouped by who the next move belongs to. A flat list
-/// sorted by nothing in particular buries the two that need the user today
-/// under thirty that are waiting on an employer — and an approved
+/// sorted by nothing in particular buries the ones the user still has to
+/// send under thirty that are waiting on an employer, and a ready-to-send
 /// application that was never actually sent looks exactly like one that was.
 const GROUPS: { title: string; hint: string; states: ApplicationState[] }[] = [
   {
     title: "Waiting on you",
-    hint: "Approve these, or tell JobPilot you sent them.",
-    states: ["READY_FOR_REVIEW", "APPROVED"],
+    hint: "Apply, then tell JobPilot you sent them.",
+    states: ["APPROVED", "MATCHED", "DISCOVERED"],
   },
   {
     title: "In progress",
-    hint: "Being prepared, or waiting on an employer.",
-    states: ["DISCOVERED", "MATCHED", "PREPARING", "SUBMITTED", "INTERVIEWING", "OFFERED", "FAILED"],
+    hint: "Sent, and waiting on an employer.",
+    states: ["SUBMITTED", "INTERVIEWING", "OFFERED"],
   },
   {
     title: "Closed",
@@ -128,8 +128,7 @@ function ApplicationRow({ application, job }: { application: Application; job: J
           </p>
           <p className="mt-0.5 truncate text-xs text-subtle-foreground">{job?.company_name}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {application.mode === "assist" ? "Assist" : "Review"} · updated{" "}
-            {relativeTime(application.updated_at) ?? "recently"}
+            Updated {relativeTime(application.updated_at) ?? "recently"}
           </p>
         </div>
         <StatusBadge value={application.state} className="mt-0.5 shrink-0" />
