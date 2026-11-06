@@ -94,8 +94,6 @@ function deletedRecordKeys({ target, id }: DeletionRequest): readonly (readonly 
         keys.applications.transitions(id),
         keys.applications.coverLetters(id),
         keys.applications.questions(id),
-        keys.applications.personalQuestions(id),
-        keys.applications.agentRuns(id),
       ];
     default:
       return previews;

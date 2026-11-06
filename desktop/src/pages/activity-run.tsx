@@ -6,7 +6,7 @@ import { splitBackClass } from "../components/split-view";
 import { StatusBadge } from "../components/status-badge";
 import { ErrorLine, Loading } from "../components/status-line";
 import { Button } from "../components/ui/button";
-import { actionLabel, formatDuration, runDuration, runKind, runSubject, stepOutput } from "../lib/activity";
+import { actionLabel, formatDuration, runDuration, runKind, runSubject } from "../lib/activity";
 import { isNotFound } from "../lib/api";
 import { dateTime } from "../lib/format";
 import { useActivityRun } from "../lib/queries/activity.queries";
@@ -93,14 +93,6 @@ export function ActivityRun() {
 
 /// SubjectLink leads to what the run served, when it still exists.
 function SubjectLink({ run }: { run: AgentRunSummary }) {
-  if (run.task_type === "prepare_application" && run.application_id && run.job_title) {
-    return (
-      <Button size="sm" variant="ghost" render={<Link to={`/applications/${run.application_id}`} />}>
-        View application
-        <ChevronRight data-icon="inline-end" />
-      </Button>
-    );
-  }
   if (run.task_type === "scout_run" && run.scout_id && run.scout_name) {
     return (
       <Button size="sm" variant="ghost" render={<Link to="/scouts" />}>
@@ -114,7 +106,7 @@ function SubjectLink({ run }: { run: AgentRunSummary }) {
 
 function Step({ event }: { event: AgentEvent }) {
   const failed = event.status !== "" && event.status !== "ok";
-  const output = stepOutput(event.action, event.output_summary);
+  const output = event.output_summary;
   return (
     <li className="flex items-start justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0">

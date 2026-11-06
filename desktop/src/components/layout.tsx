@@ -248,14 +248,13 @@ function WhenConnected({ children }: { children: React.ReactNode }) {
   return useDaemon().status === "ready" ? children : null;
 }
 
-/// WaitingCount is the number of applications that JobPilot has finished
-/// with and a person has not: ready for review, or approved and not yet
-/// sent. It is the only badge in the sidebar, because it is the only count
-/// that asks for something.
+/// WaitingCount is the number of applications the candidate marked ready to
+/// send and has not yet recorded as sent. It is the only badge in the
+/// sidebar, because it is the only count that asks for something.
 function WaitingCount() {
   const { candidateId } = useCandidateId();
   const { data } = useApplications(candidateId);
-  const waiting = data?.filter((a) => a.state === "READY_FOR_REVIEW" || a.state === "APPROVED").length ?? 0;
+  const waiting = data?.filter((a) => a.state === "APPROVED").length ?? 0;
   if (waiting === 0) return null;
   return (
     <span className="rounded-full bg-primary px-1.5 text-[11px] leading-4.5 font-semibold text-primary-foreground tabular-nums">

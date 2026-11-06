@@ -1,14 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../daemon";
-import {
-  type AgentRun,
-  type AgentRunWithEvents,
-  type Application,
-  type ApplicationMode,
-  type ApplicationState,
-  type ApplicationStateTransition,
-  isRunInProgress,
-} from "../types";
+import type { Application, ApplicationState, ApplicationStateTransition } from "../types";
 import { keys } from "./keys";
 import type { MutationOpts } from "./mutation";
 
@@ -48,32 +40,18 @@ export function useAllowedTransitions(id: string | undefined) {
   });
 }
 
-/// useAgentRuns loads the browser runs that prepared one application. A run
-/// goes on in the daemon after the request that started it, so while one is
-/// in progress the list is read again every two seconds, which is how the
-/// screen learns that it is waiting for the user, or has finished.
-export function useAgentRuns(id: string | undefined) {
-  const api = useApi();
-  return useQuery<AgentRunWithEvents[]>({
-    queryKey: keys.applications.agentRuns(id ?? ""),
-    queryFn: id ? () => api.listAgentRuns(id) : skipToken,
-    refetchInterval: (query) => (query.state.data?.some(({ run }) => isRunInProgress(run.status)) ? 2000 : false),
-  });
-}
-
 interface CreateApplicationVars {
   jobId: string;
   candidateId: string;
   resumeId: string;
-  mode: ApplicationMode;
 }
 
 export function useCreateApplication(opts?: MutationOpts<Application, CreateApplicationVars>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ jobId, candidateId, resumeId, mode }: CreateApplicationVars) =>
-      api.createApplication(jobId, candidateId, resumeId, mode),
+    mutationFn: ({ jobId, candidateId, resumeId }: CreateApplicationVars) =>
+      api.createApplication(jobId, candidateId, resumeId),
     ...opts,
     onSuccess: (application, variables, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: keys.applications.list(variables.candidateId) });
@@ -101,37 +79,6 @@ export function useTransitionApplication(opts?: MutationOpts<Application, Transi
       void queryClient.invalidateQueries({ queryKey: keys.applications.history(variables.id) });
       void queryClient.invalidateQueries({ queryKey: keys.applications.all });
       opts?.onSuccess?.(application, variables, ...rest);
-    },
-  });
-}
-
-export function usePrepareInBrowser(opts?: MutationOpts<AgentRun, string>) {
-  const api = useApi();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (applicationId: string) => api.prepareInBrowser(applicationId),
-    ...opts,
-    // Starting moves the application into PREPARING, and the new run is
-    // what useAgentRuns then follows. keys.applications.all covers the
-    // application, its runs and its history.
-    onSettled: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: keys.applications.all });
-      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
-      opts?.onSettled?.(...args);
-    },
-  });
-}
-
-export function useStopAgentRun(opts?: MutationOpts<void, string>) {
-  const api = useApi();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (runId: string) => api.stopAgentRun(runId),
-    ...opts,
-    onSettled: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: keys.applications.all });
-      void queryClient.invalidateQueries({ queryKey: keys.activity.all });
-      opts?.onSettled?.(...args);
     },
   });
 }

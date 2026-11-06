@@ -1,18 +1,9 @@
 import { FormField } from "../../components/form-field";
 import { Section } from "../../components/page";
 import { Input } from "../../components/ui/input";
+import { LINK_LABELS } from "../../lib/format";
 import type { CandidateLink, LinkKind } from "../../lib/types";
 import { LINK_KINDS } from "../../lib/types";
-
-// LINK_LABELS names each kind the way the forms that ask for it do.
-const LINK_LABELS: Record<LinkKind, string> = {
-  linkedin: "LinkedIn",
-  github: "GitHub",
-  portfolio: "Portfolio",
-  website: "Website",
-  twitter: "Twitter",
-  other: "Other",
-};
 
 /// LinksEditor edits one link per kind, which is the shape a form asks for:
 /// a page with a LinkedIn field and a GitHub field wants a different URL in

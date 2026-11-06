@@ -391,37 +391,28 @@ export interface SaveLLMSettingsResult {
   connectivity_error?: string;
 }
 
-export type ApplicationMode = "assist" | "review";
-
 export type ApplicationState =
   | "DISCOVERED"
   | "MATCHED"
-  | "PREPARING"
-  | "READY_FOR_REVIEW"
   | "APPROVED"
   | "SUBMITTED"
   | "INTERVIEWING"
   | "OFFERED"
   | "NO_RESPONSE"
   | "REJECTED"
-  | "WITHDRAWN"
-  | "FAILED";
+  | "WITHDRAWN";
 
 export interface Application {
   id: string;
   job_id: string;
   candidate_id: string;
   resume_id: string;
-  mode: ApplicationMode;
   state: ApplicationState;
   current_cover_letter_id: string;
-  policy_result: string;
-  approval_status: string;
   submitted_at?: string;
-  failure_reason: string;
   /// Where the user said the application form is, when the job's own link
-  /// does not get there. A browser run starts here when it is set
-  /// (ADR-0033 §4).
+  /// does not get there. "Open application page" opens it in place of the
+  /// job's link (ADR-0034 §2).
   apply_url?: string;
   created_at: string;
   updated_at: string;
@@ -436,45 +427,34 @@ export interface ApplicationStateTransition {
   created_at: string;
 }
 
-/// DraftFlag is something in a letter or written answer the reviewer
-/// should look at, worked out from its text each time it is read
+/// DraftFlag is something in a letter or answer the candidate may want to
+/// look at, worked out from its text each time it is read
 /// (docs/02_features/19_draft_checks.md).
 export interface DraftFlag {
-  kind: "preamble" | "stock_phrase" | "length" | "unsupported_claim";
+  kind: "stock_phrase" | "length" | "unsupported_claim";
   /// The flagged words as the text has them; a length flag has none.
   excerpt?: string;
   reason: string;
 }
 
+/// CoverLetter is one version of the letter the candidate wrote.
 export interface CoverLetter {
   id: string;
   application_id: string;
   content: string;
-  model_provider: string;
-  model_name: string;
-  user_edited: boolean;
   created_at: string;
   flags?: DraftFlag[];
 }
-
-export type QuestionType = "factual" | "narrative";
-
-export type AnswerCategory = "profile_fact" | "derived" | "generated" | "needs_user_input" | "";
-
-export type QuestionStatus = "pending" | "answered";
-
-export type QuestionSource = "manual" | "form_extracted";
 
 /// PersonalAnswerKey mirrors domain.PersonalAnswerKey: what a thing the
 /// candidate said about themselves is (ADR-0022).
 export type PersonalAnswerKey = string;
 
 /// PersonalAnswer mirrors domain.PersonalAnswer. Only the candidate writes
-/// answer; a proposed question is the model's, read from the posting.
+/// one (ADR-0034 §5).
 export interface PersonalAnswer {
   id: string;
-  candidate_id?: string;
-  application_id?: string;
+  candidate_id: string;
   key: PersonalAnswerKey;
   question: string;
   answer: string;
@@ -494,62 +474,55 @@ export interface AboutYouQuestion {
 /// AboutYou mirrors services.AboutYou (docs/02_features/16_about_you.md).
 export interface AboutYou {
   questions: AboutYouQuestion[];
-  writing_sample: string;
-  writing_preferences: string;
   kept: PersonalAnswer[];
 }
 
-/// AboutYouUpdate changes some of what the candidate said; a field left
+/// AboutYouUpdate changes some of what the candidate said; a question left
 /// out is unchanged, and an empty answer clears one.
 export interface AboutYouUpdate {
-  answers?: Record<PersonalAnswerKey, string>;
-  writing_sample?: string;
-  writing_preferences?: string;
+  answers: Record<PersonalAnswerKey, string>;
 }
 
-/// ApplicationAnswer answers one question asked before a letter: the fixed
-/// one by key, a proposed one by id.
-export interface ApplicationAnswer {
-  id?: string;
-  key: PersonalAnswerKey;
+/// Where a suggested answer came from (domain.SuggestionSource).
+export type SuggestionSource = "profile" | "derived" | "kept_answer";
+
+/// AnswerSuggestion is an answer the candidate's own material gives to a
+/// question, for them to use, edit or ignore. JobPilot never fills it in.
+export interface AnswerSuggestion {
   answer: string;
+  source: SuggestionSource;
+  /// The profile field that answered, or the kept answer's question.
+  field: string;
 }
 
+/// ApplicationQuestion is a question the candidate noted on an application,
+/// with the answer they wrote (ADR-0034 §4).
 export interface ApplicationQuestion {
   id: string;
   application_id: string;
   label: string;
-  type: QuestionType;
-  required: boolean;
   answer: string;
-  answer_source: string;
-  category: AnswerCategory;
-  confidence: number;
-  user_edited: boolean;
-  status: QuestionStatus;
-  source: QuestionSource;
-  field_ref?: string;
+  created_at: string;
+  suggestion?: AnswerSuggestion;
   flags?: DraftFlag[];
 }
 
-/// waiting_for_user is a run paused on a check only the user can answer, in
-/// the browser window it brought forward (ADR-0033 §2).
-export type AgentRunStatus = "running" | "waiting_for_user" | "completed" | "blocked" | "failed";
+export type AgentRunStatus = "running" | "completed" | "failed";
 
 /// isRunInProgress reports whether a run has not finished yet.
 export function isRunInProgress(status: AgentRunStatus): boolean {
-  return status === "running" || status === "waiting_for_user";
+  return status === "running";
 }
 
-/// What a run was doing. Mirrors domain.AgentTask* in the daemon.
-export type AgentTaskType = "prepare_application" | "scout_run";
+/// What a run was doing. Mirrors domain.AgentTask* in the daemon: a scout
+/// run is the only kind since ADR-0034.
+export type AgentTaskType = "scout_run";
 
 export interface AgentRun {
   id: string;
-  application_id: string;
-  /// Set for a scout run, which belongs to no single application.
+  /// The scout that ran, cleared once the scout is deleted.
   scout_id?: string;
-  /// What started the run: the user, or a scout's schedule.
+  /// What started the run: the user, or the scout's schedule.
   trigger?: RunTrigger;
   task_type: string;
   status: AgentRunStatus;
@@ -571,18 +544,11 @@ export interface AgentEvent {
   created_at: string;
 }
 
-export interface AgentRunWithEvents {
-  run: AgentRun;
-  events: AgentEvent[];
-}
-
-/// A run as the activity list shows it: named by the scout that started
-/// it, or by the job its application is for. Either name is absent once
-/// the scout or application has been deleted; the run itself is kept.
+/// A run as the activity list shows it, named by the scout that started
+/// it. The name is absent once the scout has been deleted; the run itself
+/// is kept.
 export interface AgentRunSummary extends AgentRun {
   scout_name?: string;
-  job_title?: string;
-  company?: string;
   event_count: number;
 }
 
@@ -632,7 +598,7 @@ export interface NotificationSettings {
 }
 
 /// PromptKey names a prompt the user may give guidance to (ADR-0031 §1).
-export type PromptKey = "match" | "cover_letter" | "written_answer";
+export type PromptKey = "match";
 
 /// PromptGuidance is one prompt's guidance: the default JobPilot ships, and
 /// the user's own when they have replaced it.

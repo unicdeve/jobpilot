@@ -1,6 +1,5 @@
 import { cn } from "cn";
 import { type ReactNode, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   usePromptGuidance,
   useResetPromptGuidance,
@@ -94,16 +93,6 @@ function PromptCard({ prompt, maxLength }: { prompt: PromptGuidance; maxLength: 
       <span className="text-destructive">
         Guidance can’t be empty. {isDefault ? "Revert to keep the default." : "To go back to the default, reset it."}
       </span>
-    );
-  } else if (prompt.key === "cover_letter") {
-    hint = (
-      <>
-        How long a letter is, and its tone, are your writing preferences, under{" "}
-        <Link to="/profile?tab=about" className="text-foreground underline">
-          About you
-        </Link>
-        .
-      </>
     );
   }
   const fieldId = `prompt-${prompt.key}`;

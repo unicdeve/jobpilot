@@ -1,28 +1,19 @@
-import { BookmarkPlus, Plus, Sparkles } from "lucide-react";
+import { BookmarkPlus, Plus } from "lucide-react";
 import { useState } from "react";
+import { CopyButton } from "../../components/copy-button";
 import { DraftFlags, FlaggedText } from "../../components/draft-flags";
 import { DetailSection } from "../../components/page";
-import { StatusBadge } from "../../components/status-badge";
 import { Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Textarea } from "../../components/ui/textarea";
 import { useKeepAnswer } from "../../lib/queries/about-you.queries";
-import { useAddQuestion, useResolveQuestion, useSetQuestionAnswer } from "../../lib/queries/question.queries";
+import { useAddQuestion, useDeleteQuestion, useSetQuestionAnswer } from "../../lib/queries/question.queries";
 import { useToast } from "../../lib/toast";
-import type { ApplicationQuestion, QuestionType } from "../../lib/types";
+import type { AnswerSuggestion, ApplicationQuestion } from "../../lib/types";
 
-// Base UI's Select shows the raw value in its trigger unless given the
-// value -> label mapping.
-const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
-  factual: "Short answer",
-  narrative: "Written answer",
-};
-
-/// QuestionsSection lists what the employer asks and where each answer came
-/// from. Answering by hand is opened per question, so a list of answered
-/// questions is not also a wall of empty text boxes.
+/// QuestionsSection is the candidate's notes on what the form asks, and
+/// their own answers (ADR-0034 §4). JobPilot suggests an answer only from
+/// the profile or an answer they kept, and never fills one in.
 export function QuestionsSection({
   applicationId,
   questions,
@@ -31,7 +22,7 @@ export function QuestionsSection({
   questions: ApplicationQuestion[];
 }) {
   const [adding, setAdding] = useState(false);
-  const needsYou = questions.filter((q) => q.status !== "answered").length;
+  const unanswered = questions.filter((q) => !q.answer.trim()).length;
 
   return (
     <DetailSection
@@ -39,8 +30,8 @@ export function QuestionsSection({
       description={
         questions.length === 0
           ? undefined
-          : needsYou > 0
-            ? `${needsYou} of ${questions.length} still need an answer.`
+          : unanswered > 0
+            ? `${unanswered} of ${questions.length} still need your answer.`
             : `All ${questions.length} answered.`
       }
       actions={
@@ -55,7 +46,7 @@ export function QuestionsSection({
       {adding && <AddQuestionForm applicationId={applicationId} onDone={() => setAdding(false)} />}
       {questions.length === 0 && !adding && (
         <p className="text-sm text-muted-foreground">
-          No questions yet. Preparing in the browser reads them from the application form, or add one by hand.
+          Note the questions the application form asks, and write your answers here, beside your letter.
         </p>
       )}
       {questions.length > 0 && (
@@ -69,17 +60,29 @@ export function QuestionsSection({
   );
 }
 
+/// suggestionSource says where a suggested answer came from.
+function suggestionSource(suggestion: AnswerSuggestion): string {
+  switch (suggestion.source) {
+    case "profile":
+      return "From your profile";
+    case "derived":
+      return "Worked out from your profile";
+    case "kept_answer":
+      return `Your answer to “${suggestion.field}”`;
+  }
+}
+
 function QuestionRow({ applicationId, question }: { applicationId: string; question: ApplicationQuestion }) {
   const { notify, notifyError } = useToast();
   const [answering, setAnswering] = useState(false);
   const [draft, setDraft] = useState("");
   const onError = (err: Error) => notifyError(err);
 
-  const resolveQuestion = useResolveQuestion({ onError });
   const keep = useKeepAnswer({
-    onSuccess: () => notify("Kept. Written answers to similar questions will draw on it.", "success"),
+    onSuccess: () => notify("Kept. A similar question on another application will suggest it.", "success"),
     onError,
   });
+  const removeQuestion = useDeleteQuestion({ onError });
   const setQuestionAnswer = useSetQuestionAnswer({
     // Close the editor only once the answer is stored, so a failed save
     // leaves what the user typed in the box.
@@ -90,48 +93,64 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
     onError,
   });
 
-  const save = () => {
-    if (draft.trim()) setQuestionAnswer.mutate({ questionId: question.id, applicationId, answer: draft.trim() });
+  const answer = (text: string) => setQuestionAnswer.mutate({ questionId: question.id, applicationId, answer: text });
+  const startAnswering = (text: string) => {
+    setDraft(text);
+    setAnswering(true);
   };
+  // A suggestion the answer already says is not worth offering again.
+  const suggestion =
+    question.suggestion && question.suggestion.answer !== question.answer ? question.suggestion : undefined;
 
   return (
     <li className="px-4 py-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium">
-            {question.label}
-            {question.required && (
-              <span className="ml-1 text-destructive" title="Required">
-                *
-              </span>
-            )}
-          </p>
-          {question.answer ? (
+          <p className="text-[13px] font-medium select-text">{question.label}</p>
+          {question.answer && !answering && (
             <p className="mt-1 text-[13px] whitespace-pre-wrap text-subtle-foreground select-text">
               <FlaggedText text={question.answer} flags={question.flags} />
             </p>
-          ) : (
-            <p className="mt-1 text-[13px] text-muted-foreground">No answer yet.</p>
+          )}
+          {!question.answer && !answering && !suggestion && (
+            <p className="mt-1 text-[13px] text-muted-foreground">Not answered yet.</p>
           )}
         </div>
-        <StatusBadge value={question.category || question.status} className="shrink-0" />
+        {question.answer && !answering && <CopyButton text={question.answer} label="answer" />}
       </div>
       {!answering && <DraftFlags flags={question.flags} />}
 
+      {suggestion && !answering && (
+        <div className="mt-2.5 rounded-md border border-border bg-muted/50 px-3 py-2">
+          <p className="text-xs text-muted-foreground">{suggestionSource(suggestion)}</p>
+          <p className="mt-0.5 line-clamp-3 text-[13px] whitespace-pre-wrap select-text">{suggestion.answer}</p>
+          <div className="mt-1.5 -ml-2 flex gap-1">
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => answer(suggestion.answer)}
+              disabled={setQuestionAnswer.isPending}
+            >
+              Use this
+            </Button>
+            <Button size="xs" variant="ghost" onClick={() => startAnswering(suggestion.answer)}>
+              Edit first
+            </Button>
+          </div>
+        </div>
+      )}
+
       {answering ? (
         <div className="mt-2.5 space-y-2">
-          {question.type === "narrative" ? (
-            <Textarea autoFocus rows={4} value={draft} onChange={(e) => setDraft(e.target.value)} />
-          ) : (
-            <Input
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && save()}
-            />
-          )}
+          <Textarea
+            autoFocus
+            rows={4}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label={`Your answer to ${question.label}`}
+          />
           <div className="flex gap-2">
-            <Button size="sm" onClick={save} disabled={!draft.trim() || setQuestionAnswer.isPending}>
+            <Button size="sm" onClick={() => answer(draft)} disabled={!draft.trim() || setQuestionAnswer.isPending}>
               {setQuestionAnswer.isPending ? "Saving…" : "Save answer"}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setAnswering(false)}>
@@ -140,34 +159,25 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
           </div>
         </div>
       ) : (
-        <div className="mt-2 -ml-2 flex gap-1">
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => resolveQuestion.mutate({ questionId: question.id, applicationId })}
-            disabled={resolveQuestion.isPending}
-          >
-            <Sparkles data-icon="inline-start" />
-            {resolveQuestion.isPending ? "Working it out…" : question.answer ? "Work it out again" : "Work it out"}
+        <div className="mt-2 -ml-2 flex flex-wrap gap-1">
+          <Button size="xs" variant="ghost" onClick={() => startAnswering(question.answer)}>
+            {question.answer ? "Edit answer" : "Write an answer"}
           </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => {
-              setDraft(question.answer ?? "");
-              setAnswering(true);
-            }}
-          >
-            {question.answer ? "Edit answer" : "Answer myself"}
-          </Button>
-          {/* Only an answer the candidate wrote can be kept: it is their words
-              that later answers draw on (docs/02_features/16_about_you.md D6). */}
-          {question.type === "narrative" && question.user_edited && question.answer.trim() && (
+          {question.answer.trim() && (
             <Button size="xs" variant="ghost" onClick={() => keep.mutate(question.id)} disabled={keep.isPending}>
               <BookmarkPlus data-icon="inline-start" />
               {keep.isPending ? "Keeping…" : "Keep for similar questions"}
             </Button>
           )}
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={() => removeQuestion.mutate({ questionId: question.id, applicationId })}
+            disabled={removeQuestion.isPending}
+          >
+            Remove
+          </Button>
         </div>
       )}
     </li>
@@ -177,49 +187,28 @@ function QuestionRow({ applicationId, question }: { applicationId: string; quest
 function AddQuestionForm({ applicationId, onDone }: { applicationId: string; onDone: () => void }) {
   const { notifyError } = useToast();
   const [label, setLabel] = useState("");
-  const [type, setType] = useState<QuestionType>("factual");
-  const [required, setRequired] = useState(false);
   const addQuestion = useAddQuestion({ onSuccess: onDone, onError: notifyError });
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (label.trim()) addQuestion.mutate({ applicationId, label: label.trim(), type, required });
+    if (label.trim()) addQuestion.mutate({ applicationId, label: label.trim() });
   };
 
   return (
-    <form onSubmit={submit} className="mb-3 rounded-lg border border-border bg-card p-3">
+    <form onSubmit={submit} className="mb-3 flex gap-2 rounded-lg border border-border bg-card p-3">
       <Input
         autoFocus
-        placeholder="The question, as the employer asks it"
+        placeholder="The question, as the form asks it"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
+        aria-label="Question"
       />
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <Select items={QUESTION_TYPE_LABELS} value={type} onValueChange={(value) => setType(value as QuestionType)}>
-          <SelectTrigger size="sm" aria-label="Kind of answer">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(QUESTION_TYPE_LABELS).map(([value, text]) => (
-              <SelectItem key={value} value={value}>
-                {text}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <label className="flex items-center gap-1.5 text-sm text-subtle-foreground">
-          <Checkbox checked={required} onCheckedChange={(checked) => setRequired(checked === true)} />
-          Required
-        </label>
-        <div className="ml-auto flex gap-2">
-          <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={!label.trim() || addQuestion.isPending}>
-            {addQuestion.isPending ? "Adding…" : "Add"}
-          </Button>
-        </div>
-      </div>
+      <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={onDone}>
+        Cancel
+      </Button>
+      <Button type="submit" size="sm" className="shrink-0" disabled={!label.trim() || addQuestion.isPending}>
+        {addQuestion.isPending ? "Adding…" : "Add"}
+      </Button>
     </form>
   );
 }

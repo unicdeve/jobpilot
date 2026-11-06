@@ -10,10 +10,7 @@ import type {
   AgentRunDetail,
   AgentRunFilter,
   AgentRunPage,
-  AgentRunWithEvents,
   Application,
-  ApplicationAnswer,
-  ApplicationMode,
   ApplicationQuestion,
   ApplicationState,
   ApplicationStateTransition,
@@ -41,7 +38,6 @@ import type {
   PromptGuidance,
   PromptGuidanceList,
   PromptKey,
-  QuestionType,
   Resume,
   SavedSearch,
   SaveLLMSettingsResult,
@@ -188,9 +184,8 @@ export interface ApiClient {
   listScoutRuns(limit: number): Promise<AgentRun[]>;
   listScoutRunEvents(runId: string): Promise<AgentEvent[]>;
 
-  /// listActivity pages through every agent run, newest first: browser
-  /// preparation and scout runs alike. A limit of 0 means the daemon's
-  /// default page size.
+  /// listActivity pages through every agent run, newest first. A limit of
+  /// 0 means the daemon's default page size.
   listActivity(filter: AgentRunFilter, limit: number, offset: number): Promise<AgentRunPage>;
   getActivityRun(id: string): Promise<AgentRunDetail>;
 
@@ -215,7 +210,7 @@ export interface ApiClient {
   checkLLMHealth(): Promise<LLMHealth>;
   saveLLMSettings(settings: LLMSettings): Promise<SaveLLMSettingsResult>;
 
-  createApplication(jobId: string, candidateId: string, resumeId: string, mode: ApplicationMode): Promise<Application>;
+  createApplication(jobId: string, candidateId: string, resumeId: string): Promise<Application>;
   listApplications(candidateId: string): Promise<Application[]>;
   getApplication(id: string): Promise<Application>;
   transitionApplication(id: string, toState: ApplicationState, reason: string): Promise<Application>;
@@ -223,8 +218,9 @@ export interface ApiClient {
   /// listAllowedTransitions asks the daemon which states this application
   /// may move to next, so the UI offers only actions that will work.
   listAllowedTransitions(id: string): Promise<ApplicationState[]>;
-
-  generateCoverLetter(applicationId: string): Promise<CoverLetter>;
+  /// setApplyUrl records where the application form is, opened in place of
+  /// the job's own link; an empty link clears it.
+  setApplyUrl(applicationId: string, url: string): Promise<Application>;
 
   /// About you (docs/02_features/16_about_you.md). Only the candidate's
   /// words are ever an answer.
@@ -233,32 +229,19 @@ export interface ApiClient {
   saveAboutYou(update: AboutYouUpdate): Promise<AboutYou>;
   deleteKeptAnswer(id: string): Promise<void>;
   keepAnswer(questionId: string): Promise<PersonalAnswer>;
-  /// listPersonalQuestions reads the questions asked before a letter, and
-  /// asks no model.
-  listPersonalQuestions(applicationId: string): Promise<PersonalAnswer[]>;
-  /// preparePersonalQuestions may ask the model to propose questions from
-  /// the posting, once per application.
-  preparePersonalQuestions(applicationId: string): Promise<PersonalAnswer[]>;
-  savePersonalAnswers(applicationId: string, answers: ApplicationAnswer[]): Promise<PersonalAnswer[]>;
+
+  /// Cover letters the candidate writes (ADR-0034 §1): createCoverLetter
+  /// saves a new version and makes it current; editCoverLetter changes one
+  /// in place.
+  createCoverLetter(applicationId: string, content: string): Promise<CoverLetter>;
   listCoverLetterVersions(applicationId: string): Promise<CoverLetter[]>;
   editCoverLetter(coverLetterId: string, content: string): Promise<CoverLetter>;
 
-  addQuestion(
-    applicationId: string,
-    label: string,
-    type: QuestionType,
-    required: boolean,
-  ): Promise<ApplicationQuestion>;
+  /// Questions the candidate notes, and their own answers (ADR-0034 §4).
+  addQuestion(applicationId: string, label: string): Promise<ApplicationQuestion>;
   listQuestions(applicationId: string): Promise<ApplicationQuestion[]>;
-  resolveQuestion(questionId: string): Promise<ApplicationQuestion>;
   setQuestionAnswer(questionId: string, answer: string): Promise<ApplicationQuestion>;
-
-  /// prepareInBrowser starts a run and answers with it at once; the run goes
-  /// on in the daemon, and listAgentRuns follows it (ADR-0033 §5).
-  prepareInBrowser(applicationId: string): Promise<AgentRun>;
-  stopAgentRun(runId: string): Promise<void>;
-  setApplyUrl(applicationId: string, url: string): Promise<Application>;
-  listAgentRuns(applicationId: string): Promise<AgentRunWithEvents[]>;
+  deleteQuestion(questionId: string): Promise<void>;
 }
 
 /// Daemon is where a client's requests go, and who to tell when they
@@ -493,12 +476,11 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
     checkLLMHealth: () => request<LLMHealth>(daemon, "GET", "/v1/settings/llm/health"),
     saveLLMSettings: (settings) => request<SaveLLMSettingsResult>(daemon, "PUT", "/v1/settings/llm", settings),
 
-    createApplication: (jobId, candidateId, resumeId, mode) =>
+    createApplication: (jobId, candidateId, resumeId) =>
       request<Application>(daemon, "POST", "/v1/applications", {
         job_id: jobId,
         candidate_id: candidateId,
         resume_id: resumeId,
-        mode,
       }),
     listApplications: (candidateId) =>
       request<Application[]>(daemon, "GET", `/v1/applications${query({ candidate_id: candidateId })}`),
@@ -512,33 +494,19 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
       request<ApplicationStateTransition[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}/history`),
     listAllowedTransitions: (id) =>
       request<ApplicationState[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(id)}/transitions`),
+    setApplyUrl: (applicationId, url) =>
+      request<Application>(daemon, "PUT", `/v1/applications/${encodeURIComponent(applicationId)}/apply-url`, { url }),
 
     getAboutYou: () => request<AboutYou>(daemon, "GET", "/v1/profile/about").catch(nullIfNotFound),
     saveAboutYou: (update) => request<AboutYou>(daemon, "PUT", "/v1/profile/about", update),
     deleteKeptAnswer: (id) => request<void>(daemon, "DELETE", `/v1/profile/about/kept/${encodeURIComponent(id)}`),
     keepAnswer: (questionId) =>
       request<PersonalAnswer>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/keep`),
-    listPersonalQuestions: (applicationId) =>
-      request<PersonalAnswer[]>(
-        daemon,
-        "GET",
-        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`,
-      ),
-    preparePersonalQuestions: (applicationId) =>
-      request<PersonalAnswer[]>(
-        daemon,
-        "POST",
-        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions/prepare`,
-      ),
-    savePersonalAnswers: (applicationId, answers) =>
-      request<PersonalAnswer[]>(
-        daemon,
-        "PUT",
-        `/v1/applications/${encodeURIComponent(applicationId)}/personal-questions`,
-        { answers },
-      ),
-    generateCoverLetter: (applicationId) =>
-      request<CoverLetter>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/cover-letter`),
+
+    createCoverLetter: (applicationId, content) =>
+      request<CoverLetter>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/cover-letters`, {
+        content,
+      }),
     listCoverLetterVersions: (applicationId) =>
       request<CoverLetter[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/cover-letters`),
     editCoverLetter: (coverLetterId, content) =>
@@ -546,27 +514,16 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
         content,
       }),
 
-    addQuestion: (applicationId, label, type, required) =>
+    addQuestion: (applicationId, label) =>
       request<ApplicationQuestion>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/questions`, {
         label,
-        type,
-        required,
       }),
     listQuestions: (applicationId) =>
       request<ApplicationQuestion[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/questions`),
-    resolveQuestion: (questionId) =>
-      request<ApplicationQuestion>(daemon, "POST", `/v1/questions/${encodeURIComponent(questionId)}/resolve`),
     setQuestionAnswer: (questionId, answer) =>
       request<ApplicationQuestion>(daemon, "PUT", `/v1/questions/${encodeURIComponent(questionId)}/answer`, {
         answer,
       }),
-
-    prepareInBrowser: (applicationId) =>
-      request<AgentRun>(daemon, "POST", `/v1/applications/${encodeURIComponent(applicationId)}/prepare-in-browser`),
-    stopAgentRun: (runId) => request<void>(daemon, "POST", `/v1/agent-runs/${encodeURIComponent(runId)}/stop`),
-    setApplyUrl: (applicationId, url) =>
-      request<Application>(daemon, "PUT", `/v1/applications/${encodeURIComponent(applicationId)}/apply-url`, { url }),
-    listAgentRuns: (applicationId) =>
-      request<AgentRunWithEvents[]>(daemon, "GET", `/v1/applications/${encodeURIComponent(applicationId)}/agent-runs`),
+    deleteQuestion: (questionId) => request<void>(daemon, "DELETE", `/v1/questions/${encodeURIComponent(questionId)}`),
   };
 }

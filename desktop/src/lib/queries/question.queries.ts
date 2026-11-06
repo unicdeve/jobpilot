@@ -1,10 +1,11 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../daemon";
-import type { ApplicationAnswer, ApplicationQuestion, PersonalAnswer, QuestionType } from "../types";
+import type { ApplicationQuestion } from "../types";
 import { keys } from "./keys";
 import type { MutationOpts } from "./mutation";
 
-/// useQuestions loads the questions an application form asks.
+/// useQuestions loads the questions the candidate noted on an application,
+/// each with its suggestion and its answer's draft flags.
 export function useQuestions(applicationId: string | undefined) {
   const api = useApi();
   return useQuery<ApplicationQuestion[]>({
@@ -16,16 +17,13 @@ export function useQuestions(applicationId: string | undefined) {
 interface AddQuestionVars {
   applicationId: string;
   label: string;
-  type: QuestionType;
-  required: boolean;
 }
 
 export function useAddQuestion(opts?: MutationOpts<ApplicationQuestion, AddQuestionVars>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ applicationId, label, type, required }: AddQuestionVars) =>
-      api.addQuestion(applicationId, label, type, required),
+    mutationFn: ({ applicationId, label }: AddQuestionVars) => api.addQuestion(applicationId, label),
     ...opts,
     onSuccess: (question, variables, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: keys.applications.questions(variables.applicationId) });
@@ -37,19 +35,6 @@ export function useAddQuestion(opts?: MutationOpts<ApplicationQuestion, AddQuest
 interface QuestionVars {
   questionId: string;
   applicationId: string;
-}
-
-export function useResolveQuestion(opts?: MutationOpts<ApplicationQuestion, QuestionVars>) {
-  const api = useApi();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ questionId }: QuestionVars) => api.resolveQuestion(questionId),
-    ...opts,
-    onSuccess: (question, variables, ...rest) => {
-      void queryClient.invalidateQueries({ queryKey: keys.applications.questions(variables.applicationId) });
-      opts?.onSuccess?.(question, variables, ...rest);
-    },
-  });
 }
 
 type AnswerVars = QuestionVars & { answer: string };
@@ -67,46 +52,15 @@ export function useSetQuestionAnswer(opts?: MutationOpts<ApplicationQuestion, An
   });
 }
 
-/// usePersonalQuestions reads the questions asked before a letter for one
-/// application, without asking a model; usePreparePersonalQuestions adds
-/// the ones the model proposes.
-export function usePersonalQuestions(applicationId: string, enabled: boolean) {
-  const api = useApi();
-  return useQuery<PersonalAnswer[]>({
-    queryKey: keys.applications.personalQuestions(applicationId),
-    queryFn: () => api.listPersonalQuestions(applicationId),
-    enabled,
-  });
-}
-
-export function usePreparePersonalQuestions(opts?: MutationOpts<PersonalAnswer[], string>) {
+export function useDeleteQuestion(opts?: MutationOpts<void, QuestionVars>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (applicationId: string) => api.preparePersonalQuestions(applicationId),
+    mutationFn: ({ questionId }: QuestionVars) => api.deleteQuestion(questionId),
     ...opts,
-    onSuccess: (questions, applicationId, ...rest) => {
-      queryClient.setQueryData(keys.applications.personalQuestions(applicationId), questions);
-      opts?.onSuccess?.(questions, applicationId, ...rest);
-    },
-  });
-}
-
-interface SavePersonalAnswersVars {
-  applicationId: string;
-  answers: ApplicationAnswer[];
-}
-
-export function useSavePersonalAnswers(opts?: MutationOpts<PersonalAnswer[], SavePersonalAnswersVars>) {
-  const api = useApi();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ applicationId, answers }: SavePersonalAnswersVars) =>
-      api.savePersonalAnswers(applicationId, answers),
-    ...opts,
-    onSuccess: (questions, variables, ...rest) => {
-      queryClient.setQueryData(keys.applications.personalQuestions(variables.applicationId), questions);
-      opts?.onSuccess?.(questions, variables, ...rest);
+    onSuccess: (result, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: keys.applications.questions(variables.applicationId) });
+      opts?.onSuccess?.(result, variables, ...rest);
     },
   });
 }
