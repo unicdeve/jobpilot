@@ -2,10 +2,10 @@
 
 ## Status
 
-Proposed on 2026-11-06.
-The user chose the direction and the answers to its open questions on 2026-11-06; this ADR records them for approval before any code changes.
+Proposed and accepted on 2026-11-06.
+The user chose the direction and the answers to its open questions on 2026-11-06, and approved implementing it the same day.
 
-It supersedes ADR-0007 (application modes) and ADR-0013 (reaching the application form), and ADR-0033 (when a page asks for a person) as it applies to preparing an application.
+It supersedes what remained of ADR-0007 (application modes) and ADR-0013 (reaching the application form), and ADR-0033 (when a page asks for a person) as it applies to preparing an application.
 It narrows ADR-0014, ADR-0022 and ADR-0031, as described under "Decision".
 It does not change ADR-0005: Go Playwright stays, for importing a job from a URL.
 
@@ -54,7 +54,8 @@ With nothing to fill, Assist and Review are the same thing, so the mode field is
 The state path becomes MATCHED → APPROVED → SUBMITTED, with outcomes unchanged after SUBMITTED.
 APPROVED means "ready to send": the user has written what they need and is about to apply.
 DISCOVERED stays as the starting state, and MATCHED → SUBMITTED is also allowed, for a user who applies without recording a review step.
-PREPARING and READY_FOR_REVIEW are removed; FAILED is removed from the pre-submission path, since nothing runs that can fail.
+PREPARING, READY_FOR_REVIEW and FAILED are removed.
+FAILED only ever meant that a preparation run failed, and nothing runs that can fail any more.
 
 ### 4. Application questions are the candidate's own notes
 
@@ -63,17 +64,23 @@ JobPilot may suggest an answer only from a deterministic source: a profile fact 
 A narrative question gets no suggestion.
 The user accepts, edits or ignores a suggestion; nothing is filled in on their behalf.
 
-### 5. About you stays, without the writing sample
+### 5. About you stays, without what only steered the model
 
 About you's stories and reusable personal answers stay: they are the candidate's own words, and they become copy-ready material and the source of answer suggestions.
-The writing sample is removed: its only use was steering the model's voice.
-Per-application context collected before generating a letter ("what draws you to this role") is removed as a separate store; the user writes it as a question note on the application instead.
+Kept answers can be kept from any question the candidate answered, since every answer is now theirs.
+
+What existed only to steer the model is removed:
+
+- the writing sample, used for the model's voice;
+- writing preferences (tone and length), used as an instruction to the model; a letter's length check uses its default limit;
+- the "never mention" question, an instruction to the model about what to leave out;
+- per-application context collected before generating a letter ("what draws you to this role", and the questions the model proposed from the posting); the user writes these as question notes on the application instead.
 
 ### 6. Existing generated content is deleted
 
-A migration deletes every stored cover letter version, every application question and answer, and every browser preparation run and its events.
+A migration deletes every stored cover letter version, every application question and answer, every browser preparation run and its events, and the About you answers section 5 removes.
 They were drafted by a model or extracted by the removed browser flow, and the user chose not to keep them.
-Applications in PREPARING, READY_FOR_REVIEW or FAILED before submission move to MATCHED, recorded in their history with the reason, so no application disappears and no outcome is invented.
+Applications in PREPARING, READY_FOR_REVIEW or FAILED move to MATCHED, recorded in their history with the reason, so no application disappears and no outcome is invented.
 Scout runs, their events, matches and submitted applications with their outcomes are untouched.
 
 ## What this does not do

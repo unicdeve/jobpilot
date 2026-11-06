@@ -3,6 +3,7 @@
 ## Status
 
 Proposed on 2026-10-05, accepted on 2026-10-06, and implemented.
+Narrowed by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`) on 2026-11-06: the cover letter and written answer prompts are removed, so matching is the one prompt a user can give guidance to.
 
 It settles PR-013 ("users can customize supported system prompts without editing source code") and the line `docs/01_architecture/05_llm.md` gives it: "product prompts should have documented defaults and safe boundaries."
 It is the last MVP requirement not built.

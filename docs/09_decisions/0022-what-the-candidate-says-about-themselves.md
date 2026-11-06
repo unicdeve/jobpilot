@@ -3,6 +3,8 @@
 ## Status
 
 Accepted, and implemented.
+Narrowed by ADR-0034 (`0034-the-candidate-writes-and-fills-their-own-application.md`) on 2026-11-06: nothing is generated from these answers any more, and the writing sample, writing preferences, "never mention" question and per-application answers are removed.
+Standing answers and kept answers stand, as the candidate's own copy-ready material.
 It records `docs/02_features/16_about_you.md` D1 (decided on 2026-09-29), and how that decision is built.
 
 ## Context
