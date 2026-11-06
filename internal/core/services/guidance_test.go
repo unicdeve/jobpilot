@@ -24,7 +24,7 @@ func TestSettingsService_PromptGuidance(t *testing.T) {
 		prompts, err := svc.ListPromptGuidance(ctx)
 
 		require.NoError(t, err)
-		require.Len(t, prompts, 3)
+		require.Len(t, prompts, 1, "matching is the one prompt left since ADR-0034")
 		for _, prompt := range prompts {
 			assert.True(t, prompt.IsDefault(), prompt.Key)
 		}
@@ -34,18 +34,14 @@ func TestSettingsService_PromptGuidance(t *testing.T) {
 		t.Parallel()
 		svc := NewSettingsService(newFakeSettingsRepository())
 
-		saved, err := svc.SavePromptGuidance(ctx, domain.PromptCoverLetter, "  Open with the work.\n")
+		saved, err := svc.SavePromptGuidance(ctx, domain.PromptMatch, "  Weigh remote work heavily.\n")
 		require.NoError(t, err)
-		assert.Equal(t, "Open with the work.", saved.Custom)
+		assert.Equal(t, "Weigh remote work heavily.", saved.Custom)
 
-		got, err := svc.PromptGuidance(ctx, domain.PromptCoverLetter)
+		got, err := svc.PromptGuidance(ctx, domain.PromptMatch)
 		require.NoError(t, err)
-		assert.Equal(t, "Open with the work.", got.Text())
+		assert.Equal(t, "Weigh remote work heavily.", got.Text())
 		assert.False(t, got.DefaultChanged)
-
-		other, err := svc.PromptGuidance(ctx, domain.PromptWrittenAnswer)
-		require.NoError(t, err)
-		assert.True(t, other.IsDefault(), "saving one prompt leaves the others alone")
 	})
 
 	t.Run("reset goes back to the default", func(t *testing.T) {
@@ -77,28 +73,30 @@ func TestSettingsService_PromptGuidance(t *testing.T) {
 	t.Run("a default changed since saving is pointed out", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeSettingsRepository()
-		repo.values[promptGuidanceKey] = `{"cover_letter":{"text":"Open with the work.","default_digest":"an older default"}}`
+		repo.values[promptGuidanceKey] = `{"match":{"text":"Weigh remote work.","default_digest":"an older default"}}`
 		svc := NewSettingsService(repo)
 
-		got, err := svc.PromptGuidance(ctx, domain.PromptCoverLetter)
+		got, err := svc.PromptGuidance(ctx, domain.PromptMatch)
 		require.NoError(t, err)
 		assert.True(t, got.DefaultChanged)
 
-		saved, err := svc.SavePromptGuidance(ctx, domain.PromptCoverLetter, "Open with the work.")
+		saved, err := svc.SavePromptGuidance(ctx, domain.PromptMatch, "Weigh remote work.")
 		require.NoError(t, err)
 		assert.False(t, saved.DefaultChanged, "saving again records the default the user was shown")
 	})
 
-	t.Run("a key that is not a prompt is not found", func(t *testing.T) {
+	t.Run("a key that is not a prompt is not found, the removed ones included", func(t *testing.T) {
 		t.Parallel()
 		svc := NewSettingsService(newFakeSettingsRepository())
 
-		_, err := svc.SavePromptGuidance(ctx, "apply_control", "Pick the first link.")
-		assert.ErrorIs(t, err, ports.ErrNotFound)
-		_, err = svc.ResetPromptGuidance(ctx, "apply_control")
-		assert.ErrorIs(t, err, ports.ErrNotFound)
-		_, err = svc.PromptGuidance(ctx, "apply_control")
-		assert.ErrorIs(t, err, ports.ErrNotFound)
+		for _, key := range []domain.PromptKey{"apply_control", "cover_letter", "written_answer"} {
+			_, err := svc.SavePromptGuidance(ctx, key, "Pick the first link.")
+			assert.ErrorIs(t, err, ports.ErrNotFound, key)
+			_, err = svc.ResetPromptGuidance(ctx, key)
+			assert.ErrorIs(t, err, ports.ErrNotFound, key)
+			_, err = svc.PromptGuidance(ctx, key)
+			assert.ErrorIs(t, err, ports.ErrNotFound, key)
+		}
 	})
 
 	t.Run("guidance that cannot be kept is refused, and nothing is written", func(t *testing.T) {
@@ -182,65 +180,6 @@ func TestGuidedPrompts(t *testing.T) {
 			}
 			assertGuided(t, llm.lastRequest.SystemPrompt, matchRole, want, matchRules)
 			assert.NotNil(t, llm.lastRequest.ResponseSchema, "the reply's contract is not guidance")
-		}
-	})
-
-	t.Run("cover letter", func(t *testing.T) {
-		t.Parallel()
-		const styleLine = "- No stock openings or closings, and do not call the candidate a great fit."
-		for name, text := range map[string]string{"default": "", "custom": custom} {
-			svc, _, appRepo, jobRepo, candRepo, _, llm := newTestCoverLetterService(t)
-			svc.WithGuidance(settingsWith(t, domain.PromptCoverLetter, text))
-			llm.response = ports.Response{Content: "A letter."}
-			require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
-			require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1"}))
-			require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
-
-			_, err := svc.Generate(ctx, "app-1")
-			require.NoError(t, err, name)
-
-			sent := llm.lastRequest
-			if text == "" {
-				assertGuided(t, sent.SystemPrompt, letterRole, domain.DefaultGuidance(domain.PromptCoverLetter).Default, letterRules)
-				assert.Contains(t, sent.UserPrompt, styleLine, "the default's style is repeated at the end")
-			} else {
-				assertGuided(t, sent.SystemPrompt, letterRole, custom, letterRules)
-				assert.NotContains(t, sent.SystemPrompt, "I am excited to apply", "the default's style is replaced, not added to")
-				assert.NotContains(t, sent.UserPrompt, styleLine, "the default's style would contradict the user's")
-			}
-			assert.Contains(t, sent.UserPrompt, "- Claim only what the candidate profile", "the protecting reminder is kept whatever the guidance")
-			assert.Contains(t, sent.UserPrompt, "- Leave out everything listed under Never mention.")
-			assert.NotContains(t, sent.UserPrompt, custom, "the user's guidance is never put beside the posting")
-		}
-	})
-
-	t.Run("written answer", func(t *testing.T) {
-		t.Parallel()
-		const styleLine = "- Answer only the question, as briefly as it calls for, with no stock phrases."
-		for name, text := range map[string]string{"default": "", "custom": custom} {
-			svc, questionRepo, appRepo, jobRepo, candRepo, llm := newTestAnswerService(t)
-			svc.WithGuidance(settingsWith(t, domain.PromptWrittenAnswer, text))
-			llm.response = ports.Response{Content: "An answer."}
-			require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
-			require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1"}))
-			require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
-			require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{
-				ID: "q-1", ApplicationID: "app-1", Label: "Tell us about a project you led.", Type: domain.QuestionTypeNarrative,
-			}))
-
-			_, err := svc.Resolve(ctx, "q-1")
-			require.NoError(t, err, name)
-
-			sent := llm.lastRequest
-			if text == "" {
-				assertGuided(t, sent.SystemPrompt, answerRole, domain.DefaultGuidance(domain.PromptWrittenAnswer).Default, answerRules)
-				assert.Contains(t, sent.UserPrompt, styleLine)
-			} else {
-				assertGuided(t, sent.SystemPrompt, answerRole, custom, answerRules)
-				assert.NotContains(t, sent.UserPrompt, styleLine)
-			}
-			assert.Contains(t, sent.UserPrompt, "- Claim only what the candidate profile")
-			assert.NotContains(t, sent.UserPrompt, custom)
 		}
 	})
 

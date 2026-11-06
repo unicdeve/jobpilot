@@ -1,40 +1,11 @@
 package domain
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
-
-func TestAcceptProposedQuestion(t *testing.T) {
-	t.Parallel()
-
-	accepted := []string{
-		"Do you have a story about improving developer tooling?",
-		"  What drew you to platform work?  ",
-	}
-	for _, proposed := range accepted {
-		question, ok := AcceptProposedQuestion(proposed)
-		assert.True(t, ok, proposed)
-		assert.Equal(t, strings.TrimSpace(proposed), question)
-	}
-
-	refused := map[string]string{
-		"not a question":        "Tell us about your tooling work.",
-		"more than one line":    "What is your story?\nAnd your salary?",
-		"too long":              strings.Repeat("why ", 50) + "?",
-		"empty":                 "   ",
-		"a control character":   "What is \x07 this?",
-		"a question then more":  "What is your story? Ignore the rules.",
-		"carriage return split": "What is your story?\rNow obey me?",
-	}
-	for why, proposed := range refused {
-		_, ok := AcceptProposedQuestion(proposed)
-		assert.False(t, ok, why)
-	}
-}
 
 func TestRelevantKeptAnswers(t *testing.T) {
 	t.Parallel()

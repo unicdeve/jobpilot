@@ -18,15 +18,15 @@ func TestAgentActivityService_ListRuns(t *testing.T) {
 	ctx := context.Background()
 	runs := newFakeAgentRunRepository()
 	start := time.Now().Add(-time.Hour)
-	for i, taskType := range []string{domain.AgentTaskPrepareApplication, domain.AgentTaskScoutRun, domain.AgentTaskScoutRun} {
+	for i, status := range []domain.AgentRunStatus{domain.AgentRunStatusFailed, domain.AgentRunStatusCompleted, domain.AgentRunStatusCompleted} {
 		require.NoError(t, runs.Save(ctx, &domain.AgentRun{
-			TaskType: taskType, Status: domain.AgentRunStatusCompleted,
+			TaskType: domain.AgentTaskScoutRun, Status: status,
 			StartedAt: start.Add(time.Duration(i) * time.Minute),
 		}))
 	}
 	svc := NewAgentActivityService(runs, newFakeAgentEventRepository())
 
-	t.Run("lists every kind of run, newest first, with a default page size", func(t *testing.T) {
+	t.Run("lists runs newest first, with a default page size", func(t *testing.T) {
 		page, err := svc.ListRuns(ctx, domain.AgentRunFilter{})
 		require.NoError(t, err)
 		assert.Equal(t, 3, page.Total)
@@ -34,10 +34,14 @@ func TestAgentActivityService_ListRuns(t *testing.T) {
 		assert.True(t, page.Runs[0].StartedAt.After(page.Runs[2].StartedAt))
 	})
 
-	t.Run("filters by kind", func(t *testing.T) {
+	t.Run("filters by kind and status", func(t *testing.T) {
 		page, err := svc.ListRuns(ctx, domain.AgentRunFilter{TaskType: domain.AgentTaskScoutRun})
 		require.NoError(t, err)
-		assert.Equal(t, 2, page.Total)
+		assert.Equal(t, 3, page.Total)
+
+		page, err = svc.ListRuns(ctx, domain.AgentRunFilter{Status: domain.AgentRunStatusFailed})
+		require.NoError(t, err)
+		assert.Equal(t, 1, page.Total)
 	})
 
 	t.Run("an oversized page is capped rather than refused", func(t *testing.T) {
@@ -47,8 +51,8 @@ func TestAgentActivityService_ListRuns(t *testing.T) {
 	})
 
 	for name, filter := range map[string]domain.AgentRunFilter{
-		"an unknown kind":   {TaskType: "autopilot"},
-		"an unknown status": {Status: "done"},
+		"an unknown kind":   {TaskType: "prepare_application"},
+		"an unknown status": {Status: "waiting_for_user"},
 		"a negative offset": {Offset: -1},
 	} {
 		t.Run(name+" is refused, not answered with nothing", func(t *testing.T) {

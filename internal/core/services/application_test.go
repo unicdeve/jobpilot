@@ -15,33 +15,16 @@ import (
 func TestApplicationService_CreateApplication(t *testing.T) {
 	t.Parallel()
 
-	t.Run("defaults to review mode and DISCOVERED state", func(t *testing.T) {
+	t.Run("starts in DISCOVERED", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeApplicationRepository()
 		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
-		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", "")
+		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "")
 
 		require.NoError(t, err)
-		assert.Equal(t, domain.ApplicationModeReview, app.Mode)
 		assert.Equal(t, domain.ApplicationStateDiscovered, app.State)
 		assert.NotEmpty(t, app.ID)
-	})
-
-	t.Run("a mode JobPilot does not have is refused rather than stored", func(t *testing.T) {
-		t.Parallel()
-		repo := newFakeApplicationRepository()
-		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
-
-		// The column is free TEXT, so without this check any string a
-		// caller sent became a mode — and "autopilot", removed in
-		// ADR-0014, could come back through the CLI flag alone.
-		for _, mode := range []domain.ApplicationMode{"autopilot", "reveiw", "ASSIST"} {
-			_, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", mode)
-
-			assert.ErrorContains(t, err, "unknown application mode", "mode %q", mode)
-		}
-		assert.Empty(t, repo.applications, "nothing should have been written")
 	})
 
 	t.Run("a job, candidate or resume that does not exist is refused before anything is saved", func(t *testing.T) {
@@ -61,7 +44,7 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 			repo := newFakeApplicationRepository()
 			svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
-			_, err := svc.CreateApplication(context.Background(), tc.jobID, tc.candidateID, tc.resID, "")
+			_, err := svc.CreateApplication(context.Background(), tc.jobID, tc.candidateID, tc.resID)
 
 			require.ErrorIs(t, err, ports.ErrUnknownReference, tc.name)
 			assert.NotErrorIs(t, err, ports.ErrNotFound, "%s: the application being created is not what is missing", tc.name)
@@ -77,7 +60,7 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 		require.NoError(t, resumes.Save(context.Background(), resume))
 		svc := NewApplicationService(newFakeApplicationRepository(), jobsWith("job-1"), candidatesWith("cand-1"), resumes)
 
-		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", resume.ID, "")
+		app, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", resume.ID)
 
 		require.NoError(t, err)
 		assert.Equal(t, resume.ID, app.ResumeID)
@@ -89,7 +72,7 @@ func TestApplicationService_CreateApplication(t *testing.T) {
 		repo.saveErr = errors.New("disk full")
 		svc := NewApplicationService(repo, jobsWith("job-1"), candidatesWith("cand-1"), newFakeResumeRepository())
 
-		_, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "", domain.ApplicationModeAssist)
+		_, err := svc.CreateApplication(context.Background(), "job-1", "cand-1", "")
 
 		assert.ErrorContains(t, err, "failed to create application")
 	})
@@ -102,13 +85,15 @@ func TestApplicationService_TransitionState(t *testing.T) {
 		from, to domain.ApplicationState
 	}{
 		{domain.ApplicationStateDiscovered, domain.ApplicationStateMatched},
-		{domain.ApplicationStateMatched, domain.ApplicationStatePreparing},
-		{domain.ApplicationStatePreparing, domain.ApplicationStateReadyForReview},
-		{domain.ApplicationStateReadyForReview, domain.ApplicationStateApproved},
-		{domain.ApplicationStateReadyForReview, domain.ApplicationStateRejected},
+		{domain.ApplicationStateMatched, domain.ApplicationStateApproved},
+		// Recording that it was sent needs no ready-to-send step first
+		// (ADR-0034 §3).
+		{domain.ApplicationStateMatched, domain.ApplicationStateSubmitted},
+		{domain.ApplicationStateMatched, domain.ApplicationStateWithdrawn},
 		{domain.ApplicationStateApproved, domain.ApplicationStateSubmitted},
+		{domain.ApplicationStateApproved, domain.ApplicationStateMatched},
+		{domain.ApplicationStateApproved, domain.ApplicationStateWithdrawn},
 		{domain.ApplicationStateSubmitted, domain.ApplicationStateRejected},
-		{domain.ApplicationStateFailed, domain.ApplicationStatePreparing},
 		{domain.ApplicationStateDiscovered, domain.ApplicationStateWithdrawn},
 		// Outcomes the user reports after submitting.
 		{domain.ApplicationStateSubmitted, domain.ApplicationStateInterviewing},
@@ -148,19 +133,22 @@ func TestApplicationService_TransitionState(t *testing.T) {
 	}{
 		{domain.ApplicationStateDiscovered, domain.ApplicationStateSubmitted},
 		{domain.ApplicationStateDiscovered, domain.ApplicationStateApproved},
-		{domain.ApplicationStateMatched, domain.ApplicationStateSubmitted},
 		{domain.ApplicationStateSubmitted, domain.ApplicationStateApproved},
 		{domain.ApplicationStateRejected, domain.ApplicationStateMatched},
-		{domain.ApplicationStateWithdrawn, domain.ApplicationStatePreparing},
+		{domain.ApplicationStateWithdrawn, domain.ApplicationStateMatched},
+		// The states browser preparation used are gone (ADR-0034 §3).
+		{domain.ApplicationStateMatched, "PREPARING"},
+		{domain.ApplicationStateMatched, "READY_FOR_REVIEW"},
+		{domain.ApplicationStateMatched, "FAILED"},
 		// No outcome is a way back into the pipeline, and none of them is a
 		// second route to SUBMITTED (AC-005).
 		{domain.ApplicationStateInterviewing, domain.ApplicationStateSubmitted},
 		{domain.ApplicationStateNoResponse, domain.ApplicationStateSubmitted},
 		{domain.ApplicationStateOffered, domain.ApplicationStateInterviewing},
 		{domain.ApplicationStateOffered, domain.ApplicationStateNoResponse},
-		{domain.ApplicationStateInterviewing, domain.ApplicationStatePreparing},
+		{domain.ApplicationStateInterviewing, domain.ApplicationStateMatched},
 		{domain.ApplicationStateApproved, domain.ApplicationStateInterviewing},
-		{domain.ApplicationStateReadyForReview, domain.ApplicationStateOffered},
+		{domain.ApplicationStateMatched, domain.ApplicationStateOffered},
 	}
 	for _, tt := range invalidTransitions {
 		t.Run(string(tt.from)+"->"+string(tt.to)+" is rejected", func(t *testing.T) {

@@ -238,10 +238,8 @@ func TestScoutRun_CreatesNothingSubmittable(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, created, 1)
 
-	// Review is the only mode a scout produces, and the initial state is
-	// the ordinary one a user-created application starts in. There is no
-	// setting that changes either.
-	assert.Equal(t, domain.ApplicationModeReview, created[0].Mode)
+	// The initial state is the ordinary one a user-created application
+	// starts in. There is no setting that changes it.
 	assert.Equal(t, domain.ApplicationStateDiscovered, created[0].State)
 	assert.True(t, created[0].SubmittedAt == nil || created[0].SubmittedAt.IsZero())
 }
@@ -370,9 +368,7 @@ func TestScoutRun_RecordsWhatItDid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ScoutTaskType, run.TaskType)
 	assert.Equal(t, domain.AgentRunStatusCompleted, run.Status)
-	assert.Empty(t, run.ApplicationID,
-		"a scout run creates several applications and belongs to none of them")
-	assert.Equal(t, f.scout.ID, run.ScoutID, "so it names the scout instead")
+	assert.Equal(t, f.scout.ID, run.ScoutID, "a run names its scout")
 	require.NotNil(t, run.CompletedAt)
 
 	events, err := f.events.ListByRun(ctx, report.RunID)

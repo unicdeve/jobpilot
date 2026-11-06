@@ -17,13 +17,10 @@ type AgentRunRepository interface {
 	Save(ctx context.Context, run *domain.AgentRun) error
 	Update(ctx context.Context, run *domain.AgentRun) error
 	GetByID(ctx context.Context, id string) (*domain.AgentRun, error)
-	ListByApplication(ctx context.Context, applicationID string) ([]*domain.AgentRun, error)
-	// ListUnattached returns runs that belong to no single application,
-	// newest first. A scout run creates several applications, so it
-	// belongs to none of them (ADR-0018 §4).
-	ListUnattached(ctx context.Context, limit int) ([]*domain.AgentRun, error)
-	// ListSummaries returns one page of runs of every kind, newest first,
-	// each named by what it served (docs/02_features/12_agent_activity.md).
+	// List returns runs newest first.
+	List(ctx context.Context, limit int) ([]*domain.AgentRun, error)
+	// ListSummaries returns one page of runs, newest first, each named by
+	// the scout that ran (docs/02_features/12_agent_activity.md).
 	// The service sets the filter's limit; the repository applies it.
 	ListSummaries(ctx context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error)
 	// GetSummary returns one run, named the same way.

@@ -60,11 +60,6 @@ func TestSchemasMatchTheStructsTheyDescribe(t *testing.T) {
 		assertDescribes(t, jobPageExtractionSchema(), jobPageExtraction{})
 	})
 
-	t.Run("apply control choice", func(t *testing.T) {
-		t.Parallel()
-		assertDescribes(t, applyControlChoiceSchema(), applyControlChoice{})
-	})
-
 	t.Run("profile draft, including the nested rows", func(t *testing.T) {
 		t.Parallel()
 		schema := profileDraftSchema()

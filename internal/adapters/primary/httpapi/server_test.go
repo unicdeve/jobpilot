@@ -523,6 +523,8 @@ func (f *fakeCoverLetterRepository) ListByApplication(_ context.Context, applica
 
 type fakeApplicationQuestionRepository struct {
 	questions map[string]*domain.ApplicationQuestion
+	order     []string
+	saved     int
 }
 
 func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
@@ -531,7 +533,11 @@ func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
 
 func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.ApplicationQuestion) error {
 	if q.ID == "" {
-		q.ID = fmt.Sprintf("q-%d", len(f.questions)+1)
+		f.saved++
+		q.ID = fmt.Sprintf("q-%d", f.saved)
+	}
+	if _, ok := f.questions[q.ID]; !ok {
+		f.order = append(f.order, q.ID)
 	}
 	f.questions[q.ID] = q
 	return nil
@@ -551,13 +557,21 @@ func (f *fakeApplicationQuestionRepository) Update(_ context.Context, q *domain.
 }
 
 func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.ApplicationQuestion, error) {
-	var out []*domain.ApplicationQuestion
-	for _, q := range f.questions {
-		if q.ApplicationID == applicationID {
+	out := make([]*domain.ApplicationQuestion, 0)
+	for _, id := range f.order {
+		if q, ok := f.questions[id]; ok && q.ApplicationID == applicationID {
 			out = append(out, q)
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
+	if _, ok := f.questions[id]; !ok {
+		return &ports.NotFoundError{Kind: "application question", ID: id}
+	}
+	delete(f.questions, id)
+	return nil
 }
 
 // fakeAgentRunRepository is an in-memory ports.AgentRunRepository for
@@ -613,28 +627,16 @@ func (f *fakeAgentRunRepository) CloseUnfinished(_ context.Context, reason strin
 	return closed, nil
 }
 
-func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, _ int) ([]*domain.AgentRun, error) {
-	var out []*domain.AgentRun
+func (f *fakeAgentRunRepository) List(_ context.Context, _ int) ([]*domain.AgentRun, error) {
+	out := make([]*domain.AgentRun, 0, len(f.runs))
 	for _, run := range f.runs {
-		if run.ApplicationID == "" {
-			out = append(out, run)
-		}
-	}
-	return out, nil
-}
-
-func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.AgentRun, error) {
-	var out []*domain.AgentRun
-	for _, r := range f.runs {
-		if r.ApplicationID == applicationID {
-			out = append(out, r)
-		}
+		out = append(out, run)
 	}
 	return out, nil
 }
 
 // ListSummaries filters and pages the stored runs. It names nothing, since
-// the fake has no scouts or jobs to join against.
+// the fake has no scouts to join against.
 func (f *fakeAgentRunRepository) ListSummaries(_ context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
 	var matched []*domain.AgentRunSummary
 	for _, run := range f.runs {
@@ -691,37 +693,6 @@ func (f *fakeAgentEventRepository) ListByRun(_ context.Context, runID string) ([
 	}
 	return out, nil
 }
-
-// fakeBrowserWorker is a scriptable ports.BrowserWorker test double.
-type fakeBrowserWorker struct {
-	fields []ports.FormField
-}
-
-func (f *fakeBrowserWorker) Navigate(_ context.Context, _ string) error { return nil }
-
-func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) { return "", false }
-
-func (f *fakeBrowserWorker) Focus(_ context.Context) error { return nil }
-
-func (f *fakeBrowserWorker) PageLoads(_ context.Context) int { return 0 }
-
-func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
-	return f.fields, nil
-}
-
-func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) { return "", nil }
-
-func (f *fakeBrowserWorker) CurrentURL(_ context.Context) string { return "" }
-
-func (f *fakeBrowserWorker) FindApplyControls(_ context.Context) ([]ports.ApplyControl, error) {
-	return nil, nil
-}
-
-func (f *fakeBrowserWorker) FollowControl(_ context.Context, _ string) error { return nil }
-
-func (f *fakeBrowserWorker) Fill(_ context.Context, _, _ string) error { return nil }
-
-func (f *fakeBrowserWorker) Close(_ context.Context) error { return nil }
 
 // testServer wires a full set of real services over fake ports/adapters,
 // serves them via NewHandler on a real loopback listener, and returns a
@@ -812,9 +783,9 @@ func testServerWithServices(t *testing.T) (*Client, Services, *fakeCandidateRepo
 	credentialStore := &fakeCredentialStore{secrets: map[string]string{}}
 	appSvc := services.NewApplicationService(appRepo, jobRepo, candRepo, resRepo)
 	docConverter := &fakeDocumentConverter{}
-	aboutYouSvc := services.NewAboutYouService(newFakePersonalAnswerRepository(), candRepo, appRepo, jobRepo, questionRepo, llmProv)
-	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc)
-	// One trail, written by the browser worker and read by Agent Activity.
+	aboutYouSvc := services.NewAboutYouService(newFakePersonalAnswerRepository(), candRepo, appRepo, questionRepo)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, aboutYouSvc)
+	// One trail, written by scouts and read by Agent Activity.
 	runRepo := newFakeAgentRunRepository()
 	eventRepo := newFakeAgentEventRepository()
 
@@ -850,11 +821,8 @@ func testServerWithServices(t *testing.T) (*Client, Services, *fakeCandidateRepo
 			},
 		),
 		Application: appSvc,
-		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc),
+		CoverLetter: services.NewCoverLetterService(coverLetterRepo, appRepo, candRepo, resRepo, aboutYouSvc),
 		Answers:     answerSvc,
-		Browser: services.NewBrowserWorkerService(appSvc, jobRepo, runRepo, eventRepo, answerSvc, func() (ports.BrowserWorker, error) {
-			return &fakeBrowserWorker{}, nil
-		}, nil),
 		Credentials: credentialSvc,
 		Activity:    services.NewAgentActivityService(runRepo, eventRepo),
 		AboutYou:    aboutYouSvc,
@@ -1169,10 +1137,12 @@ func TestServer_MissingRecordIsNotFound(t *testing.T) {
 		{http.MethodPut, "/v1/jobs/no-such-job/interest", map[string]bool{"not_interested": true}, "job not found"},
 		{http.MethodGet, "/v1/applications/no-such-app", nil, "application not found: no-such-app"},
 		{http.MethodGet, "/v1/applications/no-such-app/transitions", nil, "application not found"},
-		{http.MethodPost, "/v1/applications/no-such-app/transition", map[string]string{"to_state": "READY_FOR_REVIEW"}, "application not found"},
-		{http.MethodPost, "/v1/applications/no-such-app/cover-letter", nil, "application not found"},
+		{http.MethodPost, "/v1/applications/no-such-app/transition", map[string]string{"to_state": "APPROVED"}, "application not found"},
+		{http.MethodPost, "/v1/applications/no-such-app/cover-letters", map[string]string{"content": "x"}, "application not found"},
 		{http.MethodPut, "/v1/cover-letters/no-such-letter", map[string]string{"content": "x"}, "cover letter not found"},
-		{http.MethodPost, "/v1/questions/no-such-question/resolve", nil, "application question not found"},
+		{http.MethodPost, "/v1/applications/no-such-app/questions", map[string]string{"label": "Email"}, "application not found"},
+		{http.MethodPut, "/v1/questions/no-such-question/answer", map[string]string{"answer": "x"}, "application question not found"},
+		{http.MethodDelete, "/v1/questions/no-such-question", nil, "application question not found"},
 		{http.MethodGet, "/v1/searches/no-such-search", nil, "saved search not found"},
 	}
 
@@ -1333,7 +1303,7 @@ func TestClient_ApplicationLifecycle(t *testing.T) {
 	job, err := client.ImportJob(ctx, "https://acme.example/job-1")
 	require.NoError(t, err)
 
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "")
 	require.NoError(t, err)
 	require.Equal(t, domain.ApplicationStateDiscovered, app.State)
 
@@ -1349,8 +1319,8 @@ func TestClient_ApplicationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.ApplicationStateMatched, transitioned.State)
 
-	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStateSubmitted, "")
-	require.Error(t, err, "SUBMITTED must only be reachable from APPROVED")
+	_, err = client.TransitionApplication(ctx, app.ID, "PREPARING", "")
+	require.Error(t, err, "the states browser preparation used are gone")
 
 	history, err := client.ListApplicationHistory(ctx, app.ID)
 	require.NoError(t, err)
@@ -1367,25 +1337,27 @@ func TestClient_CoverLetterLifecycle(t *testing.T) {
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-2", Title: "Compiler Engineer"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-2")
 	require.NoError(t, err)
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "")
 	require.NoError(t, err)
 
-	first, err := client.GenerateCoverLetter(ctx, app.ID)
+	first, err := client.CreateCoverLetter(ctx, app.ID, "Dear Acme, I wrote your compiler.")
 	require.NoError(t, err)
-	require.NotEmpty(t, first.Content)
+	require.Equal(t, "Dear Acme, I wrote your compiler.", first.Content)
 
-	second, err := client.GenerateCoverLetter(ctx, app.ID)
+	second, err := client.CreateCoverLetter(ctx, app.ID, "Dear Acme, a second draft.")
 	require.NoError(t, err)
-	require.NotEqual(t, first.ID, second.ID, "regenerating must create a new version")
+	require.NotEqual(t, first.ID, second.ID, "a new letter is a new version")
 
 	versions, err := client.ListCoverLetterVersions(ctx, app.ID)
 	require.NoError(t, err)
-	require.Len(t, versions, 2, "regeneration must not discard the earlier version")
+	require.Len(t, versions, 2, "a new version must not discard the earlier one")
+	got, err := client.GetApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Equal(t, second.ID, got.CurrentCoverLetterID)
 
 	edited, err := client.EditCoverLetter(ctx, second.ID, "manually edited content")
 	require.NoError(t, err)
 	require.Equal(t, "manually edited content", edited.Content)
-	require.True(t, edited.UserEdited)
 	require.Empty(t, edited.Flags)
 
 	// The flags travel with the letter, worked out from its text as it is
@@ -1395,9 +1367,17 @@ func TestClient_CoverLetterLifecycle(t *testing.T) {
 	require.Len(t, flagged.Flags, 1)
 	require.Equal(t, domain.FlagStockPhrase, flagged.Flags[0].Kind)
 	require.Equal(t, "Thank you for your consideration", flagged.Flags[0].Excerpt)
+
+	status, message := requestError(t, client, http.MethodPost, "/v1/applications/"+app.ID+"/cover-letters", map[string]string{"content": "  "})
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Contains(t, message, "cannot be empty")
+
+	status, err = rawStatus(t, client, http.MethodPost, "/v1/applications/"+app.ID+"/cover-letter", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, status, "nothing generates a letter any more")
 }
 
-func TestClient_QuestionResolution(t *testing.T) {
+func TestClient_Questions(t *testing.T) {
 	client, candRepo, source := testServer(t)
 	ctx := context.Background()
 
@@ -1406,75 +1386,46 @@ func TestClient_QuestionResolution(t *testing.T) {
 	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-3", Title: "Cryptanalyst"}
 	job, err := client.ImportJob(ctx, "https://acme.example/job-3")
 	require.NoError(t, err)
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "")
 	require.NoError(t, err)
 
-	factual, err := client.AddQuestion(ctx, app.ID, "Email address", domain.QuestionTypeFactual, true)
+	email, err := client.AddQuestion(ctx, app.ID, "Email address")
 	require.NoError(t, err)
-	resolved, err := client.ResolveQuestion(ctx, factual.ID)
-	require.NoError(t, err)
-	require.Equal(t, "alan@example.com", resolved.Answer)
-	require.Equal(t, domain.AnswerCategoryProfileFact, resolved.Category)
+	require.Empty(t, email.Answer, "a suggestion is offered, never filled in")
+	require.NotNil(t, email.Suggestion)
+	assert.Equal(t, "alan@example.com", email.Suggestion.Answer)
+	assert.Equal(t, domain.SuggestionFromProfile, email.Suggestion.Source)
 
-	unknown, err := client.AddQuestion(ctx, app.ID, "What is your driver's license number?", domain.QuestionTypeFactual, false)
+	why, err := client.AddQuestion(ctx, app.ID, "Why do you want to work here?")
 	require.NoError(t, err)
-	resolvedUnknown, err := client.ResolveQuestion(ctx, unknown.ID)
-	require.NoError(t, err)
-	require.Empty(t, resolvedUnknown.Answer)
-	require.Equal(t, domain.AnswerCategoryNeedsUserInput, resolvedUnknown.Category)
+	assert.Nil(t, why.Suggestion, "nothing writes a narrative answer")
 
-	answered, err := client.SetQuestionAnswer(ctx, unknown.ID, "ABC123")
+	answered, err := client.SetQuestionAnswer(ctx, why.ID, "Your work on Enigma.")
 	require.NoError(t, err)
-	require.Equal(t, "ABC123", answered.Answer)
-	require.True(t, answered.UserEdited)
+	require.Equal(t, "Your work on Enigma.", answered.Answer)
+
+	kept, err := client.KeepAnswer(ctx, why.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Why do you want to work here?", kept.Question)
 
 	questions, err := client.ListQuestions(ctx, app.ID)
 	require.NoError(t, err)
 	require.Len(t, questions, 2)
-}
+	assert.Equal(t, "Email address", questions[0].Label, "oldest first")
 
-func TestClient_PrepareInBrowserLifecycle(t *testing.T) {
-	client, svc, candRepo, source := testServerWithServices(t)
-	ctx := context.Background()
-
-	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
-	require.NoError(t, candRepo.Save(ctx, &candidate))
-	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-4", Title: "Mathematician"}
-	job, err := client.ImportJob(ctx, "https://acme.example/job-4")
+	require.NoError(t, client.DeleteQuestion(ctx, email.ID))
+	questions, err = client.ListQuestions(ctx, app.ID)
 	require.NoError(t, err)
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	require.Len(t, questions, 1)
+
+	status, _ := requestError(t, client, http.MethodPost, "/v1/applications/"+app.ID+"/questions", map[string]string{"label": " "})
+	assert.Equal(t, http.StatusBadRequest, status)
+	status, err = rawStatus(t, client, http.MethodPost, "/v1/questions/"+why.ID+"/resolve", nil)
 	require.NoError(t, err)
-
-	_, err = client.PrepareInBrowser(ctx, app.ID)
-	require.ErrorContains(t, err, "only a matched, preparing or failed application",
-		"a discovered application is refused before a browser opens")
-
-	_, err = client.TransitionApplication(ctx, app.ID, domain.ApplicationStateMatched, "matched")
+	assert.Equal(t, http.StatusNotFound, status, "nothing resolves an answer any more")
+	status, err = rawStatus(t, client, http.MethodPost, "/v1/applications/"+app.ID+"/prepare-in-browser", nil)
 	require.NoError(t, err)
-
-	// testServer's fake browser worker reports a page with no fields and no
-	// links, so the run stops before filling anything — this still exercises
-	// the endpoint/JSON contract end to end; reaching the form and the
-	// resolver/fill orchestration are covered in
-	// internal/core/services/browserworker_test.go.
-	run, err := client.PrepareInBrowser(ctx, app.ID)
-	require.NoError(t, err, "the run starts, and goes on in the daemon")
-	assert.Equal(t, domain.AgentRunStatusRunning, run.Status)
-	assert.Equal(t, app.ID, run.ApplicationID)
-	svc.Browser.Wait()
-
-	got, err := client.GetApplication(ctx, app.ID)
-	require.NoError(t, err)
-	require.Equal(t, domain.ApplicationStateFailed, got.State)
-
-	runs, err := client.ListAgentRuns(ctx, app.ID)
-	require.NoError(t, err)
-	require.Len(t, runs, 1)
-	require.Equal(t, domain.AgentRunStatusBlocked, runs[0].Run.Status)
-	require.Contains(t, runs[0].Run.Error, "could not find a way to the application form")
-	require.NotEmpty(t, runs[0].Events)
-
-	assert.ErrorContains(t, client.StopAgentRun(ctx, run.ID), "not in progress")
+	assert.Equal(t, http.StatusNotFound, status, "nothing prepares an application in a browser any more")
 }
 
 func TestClient_SetApplyURL(t *testing.T) {
@@ -1486,7 +1437,7 @@ func TestClient_SetApplyURL(t *testing.T) {
 	source.getJobResult = &domain.Job{CanonicalURL: "https://board.example/job-6", Title: "Mathematician"}
 	job, err := client.ImportJob(ctx, "https://board.example/job-6")
 	require.NoError(t, err)
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "")
 	require.NoError(t, err)
 
 	got, err := client.SetApplyURL(ctx, app.ID, " https://jobs.ashbyhq.com/acme/1/application ")
@@ -1507,38 +1458,35 @@ func TestClient_SetApplyURL(t *testing.T) {
 	assert.Empty(t, cleared.ApplyURL)
 }
 
-// TestClient_AgentActivity covers the activity endpoints over a run the
-// browser worker really recorded: the same trail the application's own
-// panel reads, listed across every run and read back one at a time.
+// TestClient_AgentActivity covers the activity endpoints over a run a
+// scout really recorded, listed across every run and read back one at a
+// time.
 func TestClient_AgentActivity(t *testing.T) {
-	client, svc, candRepo, source := testServerWithServices(t)
+	client, candRepo, _ := testServer(t)
 	ctx := context.Background()
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{FirstName: "Katherine"}))
 
-	candidate := domain.Candidate{FirstName: "Katherine", LastName: "Johnson"}
-	require.NoError(t, candRepo.Save(ctx, &candidate))
-	source.getJobResult = &domain.Job{CanonicalURL: "https://acme.example/job-5", Title: "Mathematician"}
-	job, err := client.ImportJob(ctx, "https://acme.example/job-5")
+	search, err := client.CreateSavedSearch(ctx, "Go", domain.SearchCriteria{Keywords: "golang"})
 	require.NoError(t, err)
-	app, err := client.CreateApplication(ctx, job.ID, candidate.ID, "", domain.ApplicationModeReview)
+	scout, err := client.CreateScout(ctx, &domain.Scout{
+		Name: "Mornings", SavedSearchID: search.ID, MinMatchScore: 70, MaxApplicationsPerRun: 5,
+		Source: domain.ScoutSourceLocal, IsEnabled: true,
+	})
 	require.NoError(t, err)
-	for _, state := range []domain.ApplicationState{domain.ApplicationStateMatched, domain.ApplicationStatePreparing} {
-		_, err = client.TransitionApplication(ctx, app.ID, state, "")
-		require.NoError(t, err)
-	}
-	_, err = client.PrepareInBrowser(ctx, app.ID)
+	report, err := client.RunScout(ctx, scout.ID)
 	require.NoError(t, err)
-	svc.Browser.Wait() // the fake page has no form, so the run is blocked
 
 	page, err := client.ListActivity(ctx, domain.AgentRunFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, page.Total)
 	require.Len(t, page.Runs, 1)
 	run := page.Runs[0]
-	assert.Equal(t, domain.AgentTaskPrepareApplication, run.TaskType)
-	assert.Equal(t, app.ID, run.ApplicationID)
-	assert.Equal(t, domain.AgentRunStatusBlocked, run.Status)
+	assert.Equal(t, report.RunID, run.ID)
+	assert.Equal(t, domain.AgentTaskScoutRun, run.TaskType)
+	assert.Equal(t, scout.ID, run.ScoutID)
+	assert.Equal(t, domain.AgentRunStatusCompleted, run.Status)
 
-	filtered, err := client.ListActivity(ctx, domain.AgentRunFilter{TaskType: domain.AgentTaskScoutRun})
+	filtered, err := client.ListActivity(ctx, domain.AgentRunFilter{Status: domain.AgentRunStatusFailed})
 	require.NoError(t, err)
 	assert.Empty(t, filtered.Runs)
 	assert.NotNil(t, filtered.Runs, "an empty page is a list, not null")
@@ -1547,14 +1495,11 @@ func TestClient_AgentActivity(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, run.ID, detail.Run.ID)
 	require.NotEmpty(t, detail.Events)
-	assert.Equal(t, "navigate", detail.Events[0].Action)
-	var policies []string
-	for _, event := range detail.Events {
-		if event.PolicyResult != "" {
-			policies = append(policies, event.Action+"="+event.PolicyResult)
-		}
-	}
-	assert.Contains(t, policies, "extract_form=denied", "the page was refused by the application-form gate")
+	assert.Equal(t, "scout_started", detail.Events[0].Action)
+
+	status, err := rawStatus(t, client, http.MethodPost, "/v1/agent-runs/"+run.ID+"/stop", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, status, "there is no browser run to stop")
 }
 
 func TestServer_AgentActivity_Errors(t *testing.T) {
@@ -1566,8 +1511,8 @@ func TestServer_AgentActivity_Errors(t *testing.T) {
 		status int
 		want   string
 	}{
-		{"unknown kind", "/v1/agent-runs?task_type=autopilot", http.StatusBadRequest, `unknown task type "autopilot"`},
-		{"unknown status", "/v1/agent-runs?status=done", http.StatusBadRequest, `unknown status "done"`},
+		{"unknown kind", "/v1/agent-runs?task_type=prepare_application", http.StatusBadRequest, `unknown task type "prepare_application"`},
+		{"unknown status", "/v1/agent-runs?status=waiting_for_user", http.StatusBadRequest, `unknown status "waiting_for_user"`},
 		{"non-numeric limit", "/v1/agent-runs?limit=all", http.StatusBadRequest, `invalid limit "all"`},
 		{"missing run", "/v1/agent-runs/does-not-exist", http.StatusNotFound, "agent run not found"},
 		{"unknown remote type", "/v1/jobs?remote=anywhere", http.StatusBadRequest, `unknown remote type "anywhere"`},
@@ -2172,7 +2117,7 @@ func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, discovered.Jobs)
 
-	app, err := client.CreateApplication(ctx, discovered.Jobs[0].ID, profile.ID, "", domain.ApplicationModeReview)
+	app, err := client.CreateApplication(ctx, discovered.Jobs[0].ID, profile.ID, "")
 	require.NoError(t, err)
 
 	next, err := client.ListAllowedTransitions(ctx, app.ID)
@@ -2183,8 +2128,6 @@ func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
 	// Walk it to SUBMITTED the way a user would, and the outcomes appear.
 	for _, to := range []domain.ApplicationState{
 		domain.ApplicationStateMatched,
-		domain.ApplicationStatePreparing,
-		domain.ApplicationStateReadyForReview,
 		domain.ApplicationStateApproved,
 		domain.ApplicationStateSubmitted,
 	} {
@@ -2647,10 +2590,6 @@ func (f *fakePersonalAnswerRepository) ListByCandidate(_ context.Context, id str
 	return f.list(func(row *domain.PersonalAnswer) bool { return row.CandidateID == id }), nil
 }
 
-func (f *fakePersonalAnswerRepository) ListByApplication(_ context.Context, id string) ([]*domain.PersonalAnswer, error) {
-	return f.list(func(row *domain.PersonalAnswer) bool { return row.ApplicationID == id }), nil
-}
-
 func (f *fakePersonalAnswerRepository) GetByID(_ context.Context, id string) (*domain.PersonalAnswer, error) {
 	row, ok := f.rows[id]
 	if !ok {
@@ -2691,13 +2630,15 @@ func TestServer_AboutYou(t *testing.T) {
 	require.Len(t, about.Questions, len(domain.StandingQuestions), "the daemon says what is asked, in its wording")
 	assert.Equal(t, domain.StandingQuestions[0].Question, about.Questions[0].Question)
 
-	sample := "Short sentences."
 	about, err = client.SaveAboutYou(ctx, services.AboutYouUpdate{
-		Answers:       map[domain.PersonalAnswerKey]string{domain.AnswerKnownFor: "Untangling flaky tests"},
-		WritingSample: &sample,
+		Answers: map[domain.PersonalAnswerKey]string{domain.AnswerKnownFor: "Untangling flaky tests"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, sample, about.WritingSample)
+	for _, question := range about.Questions {
+		if question.Key == domain.AnswerKnownFor {
+			assert.Equal(t, "Untangling flaky tests", question.Answer)
+		}
+	}
 
 	status, err = rawStatus(t, client, http.MethodPut, "/v1/profile/about",
 		map[string]any{"answers": map[string]string{"favourite_colour": "blue"}})

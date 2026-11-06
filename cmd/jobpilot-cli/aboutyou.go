@@ -16,12 +16,12 @@ import (
 )
 
 // newProfileAboutCmd is "profile about": what the candidate says about
-// themselves, which letters and written answers are built from
+// themselves, kept as their own material to write from
 // (docs/02_features/16_about_you.md).
 func newProfileAboutCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "about",
-		Short: "Tell JobPilot about yourself, so letters and answers sound like you",
+		Short: "Note down your own answers about yourself, ready to use when you apply",
 		Long: "Asks each About you question in turn, showing what you answered before.\n" +
 			"Press Enter to keep an answer, edit it to change it, or clear it to remove it.\n" +
 			"Nothing is required: skip any question with Enter.",
@@ -48,9 +48,9 @@ func newProfileAboutCmd(client *httpapi.Client) *cobra.Command {
 	var fromFile string
 	setCmd := &cobra.Command{
 		Use:   "set [key] [answer]",
-		Short: "Set or clear one answer: a question's key, writing_sample or writing_preferences",
+		Short: "Set or clear one answer, by its question's key",
 		Long: "Keys: " + strings.Join(aboutYouKeys(), ", ") + ".\n" +
-			"An empty answer clears it. --file reads the answer from a file, which suits a writing sample.",
+			"An empty answer clears it. --file reads the answer from a file.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			key := domain.PersonalAnswerKey(args[0])
@@ -66,15 +66,7 @@ func newProfileAboutCmd(client *httpapi.Client) *cobra.Command {
 				answer = string(content)
 			}
 
-			var update services.AboutYouUpdate
-			switch key {
-			case domain.AnswerWritingSample:
-				update.WritingSample = &answer
-			case domain.AnswerWritingPreferences:
-				update.WritingPreferences = &answer
-			default:
-				update.Answers = map[domain.PersonalAnswerKey]string{key: answer}
-			}
+			update := services.AboutYouUpdate{Answers: map[domain.PersonalAnswerKey]string{key: answer}}
 			if _, err := client.SaveAboutYou(context.Background(), update); err != nil {
 				return fmt.Errorf("saving %s: %w", key, err)
 			}
@@ -106,11 +98,11 @@ func newProfileAboutCmd(client *httpapi.Client) *cobra.Command {
 }
 
 func aboutYouKeys() []string {
-	keys := make([]string, 0, len(domain.StandingQuestions)+2)
+	keys := make([]string, 0, len(domain.StandingQuestions))
 	for _, question := range domain.StandingQuestions {
 		keys = append(keys, string(question.Key))
 	}
-	return append(keys, string(domain.AnswerWritingSample), string(domain.AnswerWritingPreferences))
+	return keys
 }
 
 // askAboutYou walks the candidate through the About you questions, saving
@@ -120,7 +112,7 @@ func askAboutYou(ctx context.Context, client *httpapi.Client) error {
 	if err != nil {
 		return fmt.Errorf("reading About you: %w", err)
 	}
-	fmt.Println("Tell JobPilot about yourself. Letters and written answers are built from what you say here, and nothing is made up in its place.")
+	fmt.Println("Note down your own answers about yourself, ready to copy when you write a letter or answer a question. JobPilot never writes them for you.")
 	fmt.Println("Enter keeps an answer; clear one to remove it.")
 
 	save := func(update services.AboutYouUpdate) error {
@@ -155,17 +147,7 @@ func askAboutYou(ctx context.Context, client *httpapi.Client) error {
 		}
 	}
 
-	prefs, ok, err := ask("How do you want letters and answers to sound?", "Tone and length: warm or formal, short or thorough.", about.WritingPreferences)
-	if err != nil || !ok {
-		return err
-	}
-	if prefs != about.WritingPreferences {
-		if err := save(services.AboutYouUpdate{WritingPreferences: &prefs}); err != nil {
-			return fmt.Errorf("saving your writing preferences: %w", err)
-		}
-	}
-
-	fmt.Println("\n✅ Saved. To add a writing sample, for your voice only: jobpilot-cli profile about set writing_sample --file <path>")
+	fmt.Println("\n✅ Saved.")
 	return nil
 }
 
@@ -178,66 +160,10 @@ func printAboutYou(about *services.AboutYou) {
 			fmt.Printf("  %s\n", question.Answer)
 		}
 	}
-	fmt.Printf("\nWriting preferences (writing_preferences)\n  %s\n", orDash(about.WritingPreferences))
-	fmt.Printf("\nWriting sample (writing_sample)\n  %s\n", orDash(about.WritingSample))
 	if len(about.Kept) > 0 {
 		fmt.Println("\nKept for similar questions:")
 		for _, kept := range about.Kept {
 			fmt.Printf("  %s  %s\n    %s\n", kept.ID, kept.Question, kept.Answer)
 		}
 	}
-}
-
-func orDash(text string) string {
-	if strings.TrimSpace(text) == "" {
-		return "—"
-	}
-	return text
-}
-
-// askApplicationQuestions offers the questions asked before a letter for
-// one application, and saves what the candidate answers. Skipping every
-// question is fine: the letter is still written.
-func askApplicationQuestions(ctx context.Context, client *httpapi.Client, applicationID string) error {
-	about, err := client.GetAboutYou(ctx)
-	if err == nil && aboutYouIsEmpty(about) {
-		fmt.Println("Letters stay generic until you tell JobPilot about yourself — about five minutes: jobpilot-cli profile about")
-	}
-
-	questions, err := client.PreparePersonalQuestions(ctx, applicationID)
-	if err != nil {
-		return fmt.Errorf("preparing questions: %w", err)
-	}
-	fmt.Println("A few questions about this job make the letter yours. Enter skips one.")
-
-	var answers []services.ApplicationAnswer
-	for _, question := range questions {
-		fmt.Printf("\n%s\n", question.Question)
-		answer, err := (&promptui.Prompt{Label: "Your answer", Default: question.Answer, AllowEdit: true}).Run()
-		if errors.Is(err, promptui.ErrInterrupt) || errors.Is(err, promptui.ErrEOF) {
-			return errors.New("stopped; nothing was written")
-		}
-		if err != nil {
-			return err
-		}
-		if answer != question.Answer {
-			answers = append(answers, services.ApplicationAnswer{ID: question.ID, Key: question.Key, Answer: answer})
-		}
-	}
-	if len(answers) == 0 {
-		return nil
-	}
-	if _, err := client.SavePersonalAnswers(ctx, applicationID, answers); err != nil {
-		return fmt.Errorf("saving your answers: %w", err)
-	}
-	return nil
-}
-
-func aboutYouIsEmpty(about *services.AboutYou) bool {
-	for _, question := range about.Questions {
-		if question.Answer != "" {
-			return false
-		}
-	}
-	return about.WritingSample == "" && about.WritingPreferences == ""
 }

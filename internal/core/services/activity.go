@@ -41,7 +41,7 @@ func NewAgentActivityService(runs ports.AgentRunRepository, events ports.AgentEv
 // failed, and reports how many it closed. It is called when a workspace
 // opens: runs only exist inside a running daemon, so one still open then
 // was cut off by a daemon that stopped without closing it, and nothing will
-// ever finish it (ADR-0033 §5).
+// ever finish it.
 func (s *AgentActivityService) CloseUnfinishedRuns(ctx context.Context) (int, error) {
 	return s.runs.CloseUnfinished(ctx, "JobPilot stopped while this run was in progress", time.Now())
 }

@@ -593,6 +593,10 @@ func (f *fakeCoverLetterRepository) ListByApplication(_ context.Context, applica
 // ports.ApplicationQuestionRepository for tests.
 type fakeApplicationQuestionRepository struct {
 	questions map[string]*domain.ApplicationQuestion
+	// order is the IDs in the order they were saved, for oldest-first
+	// listing.
+	order []string
+	saved int
 }
 
 func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
@@ -601,7 +605,11 @@ func newFakeApplicationQuestionRepository() *fakeApplicationQuestionRepository {
 
 func (f *fakeApplicationQuestionRepository) Save(_ context.Context, q *domain.ApplicationQuestion) error {
 	if q.ID == "" {
-		q.ID = fmt.Sprintf("q-%d", len(f.questions)+1)
+		f.saved++
+		q.ID = fmt.Sprintf("q-%d", f.saved)
+	}
+	if _, ok := f.questions[q.ID]; !ok {
+		f.order = append(f.order, q.ID)
 	}
 	f.questions[q.ID] = q
 	return nil
@@ -621,13 +629,21 @@ func (f *fakeApplicationQuestionRepository) Update(_ context.Context, q *domain.
 }
 
 func (f *fakeApplicationQuestionRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.ApplicationQuestion, error) {
-	var out []*domain.ApplicationQuestion
-	for _, q := range f.questions {
-		if q.ApplicationID == applicationID {
+	out := make([]*domain.ApplicationQuestion, 0)
+	for _, id := range f.order {
+		if q, ok := f.questions[id]; ok && q.ApplicationID == applicationID {
 			out = append(out, q)
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeApplicationQuestionRepository) Delete(_ context.Context, id string) error {
+	if _, ok := f.questions[id]; !ok {
+		return &ports.NotFoundError{Kind: "application question", ID: id}
+	}
+	delete(f.questions, id)
+	return nil
 }
 
 // fakeJobSource is a ports.JobSource test double.
@@ -696,32 +712,20 @@ func (f *fakeAgentRunRepository) GetByID(_ context.Context, id string) (*domain.
 	return run, nil
 }
 
-func (f *fakeAgentRunRepository) ListByApplication(_ context.Context, applicationID string) ([]*domain.AgentRun, error) {
-	var out []*domain.AgentRun
-	for _, r := range f.runs {
-		if r.ApplicationID == applicationID {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-
-func (f *fakeAgentRunRepository) ListUnattached(_ context.Context, limit int) ([]*domain.AgentRun, error) {
+func (f *fakeAgentRunRepository) List(_ context.Context, limit int) ([]*domain.AgentRun, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	var out []*domain.AgentRun
+	out := make([]*domain.AgentRun, 0, len(f.runs))
 	for _, run := range f.runs {
-		if run.ApplicationID == "" && len(out) < limit {
-			out = append(out, run)
-		}
+		out = append(out, run)
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].StartedAt.After(out[b].StartedAt) })
-	return out, nil
+	return out[:min(limit, len(out))], nil
 }
 
 // ListSummaries filters and pages the stored runs. It names nothing, since
-// the fake has no scouts or jobs to join against.
+// the fake has no scouts to join against.
 func (f *fakeAgentRunRepository) ListSummaries(_ context.Context, filter domain.AgentRunFilter) (*domain.AgentRunPage, error) {
 	var matched []*domain.AgentRunSummary
 	for _, run := range f.runs {
@@ -807,33 +811,9 @@ type fakeBrowserWorker struct {
 	navigateErr       error
 	blockedReason     string
 	blocked           bool
-	fields            []ports.FormField
-	extractErr        error
-	fillErr           map[string]error
-	filled            map[string]string
 	closed            bool
 	content           string
 	extractContentErr error
-
-	// pages lets a test describe a route: each hop's fields in order, so a
-	// posting that only reaches its form after following an apply link can
-	// be exercised without a browser.
-	pages      [][]ports.FormField
-	controls   []ports.ApplyControl
-	findErr    error
-	followErr  error
-	followed   []string
-	currentURL string
-
-	// detect, when set, answers DetectBlocker in place of blocked and
-	// blockedReason, given how many times it has been asked before — so a
-	// test can script a check appearing, being answered, or coming back.
-	detect      func(asked int) (string, bool)
-	detectCalls int
-	// loads is what PageLoads reports; a detect script raises it to stand
-	// for the page reloading.
-	loads   int
-	focused bool
 }
 
 func (f *fakeBrowserWorker) Navigate(_ context.Context, url string) error {
@@ -842,43 +822,7 @@ func (f *fakeBrowserWorker) Navigate(_ context.Context, url string) error {
 }
 
 func (f *fakeBrowserWorker) DetectBlocker(_ context.Context) (string, bool) {
-	if f.detect != nil {
-		f.detectCalls++
-		return f.detect(f.detectCalls - 1)
-	}
 	return f.blockedReason, f.blocked
-}
-
-func (f *fakeBrowserWorker) Focus(_ context.Context) error {
-	f.focused = true
-	return nil
-}
-
-func (f *fakeBrowserWorker) PageLoads(_ context.Context) int { return f.loads }
-
-func (f *fakeBrowserWorker) ExtractForm(_ context.Context) ([]ports.FormField, error) {
-	if f.extractErr != nil {
-		return nil, f.extractErr
-	}
-	if len(f.pages) > 0 {
-		hop := min(len(f.followed), len(f.pages)-1)
-		return f.pages[hop], nil
-	}
-	return f.fields, nil
-}
-
-func (f *fakeBrowserWorker) CurrentURL(_ context.Context) string { return f.currentURL }
-
-func (f *fakeBrowserWorker) FindApplyControls(_ context.Context) ([]ports.ApplyControl, error) {
-	return f.controls, f.findErr
-}
-
-func (f *fakeBrowserWorker) FollowControl(_ context.Context, ref string) error {
-	if f.followErr != nil {
-		return f.followErr
-	}
-	f.followed = append(f.followed, ref)
-	return nil
 }
 
 func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) {
@@ -886,17 +830,6 @@ func (f *fakeBrowserWorker) ExtractContent(_ context.Context) (string, error) {
 		return "", f.extractContentErr
 	}
 	return f.content, nil
-}
-
-func (f *fakeBrowserWorker) Fill(_ context.Context, fieldRef, value string) error {
-	if f.filled == nil {
-		f.filled = map[string]string{}
-	}
-	if err, ok := f.fillErr[fieldRef]; ok {
-		return err
-	}
-	f.filled[fieldRef] = value
-	return nil
 }
 
 func (f *fakeBrowserWorker) Close(_ context.Context) error {

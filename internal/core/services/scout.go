@@ -215,7 +215,7 @@ func (s *ScoutService) DeleteScout(ctx context.Context, id string) error {
 
 // ListRuns returns recent scout runs, newest first.
 func (s *ScoutService) ListRuns(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
-	return s.runs.ListUnattached(ctx, limit)
+	return s.runs.List(ctx, limit)
 }
 
 // ListRunEvents returns what one run did, in order.
@@ -502,7 +502,6 @@ func (s *ScoutService) createApplication(ctx context.Context, jobID, candidateID
 	application := &domain.Application{
 		JobID:       jobID,
 		CandidateID: candidateID,
-		Mode:        domain.ApplicationModeReview,
 		State:       domain.ApplicationStateDiscovered,
 	}
 	if err := s.applications.Save(ctx, application); err != nil {

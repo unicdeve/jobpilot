@@ -95,12 +95,10 @@ type MatchRepository interface {
 }
 
 // PersonalAnswerRepository persists what the candidate says about
-// themselves (ADR-0022). Which rows may exist — one per standing key, at
-// most two proposed questions — is the service's to keep; the schema
-// backs the first.
+// themselves (ADR-0022). That a candidate has at most one answer per
+// standing key is the service's to keep, and the schema backs it.
 type PersonalAnswerRepository interface {
 	ListByCandidate(ctx context.Context, candidateID string) ([]*domain.PersonalAnswer, error)
-	ListByApplication(ctx context.Context, applicationID string) ([]*domain.PersonalAnswer, error)
 	GetByID(ctx context.Context, id string) (*domain.PersonalAnswer, error)
 	// Save inserts an answer without an ID, assigning one, and otherwise
 	// updates its question and answer.

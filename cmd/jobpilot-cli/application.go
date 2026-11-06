@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"strings"
 	"time"
 
@@ -23,9 +22,8 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(newApplicationSubmittedCmd(client))
 	cmd.AddCommand(newCoverLetterCmd(client))
 	cmd.AddCommand(newQuestionCmd(client))
-	cmd.AddCommand(newApplicationPrepareInBrowserCmd(client))
+	cmd.AddCommand(newApplicationLinkCmd(client))
 	cmd.AddCommand(newApplicationApplyURLCmd(client))
-	cmd.AddCommand(newApplicationAgentRunsCmd(client))
 	cmd.AddCommand(deleteCmd(client, "delete [application-id]", "Delete an application, with its answers, cover letters and history",
 		domain.DeleteApplication, func(args []string) string { return "application " + args[0] }))
 
@@ -33,7 +31,7 @@ func newApplicationCmd(client *httpapi.Client) *cobra.Command {
 }
 
 func newApplicationCreateCmd(client *httpapi.Client) *cobra.Command {
-	var resumeID, mode string
+	var resumeID string
 
 	cmd := &cobra.Command{
 		Use:   "create [job-id]",
@@ -48,7 +46,7 @@ func newApplicationCreateCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("no candidate profile found, run 'onboard' first: %w", err)
 			}
 
-			app, err := client.CreateApplication(ctx, jobID, profile.ID, resumeID, domain.ApplicationMode(mode))
+			app, err := client.CreateApplication(ctx, jobID, profile.ID, resumeID)
 			if err != nil {
 				return fmt.Errorf("creating application: %w", err)
 			}
@@ -57,7 +55,6 @@ func newApplicationCreateCmd(client *httpapi.Client) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&resumeID, "resume", "", "resume ID to associate with this application")
-	cmd.Flags().StringVar(&mode, "mode", string(domain.ApplicationModeReview), "application mode (assist|review)")
 	return cmd
 }
 
@@ -84,7 +81,7 @@ func newApplicationListCmd(client *httpapi.Client) *cobra.Command {
 
 			fmt.Println("Applications:")
 			for i, a := range apps {
-				fmt.Printf("%d. %s | job %s | state %s | mode %s\n", i+1, a.ID, a.JobID, a.State, a.Mode)
+				fmt.Printf("%d. %s | job %s | state %s\n", i+1, a.ID, a.JobID, a.State)
 			}
 			return nil
 		},
@@ -104,9 +101,9 @@ func newApplicationShowCmd(client *httpapi.Client) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("fetching application: %w", err)
 			}
-			fmt.Printf("Application %s\nJob: %s\nState: %s\nMode: %s\n", app.ID, app.JobID, app.State, app.Mode)
+			fmt.Printf("Application %s\nJob: %s\nState: %s\n", app.ID, app.JobID, app.State)
 			if app.ApplyURL != "" {
-				fmt.Printf("Browser starts from: %s\n", app.ApplyURL)
+				fmt.Printf("Application page: %s\n", app.ApplyURL)
 			}
 			if app.SubmittedAt != nil {
 				fmt.Printf("Submitted: %s\n", app.SubmittedAt.Format(time.RFC1123))
@@ -162,7 +159,7 @@ func newApplicationShowCmd(client *httpapi.Client) *cobra.Command {
 			if len(questions) > 0 {
 				fmt.Println("\nQuestions:")
 				for _, q := range questions {
-					fmt.Printf("- [%s] %s -> %q (category: %s)\n", q.ID, q.Label, q.Answer, q.Category)
+					fmt.Printf("- [%s] %s -> %q\n", q.ID, q.Label, q.Answer)
 				}
 			}
 
@@ -197,7 +194,7 @@ func newApplicationTransitionCmd(client *httpapi.Client) *cobra.Command {
 
 // newApplicationSubmittedCmd exists because "I sent it" is the one
 // transition a user makes away from the machine, after submitting the form
-// themselves in the browser JobPilot handed them. `transition <id>
+// themselves in their own browser. `transition <id>
 // SUBMITTED` already does it; this is the same act under the name the user
 // would look for.
 func newApplicationSubmittedCmd(client *httpapi.Client) *cobra.Command {
@@ -222,45 +219,32 @@ func newApplicationSubmittedCmd(client *httpapi.Client) *cobra.Command {
 	return cmd
 }
 
-func newApplicationPrepareInBrowserCmd(client *httpapi.Client) *cobra.Command {
-	var from string
-
-	cmd := &cobra.Command{
-		Use:   "prepare-in-browser [application-id]",
-		Short: "Open the job posting in a real browser, extract its form, and fill in known answers",
-		Long: "Open the job posting in a real browser, extract its form, and fill in known answers.\n\n" +
-			"If a page asks whether you're a person, answer it in the browser window and the run carries on. " +
-			"Press Ctrl-C to stop the run; the window stays open either way.\n\n" +
-			"If a site won't let JobPilot's browser through, open the posting in your own browser, " +
-			"follow its apply button, and pass the application form's address with --from.",
-		Args: cobra.ExactArgs(1),
+// newApplicationLinkCmd prints where to apply: the link the user saved, or
+// the job's own. The user opens it in their own browser and applies
+// themselves (ADR-0034 §2).
+func newApplicationLinkCmd(client *httpapi.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "link [application-id]",
+		Short: "Print the address to apply at, to open in your own browser",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			id := args[0]
-			if from != "" {
-				if _, err := client.SetApplyURL(context.Background(), id, from); err != nil {
-					return fmt.Errorf("recording the application link: %w", err)
-				}
-			}
-
-			run, err := client.PrepareInBrowser(context.Background(), id)
+			ctx := context.Background()
+			app, err := client.GetApplication(ctx, args[0])
 			if err != nil {
-				return fmt.Errorf("starting the browser: %w", err)
+				return fmt.Errorf("fetching application: %w", err)
 			}
-			run, err = followBrowserRun(client, run)
-			if err != nil {
-				return err
-			}
-
-			if run.Status != domain.AgentRunStatusCompleted {
-				fmt.Printf("⚠️  %s\nRun 'application agent-runs %s' to see what happened, or 'application show %s' for details.\n", run.Error, id, id)
+			if app.ApplyURL != "" {
+				fmt.Println(app.ApplyURL)
 				return nil
 			}
-			fmt.Printf("✅ Application %s is ready for review. The browser window was left open for you to review and submit.\n", id)
+			job, err := client.GetJob(ctx, app.JobID)
+			if err != nil {
+				return fmt.Errorf("fetching the job: %w", err)
+			}
+			fmt.Println(job.CanonicalURL)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&from, "from", "", "start from this application form address instead of the job's own link, and keep it for later runs")
-	return cmd
 }
 
 func newApplicationApplyURLCmd(client *httpapi.Client) *cobra.Command {
@@ -268,7 +252,7 @@ func newApplicationApplyURLCmd(client *httpapi.Client) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "apply-url [application-id] [url]",
-		Short: "Set where the browser starts for this application, or clear it to use the job's own link",
+		Short: "Set where to apply for this application, or clear it to use the job's own link",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if useJobLink {
 				return cobra.ExactArgs(1)(cmd, args)
@@ -285,82 +269,15 @@ func newApplicationApplyURLCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("recording the application link: %w", err)
 			}
 			if app.ApplyURL == "" {
-				fmt.Printf("✅ Application %s starts from the job's own link again.\n", app.ID)
+				fmt.Printf("✅ Application %s uses the job's own link again.\n", app.ID)
 				return nil
 			}
-			fmt.Printf("✅ Application %s starts from %s.\n", app.ID, app.ApplyURL)
+			fmt.Printf("✅ Application %s applies at %s.\n", app.ID, app.ApplyURL)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&useJobLink, "clear", false, "start from the job's own link again")
+	cmd.Flags().BoolVar(&useJobLink, "clear", false, "use the job's own link again")
 	return cmd
-}
-
-// browserRunPoll is how often the CLI reads a run in progress, as the
-// desktop does.
-const browserRunPoll = 2 * time.Second
-
-// followBrowserRun reads the run until it finishes, saying when it is
-// waiting for the user, and stops it if the user interrupts the command.
-func followBrowserRun(client *httpapi.Client, run *domain.AgentRun) (*domain.AgentRun, error) {
-	interrupted, stopListening := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stopListening()
-
-	ctx := context.Background()
-	stopSent := false
-	fmt.Println("Preparing in the browser…")
-	for run.Status.InProgress() {
-		select {
-		case <-interrupted.Done():
-			if !stopSent {
-				stopSent = true
-				if err := client.StopAgentRun(ctx, run.ID); err != nil {
-					return nil, fmt.Errorf("stopping the run: %w", err)
-				}
-			}
-		case <-time.After(browserRunPoll):
-		}
-
-		detail, err := client.GetActivityRun(ctx, run.ID)
-		if err != nil {
-			return nil, fmt.Errorf("reading the run: %w", err)
-		}
-		if detail.Run.Status == domain.AgentRunStatusWaitingForUser && run.Status != domain.AgentRunStatusWaitingForUser {
-			fmt.Println("🧍 The page is asking whether you're a person. Answer it in the browser window, and the run carries on.")
-		}
-		run = &detail.Run.AgentRun
-	}
-	return run, nil
-}
-
-func newApplicationAgentRunsCmd(client *httpapi.Client) *cobra.Command {
-	return &cobra.Command{
-		Use:   "agent-runs [application-id]",
-		Short: "Show the browser automation activity recorded for an application",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			runs, err := client.ListAgentRuns(ctx, args[0])
-			if err != nil {
-				return fmt.Errorf("listing agent runs: %w", err)
-			}
-			if len(runs) == 0 {
-				fmt.Println("No agent runs yet.")
-				return nil
-			}
-			for _, r := range runs {
-				fmt.Printf("Run %s | %s | status: %s", r.Run.ID, r.Run.TaskType, r.Run.Status)
-				if r.Run.Error != "" {
-					fmt.Printf(" | %s", r.Run.Error)
-				}
-				fmt.Println()
-				for _, e := range r.Events {
-					fmt.Printf("  - %s (%s): %s\n", e.Action, e.Status, e.OutputSummary)
-				}
-			}
-			return nil
-		},
-	}
 }
 
 func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
@@ -369,37 +286,31 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 	cmd.AddCommand(deleteCmd(client, "delete [cover-letter-id]", "Delete a cover letter version other than the current one",
 		domain.DeleteCoverLetter, func(args []string) string { return "cover letter " + args[0] }))
 
-	var noQuestions bool
-	generateCmd := &cobra.Command{
-		Use:   "generate [application-id]",
-		Short: "Generate (or regenerate) a cover letter for an application",
-		Long: "Asks a few questions about this job first — what draws you to it, and up to two\n" +
-			"the posting suggests — and writes the letter from your answers and your profile.\n" +
-			"Enter skips a question; --no-questions skips them all.",
-		Args: cobra.ExactArgs(1),
+	var writeFrom string
+	cmd.AddCommand(withFileFlag(&cobra.Command{
+		Use:   "write [application-id] [content]",
+		Short: "Save a cover letter you wrote as the application's new version",
+		Long: "Saves the letter you wrote as a new version, and makes it the current one.\n" +
+			"Earlier versions are kept. --file reads the letter from a file.",
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			if !noQuestions {
-				if err := askApplicationQuestions(ctx, client, args[0]); err != nil {
-					return err
-				}
-				fmt.Println("\nWriting…")
-			}
-			coverLetter, err := client.GenerateCoverLetter(ctx, args[0])
+			content, err := contentFrom(args[1:], writeFrom)
 			if err != nil {
-				return fmt.Errorf("generating cover letter: %w", err)
+				return err
 			}
-			fmt.Printf("✅ Cover letter generated (ID: %s):\n\n%s\n", coverLetter.ID, coverLetter.Content)
+			coverLetter, err := client.CreateCoverLetter(context.Background(), args[0], content)
+			if err != nil {
+				return fmt.Errorf("saving the cover letter: %w", err)
+			}
+			fmt.Printf("✅ Cover letter saved (ID: %s).\n", coverLetter.ID)
 			printFlags("", coverLetter.Flags)
 			return nil
 		},
-	}
-	generateCmd.Flags().BoolVar(&noQuestions, "no-questions", false, "write the letter without asking anything first")
-	cmd.AddCommand(generateCmd)
+	}, &writeFrom, "read the letter from this file"))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list [application-id]",
-		Short: "List every cover letter version generated for an application",
+		Short: "List every version of an application's cover letter",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			ctx := context.Background()
@@ -408,15 +319,11 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 				return fmt.Errorf("listing cover letter versions: %w", err)
 			}
 			if len(versions) == 0 {
-				fmt.Println("No cover letters generated yet.")
+				fmt.Println("No cover letter yet. Write one with 'application cover-letter write'.")
 				return nil
 			}
 			for i, v := range versions {
-				edited := ""
-				if v.UserEdited {
-					edited = " (edited)"
-				}
-				fmt.Printf("%d. %s%s\n%s\n", i+1, v.ID, edited, v.Content)
+				fmt.Printf("%d. %s\n%s\n", i+1, v.ID, v.Content)
 				printFlags("", v.Flags)
 				fmt.Println()
 			}
@@ -424,13 +331,17 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
+	var editFrom string
+	cmd.AddCommand(withFileFlag(&cobra.Command{
 		Use:   "edit [cover-letter-id] [content]",
 		Short: "Replace a cover letter version's content",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			coverLetter, err := client.EditCoverLetter(ctx, args[0], args[1])
+			content, err := contentFrom(args[1:], editFrom)
+			if err != nil {
+				return err
+			}
+			coverLetter, err := client.EditCoverLetter(context.Background(), args[0], content)
 			if err != nil {
 				return fmt.Errorf("editing cover letter: %w", err)
 			}
@@ -438,61 +349,45 @@ func newCoverLetterCmd(client *httpapi.Client) *cobra.Command {
 			printFlags("", coverLetter.Flags)
 			return nil
 		},
-	})
+	}, &editFrom, "read the letter from this file"))
 
 	return cmd
 }
 
 func newQuestionCmd(client *httpapi.Client) *cobra.Command {
-	cmd := &cobra.Command{Use: "question", Short: "Manage an application's questions and answers"}
+	cmd := &cobra.Command{
+		Use:   "question",
+		Short: "Note an application's questions and write your answers",
+		Long: "Note a question the application form asks, and write your answer to it.\n" +
+			"JobPilot suggests an answer only from your profile or an answer you kept; it never writes one.",
+	}
 
-	var questionType string
-	var required bool
-	addCmd := &cobra.Command{
-		Use:   "add [application-id] [label]",
-		Short: "Add a question to an application",
+	cmd.AddCommand(&cobra.Command{
+		Use:   "add [application-id] [question]",
+		Short: "Note a question on an application",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			question, err := client.AddQuestion(ctx, args[0], args[1], domain.QuestionType(questionType), required)
+			question, err := client.AddQuestion(context.Background(), args[0], args[1])
 			if err != nil {
 				return fmt.Errorf("adding question: %w", err)
 			}
 			fmt.Printf("✅ Question added: %s\n", question.ID)
-			return nil
-		},
-	}
-	addCmd.Flags().StringVar(&questionType, "type", string(domain.QuestionTypeFactual), "question type (factual|narrative)")
-	addCmd.Flags().BoolVar(&required, "required", false, "whether this question is required")
-	cmd.AddCommand(addCmd)
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "resolve [question-id]",
-		Short: "Attempt to resolve a question's answer automatically",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			question, err := client.ResolveQuestion(ctx, args[0])
-			if err != nil {
-				return fmt.Errorf("resolving question: %w", err)
-			}
-			if question.Category == domain.AnswerCategoryNeedsUserInput {
-				fmt.Printf("⚠️  Could not resolve automatically: %s\nRun 'application question answer %s <answer>' to supply one.\n", question.Label, question.ID)
-				return nil
-			}
-			fmt.Printf("✅ Resolved (%s): %s\n", question.Category, question.Answer)
-			printFlags("", question.Flags)
+			printSuggestion("", question.Suggestion)
 			return nil
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
+	var answerFrom string
+	cmd.AddCommand(withFileFlag(&cobra.Command{
 		Use:   "answer [question-id] [answer]",
-		Short: "Manually set (or override) a question's answer",
-		Args:  cobra.ExactArgs(2),
+		Short: "Write your answer to a question; an empty answer clears it",
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			question, err := client.SetQuestionAnswer(ctx, args[0], args[1])
+			answer, err := contentFrom(args[1:], answerFrom)
+			if err != nil {
+				return err
+			}
+			question, err := client.SetQuestionAnswer(context.Background(), args[0], answer)
 			if err != nil {
 				return fmt.Errorf("setting answer: %w", err)
 			}
@@ -500,11 +395,11 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 			printFlags("", question.Flags)
 			return nil
 		},
-	})
+	}, &answerFrom, "read the answer from this file"))
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "keep [question-id]",
-		Short: "Keep a written answer you wrote, to draw on for similar questions",
+		Short: "Keep your answer, to be suggested for similar questions",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			kept, err := client.KeepAnswer(context.Background(), args[0])
@@ -517,12 +412,24 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list [application-id]",
-		Short: "List every question on an application",
+		Use:   "delete [question-id]",
+		Short: "Remove a question and your answer to it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ctx := context.Background()
-			questions, err := client.ListQuestions(ctx, args[0])
+			if err := client.DeleteQuestion(context.Background(), args[0]); err != nil {
+				return fmt.Errorf("deleting the question: %w", err)
+			}
+			fmt.Println("✅ Question removed.")
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list [application-id]",
+		Short: "List every question on an application, with your answers",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			questions, err := client.ListQuestions(context.Background(), args[0])
 			if err != nil {
 				return fmt.Errorf("listing questions: %w", err)
 			}
@@ -531,7 +438,15 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 				return nil
 			}
 			for i, q := range questions {
-				fmt.Printf("%d. [%s] %s -> %q (category: %s, status: %s)\n", i+1, q.ID, q.Label, q.Answer, q.Category, q.Status)
+				fmt.Printf("%d. [%s] %s\n", i+1, q.ID, q.Label)
+				if q.Answer == "" {
+					fmt.Println("   Not answered yet.")
+				} else {
+					fmt.Printf("   %s\n", q.Answer)
+				}
+				if q.Suggestion != nil && q.Suggestion.Answer != q.Answer {
+					printSuggestion("   ", q.Suggestion)
+				}
 				printFlags("   ", q.Flags)
 			}
 			return nil
@@ -541,14 +456,52 @@ func newQuestionCmd(client *httpapi.Client) *cobra.Command {
 	return cmd
 }
 
-// printFlags lists what a reviewer should look at in a letter or written
+// printSuggestion shows an answer the candidate's own material gives to a
+// question, and where it came from.
+func printSuggestion(indent string, suggestion *domain.AnswerSuggestion) {
+	if suggestion == nil {
+		return
+	}
+	from := "your profile"
+	switch suggestion.Source {
+	case domain.SuggestionDerived:
+		from = "worked out from your profile"
+	case domain.SuggestionKeptAnswer:
+		from = fmt.Sprintf("your kept answer to %q", suggestion.Field)
+	}
+	fmt.Printf("%sSuggested (%s): %s\n", indent, from, suggestion.Answer)
+}
+
+// withFileFlag adds a --file flag to cmd, read into target.
+func withFileFlag(cmd *cobra.Command, target *string, usage string) *cobra.Command {
+	cmd.Flags().StringVar(target, "file", "", usage)
+	return cmd
+}
+
+// contentFrom is text given as the one remaining argument or in a file,
+// for a letter or an answer too long for the command line.
+func contentFrom(args []string, file string) (string, error) {
+	if file != "" {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("reading %s: %w", file, err)
+		}
+		return string(content), nil
+	}
+	if len(args) == 0 {
+		return "", nil
+	}
+	return args[0], nil
+}
+
+// printFlags lists what the candidate may want to look at in a letter or
 // answer (docs/02_features/19_draft_checks.md), or nothing when there is
 // nothing to look at.
 func printFlags(indent string, flags []domain.DraftFlag) {
 	if len(flags) == 0 {
 		return
 	}
-	fmt.Printf("%sTo review:\n", indent)
+	fmt.Printf("%sWorth a look:\n", indent)
 	for _, flag := range flags {
 		if flag.Excerpt == "" {
 			fmt.Printf("%s- %s\n", indent, flag.Reason)

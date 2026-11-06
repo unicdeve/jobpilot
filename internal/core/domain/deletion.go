@@ -70,8 +70,8 @@ var DeletionRules = []DeletionRule{
 	{RecordMatch, RecordCandidate, DeletionCascade},
 	{RecordApplication, RecordJob, DeletionCascade},
 	{RecordApplication, RecordCandidate, DeletionCascade},
-	// A deleted resume leaves the applications that used it with what was
-	// already generated from it (spec D5).
+	// A deleted resume leaves the applications that used it, with what the
+	// candidate wrote for them (spec D5).
 	{RecordApplication, RecordResume, DeletionDetach},
 	// An application's current cover letter is one of its own versions,
 	// which go with it; the reference is cleared rather than blocking.
@@ -79,16 +79,13 @@ var DeletionRules = []DeletionRule{
 	{RecordQuestion, RecordApplication, DeletionCascade},
 	{RecordCoverLetter, RecordApplication, DeletionCascade},
 	{RecordStateTransition, RecordApplication, DeletionCascade},
-	// A browser run is about one application and goes with it (spec D4).
-	{RecordAgentRun, RecordApplication, DeletionCascade},
 	// A scout run outlives its scout: it is the record of what it did.
 	{RecordAgentRun, RecordScout, DeletionDetach},
 	{RecordAgentStep, RecordAgentRun, DeletionCascade},
 	{RecordScout, RecordSavedSearch, DeletionCascade},
-	// What the candidate said about themselves goes with its owner: the
-	// profile, or the one application it was said for (ADR-0022 §1).
+	// What the candidate said about themselves goes with the profile
+	// (ADR-0022 §1).
 	{RecordPersonalAnswer, RecordCandidate, DeletionCascade},
-	{RecordPersonalAnswer, RecordApplication, DeletionCascade},
 	// A notification is the record of what the user was told, and
 	// outlives the scout and the run it was about (ADR-0028 §4).
 	{RecordNotification, RecordScout, DeletionDetach},

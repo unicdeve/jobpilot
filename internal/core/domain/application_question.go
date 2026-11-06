@@ -1,65 +1,50 @@
 package domain
 
-// QuestionType says whether an ApplicationQuestion may be answered by LLM
-// generation when no profile fact or deterministic derivation applies.
-// Factual questions never reach the LLM (docs/02_features/07_application_answers.md
-// AC-003: unknown factual questions are not guessed).
-type QuestionType string
+import "time"
 
-// Question types.
-const (
-	QuestionTypeFactual   QuestionType = "factual"
-	QuestionTypeNarrative QuestionType = "narrative"
-)
-
-// AnswerCategory records which of the four resolver categories in
-// docs/02_features/07_application_answers.md produced an answer.
-type AnswerCategory string
-
-// Answer resolver categories.
-const (
-	AnswerCategoryProfileFact    AnswerCategory = "profile_fact"
-	AnswerCategoryDerived        AnswerCategory = "derived"
-	AnswerCategoryGenerated      AnswerCategory = "generated"
-	AnswerCategoryNeedsUserInput AnswerCategory = "needs_user_input"
-)
-
-// QuestionStatus is whether an ApplicationQuestion currently has an answer.
-type QuestionStatus string
-
-// Question statuses.
-const (
-	QuestionStatusPending  QuestionStatus = "pending"
-	QuestionStatusAnswered QuestionStatus = "answered"
-)
-
-// QuestionSource says how an ApplicationQuestion entered the system.
-type QuestionSource string
-
-// Question sources.
-const (
-	QuestionSourceManual        QuestionSource = "manual"
-	QuestionSourceFormExtracted QuestionSource = "form_extracted"
-)
-
-// ApplicationQuestion is a single question on an application (e.g. a form
-// field) along with its resolved (or pending) answer.
+// ApplicationQuestion is a question the candidate noted on an application,
+// with the answer they wrote to it (ADR-0034 §4). JobPilot never writes the
+// answer; it may only suggest one from a deterministic source.
 type ApplicationQuestion struct {
-	ID            string         `json:"id"`
-	ApplicationID string         `json:"application_id"`
-	Label         string         `json:"label"`
-	Type          QuestionType   `json:"type"`
-	Required      bool           `json:"required"`
-	Answer        string         `json:"answer"`
-	AnswerSource  string         `json:"answer_source"`
-	Category      AnswerCategory `json:"category"`
-	Confidence    float64        `json:"confidence"`
-	UserEdited    bool           `json:"user_edited"`
-	Status        QuestionStatus `json:"status"`
-	Source        QuestionSource `json:"source"`
-	FieldRef      string         `json:"field_ref,omitempty"`
-	// Flags are what the reviewer should look at in a generated Answer,
-	// worked out each time it is read and never stored
+	ID            string    `json:"id"`
+	ApplicationID string    `json:"application_id"`
+	Label         string    `json:"label"`
+	Answer        string    `json:"answer"`
+	CreatedAt     time.Time `json:"created_at"`
+	// Suggestion is what the candidate's own material says to this
+	// question, when anything does. It is worked out each time the
+	// question is read and never stored, so it always reflects the profile
+	// as it is now.
+	Suggestion *AnswerSuggestion `json:"suggestion,omitempty"`
+	// Flags are what the candidate may want to look at in Answer, worked
+	// out each time it is read and never stored
 	// (docs/02_features/19_draft_checks.md D3).
 	Flags []DraftFlag `json:"flags,omitempty"`
+}
+
+// SuggestionSource says where a suggested answer came from.
+type SuggestionSource string
+
+// Suggestion sources, in the order the resolver tries them
+// (docs/02_features/07_application_answers.md).
+const (
+	// SuggestionFromProfile is a fact the profile states: a name, an email
+	// address, a link, a right to work in a named country.
+	SuggestionFromProfile SuggestionSource = "profile"
+	// SuggestionDerived is worked out from the profile: years of
+	// experience, a remote-work preference.
+	SuggestionDerived SuggestionSource = "derived"
+	// SuggestionKeptAnswer is an answer the candidate wrote to a similar
+	// question and kept.
+	SuggestionKeptAnswer SuggestionSource = "kept_answer"
+)
+
+// AnswerSuggestion is an answer the candidate's own material gives to a
+// question, offered for them to use, edit or ignore.
+type AnswerSuggestion struct {
+	Answer string           `json:"answer"`
+	Source SuggestionSource `json:"source"`
+	// Field names what answered: the profile field ("candidate.email") for
+	// a fact or a derivation, the kept question for a kept answer.
+	Field string `json:"field"`
 }

@@ -29,14 +29,6 @@ func migratedTo(t *testing.T, version int64) *DB {
 	return db
 }
 
-func migrateUp(t *testing.T, db *DB) {
-	t.Helper()
-	provider, err := db.migrationProvider()
-	require.NoError(t, err)
-	_, err = provider.Up(context.Background())
-	require.NoError(t, err)
-}
-
 // migrateUpTo applies migrations up to and including version, so a test of
 // one migration is not broken by a later one adding a column.
 func migrateUpTo(t *testing.T, db *DB, version int64) {
@@ -95,8 +87,9 @@ func columnInfo(t *testing.T, db *DB, table string) []string {
 	return columns
 }
 
-// A graph of one of everything, with every reference satisfied.
-var connectedRows = []string{
+// connectedRowsAt14 is one of each kind of record, each referencing the
+// others, in the schema as migration 00014 left it.
+var connectedRowsAt14 = []string{
 	`INSERT INTO candidates (id, first_name) VALUES ('cand', 'Ada')`,
 	`INSERT INTO resumes (id, candidate_id, name) VALUES ('res', 'cand', 'CV')`,
 	`INSERT INTO jobs (id, canonical_url, title) VALUES ('job', 'https://example.com/1', 'Engineer')`,
@@ -114,12 +107,30 @@ var connectedRows = []string{
 	`INSERT INTO agent_events (id, run_id, action) VALUES ('scout-step', 'scout-run', 'scout_started')`,
 }
 
+// connectedRows is one of each kind of record, each referencing the
+// others, in the schema as it is now.
+var connectedRows = []string{
+	`INSERT INTO candidates (id, first_name) VALUES ('cand', 'Ada')`,
+	`INSERT INTO resumes (id, candidate_id, name) VALUES ('res', 'cand', 'CV')`,
+	`INSERT INTO jobs (id, canonical_url, title) VALUES ('job', 'https://example.com/1', 'Engineer')`,
+	`INSERT INTO job_matches (id, job_id, candidate_id, score) VALUES ('match', 'job', 'cand', 80)`,
+	`INSERT INTO applications (id, job_id, candidate_id, resume_id, state) VALUES ('app', 'job', 'cand', 'res', 'APPROVED')`,
+	`INSERT INTO cover_letters (id, application_id, content) VALUES ('letter', 'app', 'Dear Acme')`,
+	`UPDATE applications SET current_cover_letter_id = 'letter' WHERE id = 'app'`,
+	`INSERT INTO application_questions (id, application_id, label) VALUES ('question', 'app', 'Email')`,
+	`INSERT INTO application_state_transitions (id, application_id, to_state) VALUES ('transition', 'app', 'APPROVED')`,
+	`INSERT INTO saved_searches (id, name, keywords) VALUES ('search', 'Go', 'go')`,
+	`INSERT INTO scouts (id, name, saved_search_id) VALUES ('scout', 'Daily', 'search')`,
+	`INSERT INTO agent_runs (id, task_type, scout_id) VALUES ('scout-run', 'scout_run', 'scout')`,
+	`INSERT INTO agent_events (id, run_id, action) VALUES ('scout-step', 'scout-run', 'scout_started')`,
+}
+
 // TestMigration00015_KeepsEveryColumnAndRow is ADR-0021 §5: the rebuild
 // changes foreign key rules and indexes, and nothing else.
 func TestMigration00015_KeepsEveryColumnAndRow(t *testing.T) {
 	t.Parallel()
 	db := migratedTo(t, 14)
-	execAll(t, db, true, connectedRows...)
+	execAll(t, db, true, connectedRowsAt14...)
 
 	before := map[string][]string{}
 	rowsBefore := map[string]int{}
@@ -144,7 +155,7 @@ func TestMigration00015_KeepsEveryColumnAndRow(t *testing.T) {
 func TestMigration00015_RepairsOrphansByTheirRules(t *testing.T) {
 	t.Parallel()
 	db := migratedTo(t, 14)
-	execAll(t, db, true, connectedRows...)
+	execAll(t, db, true, connectedRowsAt14...)
 	execAll(t, db, false,
 		// A resume deleted from under an application: detach.
 		`DELETE FROM resumes WHERE id = 'res'`,
@@ -157,7 +168,7 @@ func TestMigration00015_RepairsOrphansByTheirRules(t *testing.T) {
 		`INSERT INTO agent_events (id, run_id, action) VALUES ('orphan-step', 'gone-run', 'navigate')`,
 	)
 
-	migrateUp(t, db)
+	migrateUpTo(t, db, 15)
 
 	assert.Equal(t, 1, count(t, db, `SELECT count(*) FROM applications WHERE id = 'app' AND resume_id IS NULL`),
 		"the application whose resume was deleted is kept and detached")
@@ -254,8 +265,6 @@ func TestSchema_DeletionFollowsTheRules(t *testing.T) {
 		for _, table := range []string{"job_matches", "applications", "cover_letters", "application_questions", "application_state_transitions"} {
 			assert.Zero(t, count(t, db, `SELECT count(*) FROM `+table), table)
 		}
-		assert.Zero(t, count(t, db, `SELECT count(*) FROM agent_runs WHERE id = 'browser-run'`), "the browser run went with its application")
-		assert.Zero(t, count(t, db, `SELECT count(*) FROM agent_events WHERE id = 'browser-step'`))
 		assert.Equal(t, 1, count(t, db, `SELECT count(*) FROM agent_runs WHERE id = 'scout-run'`), "a scout run is not the application's")
 		assert.Equal(t, 1, count(t, db, `SELECT count(*) FROM resumes`), "nor is the resume")
 	})
