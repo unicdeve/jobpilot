@@ -57,10 +57,16 @@ different failure modes, so they are different endpoints.
 - `GET /v1/jobs/{id}` returns one stored job, on the same terms.
 - `GET` and `PUT /v1/profile/about` read and change what the candidate says
   about themselves; `DELETE /v1/profile/about/kept/{id}` forgets a kept
-  answer, and `POST /v1/questions/{id}/keep` keeps one. An application's
-  questions before a letter are `GET /v1/applications/{id}/personal-questions`,
-  `POST .../prepare`, which may ask the model to propose some, and `PUT` to
-  answer them (`docs/02_features/16_about_you.md`).
+  answer, and `POST /v1/questions/{id}/keep` keeps one
+  (`docs/02_features/16_about_you.md`).
+- An application's letter and questions are the candidate's own (ADR-0034):
+  `POST /v1/applications/{id}/cover-letters` saves a new version (`{"content"}`,
+  201; an empty letter is 400), `GET` lists them, and `PUT /v1/cover-letters/{id}`
+  edits one. `POST /v1/applications/{id}/questions` notes a question
+  (`{"label"}`, 201), `GET` lists them oldest first, `PUT /v1/questions/{id}/answer`
+  sets the candidate's answer, and `DELETE /v1/questions/{id}` removes one.
+  `PUT /v1/applications/{id}/apply-url` saves the link "Open application page"
+  opens, or clears it.
 - `GET /v1/searches/stale` lists the saved searches due to run again — never
   run, or not in the last six hours — which the desktop runs when it opens.
   `GET` and `PUT /v1/settings/discovery` read and turn that off.
@@ -97,7 +103,8 @@ a client can tell whether more pages remain without fetching them.
 
 ## Letters and answers carry their flags
 
-Every cover letter the API returns — generated, listed or edited — and every question with a generated answer carries `flags`: what the reviewer should look at, each `{"kind", "excerpt", "reason"}` (`docs/02_features/19_draft_checks.md`).
+Every cover letter the API returns, and every answered question, carries `flags`: what the candidate may want to look at, each `{"kind", "excerpt", "reason"}` (`docs/02_features/19_draft_checks.md`).
+A question also carries `suggestion`, `{"answer", "source", "field"}`, when the profile or a kept answer gives one; it is never filled in.
 They are worked out from the text on every read and never stored, so a client shows what it is given and an edit comes back re-checked.
 `flags` is left out when there is nothing to look at.
 

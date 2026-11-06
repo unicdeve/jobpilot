@@ -57,25 +57,27 @@ It is given up on after 60 seconds without a byte once the server has started an
 The error says which, so a stalled server is not mistaken for the caller cancelling.
 A connectivity check, which writes nothing, keeps a 10-second limit of its own.
 
-A stream must end the way the backend ends a finished answer — Ollama's `done`, OpenAI's `[DONE]` — or the request fails: part of a letter is not a letter.
+A stream must end the way the backend ends a finished answer — Ollama's `done`, OpenAI's `[DONE]` — or the request fails: part of a reply is not a reply.
 An OpenAI-compatible server that answers in one piece, ignoring `stream`, is read that way, by its `Content-Type`.
 
 ## Grounding
 
 Candidate facts should come from structured profile/resume data.
 
-The LLM may generate prose but must not invent factual candidate information.
+The LLM scores matches, reads resumes and reads job pages; it writes nothing that goes to an employer (ADR-0034).
+It must not invent factual candidate information: a score is validated, and a resume's suggestions are reviewed by the candidate before they reach the profile (ADR-0011).
 
-The prompts say so, and a small model follows them only partly, so what it writes is checked afterwards, by code: every letter and generated answer carries flags for the stock phrases, length and numbers of years it was told not to write (`docs/02_features/19_draft_checks.md`).
+The letters and answers the candidate writes carry deterministic flags for stock phrases, length and unsupported numbers of years (`docs/02_features/19_draft_checks.md`).
 
 ## Prompt customization
 
 Users can customize supported system prompts. Product prompts should have documented defaults and safe boundaries.
 
 ADR-0031 decides what that means.
-Three prompts can be changed — matching, the cover letter and the written answer — and of each only the guidance: the instructions about judgement and style.
+One prompt can be changed — matching — and only its guidance: the instructions about judgement and style.
+The cover letter and written answer prompts were removed by ADR-0034.
 The frame, which holds the rules that protect the candidate and the reply's contract, is owned by code and comes after the guidance, saying it comes first.
 The guidance is the user's own instruction, so it is sent in the system prompt and never beside a job posting.
 
-What the guidance cannot do is enforced by code rather than by the frame: a score is validated, a Scout's eligibility is deterministic, and every draft is checked whatever the guidance said.
+What the guidance cannot do is enforced by code rather than by the frame: a score is validated, and a Scout's eligibility is deterministic.
 The defaults are documented in `docs/02_features/20_prompt_customization.md`.

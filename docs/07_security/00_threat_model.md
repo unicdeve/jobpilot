@@ -6,7 +6,7 @@
 - resumes
 - contact information
 - application history
-- generated application content
+- the candidate's application content
 - LLM API keys
 - browser sessions
 - plugin permissions if external plugins are introduced
@@ -56,11 +56,10 @@ Mitigation:
 
 Mitigation:
 - no JobPilot code path clicks an external application's submit control (ADR-0014)
-- browser preparation leaves the window open for the user to review and submit
-- Assist mode cannot prepare external application forms
-- Scouts stop before the browser
+- no JobPilot code path fills in an external application form; the user applies in their own browser (ADR-0034)
+- Scouts open no browser
 
-Review approval authorizes preparation, never automatic submission.
+Marking an application ready to send, or sent, is a local record, never a command to an employer.
 
 ### Local data loss
 

@@ -1,13 +1,4 @@
-# Application Form Extraction
+# Application Form Extraction - removed
 
-Extract forms into a normalized model containing:
-
-- field ID
-- label
-- type
-- required
-- options
-- current value where safe
-- source metadata
-
-Ambiguous fields must be marked ambiguous rather than guessed.
+JobPilot extracted application forms into a normalized field model until [ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md) removed browser preparation.
+It no longer reads an employer's form: the candidate notes the questions it asks themselves ([Application answers](../02_features/07_application_answers.md)).

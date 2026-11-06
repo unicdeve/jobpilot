@@ -23,37 +23,28 @@ Show transparent, structured activity without exposing hidden chain-of-thought.
 
 ## What is recorded
 
-Two kinds of work leave a trail today: preparing an application in the browser (`prepare_application`) and a scout run (`scout_run`).
-Matching and cover letters do not create runs.
+One kind of work leaves a trail: a scout run (`scout_run`).
+Matching does not create runs.
+Preparing an application in the browser (`prepare_application`) left a trail until ADR-0034 removed it; migration 00026 deleted those runs with their steps.
 
-A run names what it served.
-A browser run belongs to one application; a scout run belongs to none, and records its scout instead (migration `00012_agent_activity.sql`).
+A run names the scout that ran (migration `00012_agent_activity.sql`).
 Deleting a scout keeps its runs and clears the link, so the record of what it did outlives it.
-Deleting an application deletes its browser runs with it: each is about that one application, naming its employer's questions and pages, and says nothing once it is gone (`docs/02_features/15_data_deletion.md` D4).
 
 The policy result of a step is the verdict of a deterministic rule, `allowed` or `denied`, with the reason in the step's output:
 
 | step | rule |
 | --- | --- |
 | `job_rejected`, `application_created`, `ceiling_reached` | a scout's eligibility rules (ADR-0018) |
-| `extract_form` | the application-form gate (ADR-0013) |
-| `detect_blocker` | JobPilot never gets past an anti-bot measure: it waits for the user, or stops (ADR-0014, ADR-0033) |
-| `solve_check` | the user answered the check, and the run carried on (ADR-0033) |
-| `skip_field` | an answer is not one of the choices a field offers |
 
 A step no rule decided has no policy result.
 
-A run is `running`, `waiting_for_user` while it waits for the user to answer a check in the browser window, or finished as `completed`, `blocked` or `failed`.
-A run still `running` or `waiting_for_user` when its workspace opens was cut off by a daemon that stopped without closing it, and is closed as `failed` (ADR-0033 §5).
-
-A filled field's step records the field's label and nothing else.
-The answer that was typed is stored on the application's question, which is where the user reviews it; a copy in the trail would put an email address, a phone number or a work authorization on a screen that has no reason to show them.
-Trails written before this rule had their answers removed by the same migration.
+A run is `running`, or finished as `completed` or `failed`.
+A run still `running` when its workspace opens was cut off by a daemon that stopped without closing it, and is closed as `failed`.
 
 ## Where it is shown
 
-- The desktop's Activity screen lists every run, newest first, filterable by kind and status, and opens each one to show its steps.
-- The Application detail screen lists that application's runs, and the Scouts screen lists scout runs; both link to the run in Activity.
+- The desktop's Activity screen lists every run, newest first, filterable by status, and opens each one to show its steps.
+- The Scouts screen lists scout runs, each linking to the run in Activity.
 - `jobpilot-cli activity list` and `jobpilot-cli activity show <run-id>` read the same trail.
 
 ## Acceptance Criteria
@@ -72,7 +63,7 @@ A run can be opened to show every step it recorded, in order, with action, tool,
 A filter that names an unknown kind or status is refused, not answered with an empty list.
 
 ### AC-004
-No step records an answer typed into a form.
+No step records the candidate's answers or profile details.
 
 ### AC-005
 A step decided by a deterministic rule records that rule's verdict as its policy result.

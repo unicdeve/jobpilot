@@ -1,11 +1,10 @@
 # Agent Architecture Overview
 
 JobPilot coordinates explicit core services rather than a general model-directed tool loop.
-Scouts discover jobs, score them, apply deterministic eligibility rules and create applications for review.
-Browser preparation follows a bounded navigation and form-filling workflow and leaves submission to the user.
-Both workflows persist structured activity events.
+Scouts discover jobs, score them, apply deterministic eligibility rules and create applications for the candidate, and persist structured activity events.
+The candidate writes and sends their own applications; no workflow writes application content or touches an employer's form (ADR-0034).
 
-Models score matches, draft content and, when deterministic navigation fails, propose an apply control from the page's existing controls.
+Models score matches and read resumes and job pages; they draft nothing for an employer.
 Core validates model output and enforces permissions and policy.
 The model has no unrestricted system access.
 

@@ -49,7 +49,7 @@ Searching Google by hand finds jobs no board lists, and it was asked for on thos
 It is not available to this product, for a reason that is practical before it is legal.
 
 Measured: a request to `google.com/search` returns HTTP 200 and a JavaScript gate — **zero result links**, no job URLs of any kind.
-Getting results would mean driving the browser worker through that gate, and ADR-0013 and ADR-0014 both state that JobPilot never defeats an anti-bot measure.
+Getting results would mean driving the browser worker through that gate, and ADR-0014 and ADR-0033 both state that JobPilot never defeats an anti-bot measure.
 Google's terms also prohibit automated querying.
 
 Google's Programmable Search JSON API was the legitimate route, and it is closed.
@@ -63,7 +63,7 @@ The Hacker News source exists partly to serve the same need: those postings are 
 Hacker News postings follow a convention — `Company | Role | Location | Type | Salary | URL` — that nothing enforces.
 Measured on the September 2026 thread, 92% of 257 top-level comments carry at least two pipes and 80% carry both pipes and a link.
 
-A comment that does not fit is skipped rather than guessed at, and so is one with no link: a job nobody can apply to is a comment, and storing it would put an unusable row in front of the user and hand the browser worker a discussion thread to fill in.
+A comment that does not fit is skipped rather than guessed at, and so is one with no link: a job nobody can apply to is a comment, and storing it would put an unusable row in front of the user and a discussion thread where an application page should be.
 Header fields are read as plain text: a company written with its homepage — "Freeform (http://freeform.co)" — is stored as "Freeform", since a header field is a name, a role or a place and never a link.
 Within a posting, an ambiguous field is dropped rather than assigned. A wrong location silently hides a job from the user's filter; a missing one leaves it visible.
 Salary is deliberately not parsed from these postings: the formats vary too much to read without occasionally inventing a figure, and the raw text is kept in the description.
@@ -135,8 +135,8 @@ An unknown remote type or an unreadable date is refused with 400, rather than ma
 Custom job URLs can be submitted for individual job analysis.
 
 When no registered source's API can fetch a URL directly (true of Arbeitnow
-and Remotive today), the URL is opened in a real browser (the same
-Playwright worker used for application preparation) and its rendered page
+and Remotive today), the URL is opened in a real browser (the Playwright
+worker, which since ADR-0034 is used for nothing else) and its rendered page
 is read, since many job postings are JS-rendered pages a plain HTTP fetch
 wouldn't return usable content for. The LLM extracts structured fields
 (title, company, location, remote/employment type, salary if stated,

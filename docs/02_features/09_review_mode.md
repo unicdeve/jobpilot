@@ -1,32 +1,13 @@
-# Feature: Review Mode
+# Feature: Review Mode - removed
 
-## Purpose
+Review mode was removed by [ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md).
 
-Let the user inspect generated content and a prepared browser form before they submit it themselves.
-JobPilot never clicks an external application's submit control ([ADR-0014](../09_decisions/0014-scouts-and-no-unattended-submission.md)).
+It filled an employer's application form in a browser JobPilot controlled, from profile facts and generated answers, and left the window open for the user to check and submit.
+Applications that read as written by AI were being rejected, and filling forms carried most of the product's fragility for little that copying a profile fact does not do.
 
-## Requirements
+What replaced it is in [Applications](08_applications.md): the candidate opens the application page in their own browser, copies their details from the application page, writes their own letter and answers, and records when they sent it.
 
-- Review is the default mode.
-- Show generated answers.
-- Show match analysis.
-- Show job details.
-- Show proposed external actions.
-- Record explicit approval of the application review.
-- Leave the prepared browser window open for the user.
-- Record submission only when the user says they submitted it externally.
+What stays from Review mode:
 
-## Acceptance Criteria
-
-### AC-001
-New installations default to Review mode.
-
-### AC-002
-The user can inspect generated content before submission.
-
-### AC-003
-JobPilot never submits the application, including after approval.
-The user submits it in the browser.
-
-### AC-004
-Approval is recorded with the application action history.
+- JobPilot never submits an application (ADR-0014).
+- Marking an application ready to send, and recording that it was sent, are the user's explicit actions, kept in its history.

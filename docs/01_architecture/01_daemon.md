@@ -9,7 +9,7 @@
 - Coordinate storage
 - Coordinate LLM provider
 - Coordinate discovery connectors
-- Coordinate browser preparation
+- Coordinate the browser that reads a job page for import
 - Emit structured events
 - Enforce policy boundaries
 

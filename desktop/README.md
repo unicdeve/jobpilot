@@ -7,7 +7,7 @@ It shares the core daemon with the CLI over loopback HTTP ([ADR-0012](../docs/09
 
 Install Go at the version required by [go.mod](../go.mod) or later, Bun, rustup and Tauri's platform build prerequisites.
 The Rust toolchain is pinned in [rust-toolchain.toml](src-tauri/rust-toolchain.toml).
-Install Google Chrome for browser preparation and fallback job import; the daemon downloads the Playwright driver on first browser use.
+Install Google Chrome for fallback job import; the daemon downloads the Playwright driver on first browser use.
 Choose a local model server such as Ollama, or configure a hosted provider during first-run setup.
 
 ## Running it

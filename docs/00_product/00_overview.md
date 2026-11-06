@@ -6,8 +6,8 @@ JobPilot
 
 ## Vision
 
-An open-source, local-first assistant that helps people discover relevant jobs, evaluate opportunities against their profile and resume, and prepare tailored applications for review.
-JobPilot can fill an application form, but it always leaves submission to the user ([ADR-0014](../09_decisions/0014-scouts-and-no-unattended-submission.md)).
+An open-source, local-first assistant that helps people discover relevant jobs, evaluate opportunities against their profile and resume, and keep track of the applications they write and send themselves.
+JobPilot never writes application content and never fills in or submits an employer's form ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
 
 ## Product positioning
 
@@ -17,9 +17,9 @@ JobPilot is not primarily a scraper. Job discovery is a pluggable capability. Th
 
 - Reduce time spent searching for relevant jobs.
 - Improve job/profile matching.
-- Reduce repetitive application writing.
+- Reduce repetitive application work: details ready to copy, and answers written once and reused by the candidate.
 - Keep candidate data local by default.
-- Give users transparent control over AI-generated work.
+- Keep every word an employer reads the candidate's own.
 
 ## Local-first model
 
@@ -49,7 +49,7 @@ Target:
 
 ## Default behavior
 
-Review mode is the default application mode.
+The candidate applies on the employer's site in their own browser; JobPilot opens the page and keeps their details, letter and answers beside it ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
 
 ## Future direction
 

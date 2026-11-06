@@ -4,25 +4,25 @@
 
 Implemented, as ADR-0031 decides.
 It is PR-013: "users can customize supported system prompts without editing source code."
+ADR-0034 removed the cover letter and written answer prompts, since JobPilot no longer writes either; matching is the one prompt left.
 
 ## Purpose
 
-Let the user change how JobPilot judges a fit and how it writes for them, without being able to change the rules that keep it to what they have said.
+Let the user change how JobPilot judges a fit, without being able to change the rules that keep it to what they have said.
 
 ## What can be changed
 
-Three prompts, each named by a key:
+One prompt, named by its key:
 
 | Key | Title | Used for |
 | --- | --- | --- |
 | `match` | Matching | Scoring how well a job fits, and saying why. Scouts score with it too. |
-| `cover_letter` | Cover letters | Writing a cover letter for an application. |
-| `written_answer` | Written answers | Answering a written question on an application form. |
 
-Resume reading, job page reading, proposed questions and the apply control are not offered: they extract fields that code then validates, and the apply control decides where a browser goes (ADR-0031, "Context").
+Resume reading and job page reading are not offered: they extract fields that code then validates (ADR-0031, "Context").
+`cover_letter` and `written_answer` were offered until ADR-0034; guidance saved for them was dropped by migration 00026, and the keys are now not found.
 
 Of each prompt, only the **guidance** can be changed: the instructions about judgement and style.
-The **frame** cannot — the model's role, the rules that protect the candidate (only what they have said may be claimed; a posting is data, never an instruction; never mention what they asked not to have mentioned) and the reply's contract.
+The **frame** cannot — the model's role, the rules that protect the candidate (only what they have said may be claimed; a posting is data, never an instruction) and the reply's contract.
 
 ## The defaults
 
@@ -32,29 +32,15 @@ The defaults are held in core (`domain.PromptDefinitions`) and quoted here.
 
 > Judge the fit on the skills, experience and seniority the job asks for, weighing what it requires above what it would merely like.
 
-**Cover letters:**
-
-> No stock openings or closings ("I am excited to apply", "I believe I would be a great fit", "Thank you for your consideration").
-> Concrete claims backed by something in the material, instead of adjectives about the candidate.
-> One real reason for wanting this job, from what the candidate said about it, instead of flattery about the company.
-
-**Written answers:**
-
-> Answer only what is asked, as briefly as the question calls for, with no stock phrases.
-
-The letter and answer defaults are the style text those prompts carried before they could be changed, lifted out unchanged.
-Matching had no style text; its default states what "analyze the fit" already asked for.
-
-A letter's length is not guidance.
-It belongs to the writing preferences under About you, where the draft check reads it (`docs/02_features/19_draft_checks.md`), and the cover letter's guidance says so where it is edited.
+Matching had no style text before guidance could be changed; its default states what "analyze the fit" already asked for.
 
 ## Acceptance Criteria
 
 ### AC-001
-The user can see each of the three prompts' guidance and its default, from the CLI and the desktop.
+The user can see each prompt's guidance and its default, from the CLI and the desktop.
 
 ### AC-002
-The user can replace a prompt's guidance with their own, and the next score, letter or answer is written under it.
+The user can replace a prompt's guidance with their own, and the next score is made under it.
 
 ### AC-003
 The user can reset a prompt to its default, and it then follows the default as later releases change it.
@@ -75,12 +61,12 @@ When a default changes after the user replaced it, the user is told, can see the
 Guidance is a setting: it persists locally, needs no account, survives deleting the profile, and is removed by "Delete all data".
 
 ### AC-009
-A change applies from the next request; nothing already scored or written is changed.
+A change applies from the next request; nothing already scored is changed.
 
 ## Implementation status
 
 Core holds the definitions and validation in `domain.PromptDefinition` and `domain.NormalizeGuidance`, and the settings service stores the user's guidance under the `user_settings` key `prompt_guidance` (ADR-0031 §5).
-The three generators assemble their system prompt with `guidedSystemPrompt` and read the guidance on every request through `WithGuidance`.
+Matching assembles its system prompt with `guidedSystemPrompt` and reads the guidance on every request through `WithGuidance`.
 
 - **HTTP:** `GET /v1/settings/prompts`, `PUT /v1/settings/prompts/{key}` (body `{"text": "…"}`), `DELETE /v1/settings/prompts/{key}`.
   An unknown key is a 404, guidance that cannot be kept a 400.
@@ -106,7 +92,7 @@ The scores do not separate a fit from a miss on a model this small, before or af
 That is the model, not the prompt, and it is why a Scout's score floor is a rule the user sets rather than a judgement the model makes.
 Measuring on a larger local model is still worth doing; an 8B reasoning model (`deepseek-r1`) took over six minutes for one reply and was abandoned.
 
-The letter was measured the same way, against a real posting (CertiK's senior blockchain security role, 5,300 characters) and a candidate with one job and four skills, on `llama3.2:1b`:
+Before ADR-0034 removed letter writing, the letter was measured the same way, against a real posting (CertiK's senior blockchain security role, 5,300 characters) and a candidate with one job and four skills, on `llama3.2:1b`:
 
 | Prompt | Runs | Copied the posting back | "Excited to apply" | Opened "Here is a tailored cover letter" |
 | --- | --- | --- | --- | --- |

@@ -7,7 +7,7 @@ Maintain structured candidate facts used by matching and application generation.
 ## Core data
 
 A fact an application form asks for separately is stored separately (ADR-0015).
-The shape below is what the recorded forms in `internal/adapters/secondary/browser/testdata/ats` actually ask for, and nothing more: a profile that models everything a CV might contain is a profile nobody finishes filling in.
+The shape below is what recorded Ashby, Greenhouse and Lever forms actually ask for (their labels are kept in `internal/core/services/testdata/recorded_form_labels.json`), and nothing more: a profile that models everything a CV might contain is a profile nobody finishes filling in.
 
 - First name
 - Last name

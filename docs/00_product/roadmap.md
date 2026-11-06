@@ -2,6 +2,8 @@
 
 This is the phase scope, not an ordered list of unfinished work.
 Phases 0–8 are substantially implemented; Phase 9 remains deferred, and Phase 10 is built but awaits the first release and installed-build validation.
+ADR-0034 removed what Phases 4, 6 and 7 built for writing and filling applications: generated letters and answers, form extraction and filling, and Review mode's browser handoff.
+The candidate now writes and sends their own applications; the phases below are kept as the record of the original scope.
 See [current state](current_state.md) for gaps, platform verification and the next tasks.
 
 ## Phase 0 - Project foundation

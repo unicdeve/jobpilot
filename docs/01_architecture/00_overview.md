@@ -23,8 +23,9 @@ The daemon owns local state and coordinates the core services.
 The desktop and CLI are clients of its loopback HTTP API (ADR-0012).
 Core business rules remain independent of UI, storage and provider adapters.
 
-Scouts discover, match and create applications for review without opening the browser.
-Browser preparation fills supported fields and leaves submission to the user (ADR-0014).
+Scouts discover, match and create applications for the candidate without opening the browser.
+The candidate writes and sends their own applications; JobPilot never writes application content or touches an employer's form (ADR-0034).
+The browser only reads a job page for import by URL.
 A general model-directed tool runtime and external plugin loading remain proposals, not implemented subsystems.
 
 ## Lifecycle and resources
