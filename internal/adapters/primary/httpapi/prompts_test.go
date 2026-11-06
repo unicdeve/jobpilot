@@ -17,20 +17,20 @@ func TestServer_PromptGuidance(t *testing.T) {
 
 	prompts, err := client.ListPromptGuidance(ctx)
 	require.NoError(t, err)
-	require.Len(t, prompts, 3)
+	require.Len(t, prompts, 1)
 	for _, prompt := range prompts {
 		assert.True(t, prompt.IsDefault(), prompt.Key)
 		assert.NotEmpty(t, prompt.Default, prompt.Key)
 	}
 
-	saved, err := client.SavePromptGuidance(ctx, domain.PromptCoverLetter, "Open with the work.")
+	saved, err := client.SavePromptGuidance(ctx, domain.PromptMatch, "Weigh remote work.")
 	require.NoError(t, err)
-	assert.Equal(t, "Open with the work.", saved.Custom)
+	assert.Equal(t, "Weigh remote work.", saved.Custom)
 	prompts, err = client.ListPromptGuidance(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "Open with the work.", prompts[1].Text())
+	assert.Equal(t, "Weigh remote work.", prompts[0].Text())
 
-	reset, err := client.ResetPromptGuidance(ctx, domain.PromptCoverLetter)
+	reset, err := client.ResetPromptGuidance(ctx, domain.PromptMatch)
 	require.NoError(t, err)
 	assert.True(t, reset.IsDefault())
 
@@ -40,6 +40,8 @@ func TestServer_PromptGuidance(t *testing.T) {
 
 	status, _ = requestError(t, client, http.MethodPut, "/v1/settings/prompts/apply_control", map[string]any{"text": "Pick the first link."})
 	assert.Equal(t, http.StatusNotFound, status, "an extraction prompt is not one the user may change")
+	status, _ = requestError(t, client, http.MethodPut, "/v1/settings/prompts/cover_letter", map[string]any{"text": "Open with the work."})
+	assert.Equal(t, http.StatusNotFound, status, "JobPilot no longer writes letters")
 	status, _ = requestError(t, client, http.MethodDelete, "/v1/settings/prompts/apply_control", nil)
 	assert.Equal(t, http.StatusNotFound, status)
 }

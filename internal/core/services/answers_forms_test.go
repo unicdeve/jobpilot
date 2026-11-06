@@ -14,8 +14,10 @@ import (
 )
 
 // This file tests the resolver against the question labels of real
-// application forms, recorded in
-// internal/adapters/secondary/browser/testdata/ats.
+// application forms: Ashby, Greenhouse and Lever forms recorded while
+// JobPilot still read forms in a browser, kept in
+// testdata/recorded_form_labels.json now that it suggests answers to the
+// questions a candidate notes instead (ADR-0034 §4).
 //
 // Every case here was a measured defect. Running the previous resolver over
 // these same labels put the candidate's email address in both forms' phone
@@ -278,22 +280,13 @@ func TestEveryRecordedFormLabelIsAnsweredOrRefused(t *testing.T) {
 func recordedFormLabels(t *testing.T, fixture string) []string {
 	t.Helper()
 
-	path := filepath.Join("..", "..", "adapters", "secondary", "browser", "testdata", "ats", fixture+".golden.json")
-	raw, err := os.ReadFile(path)
-	require.NoError(t, err, "recorded form missing; see that directory's README")
+	raw, err := os.ReadFile(filepath.Join("testdata", "recorded_form_labels.json"))
+	require.NoError(t, err)
+	var byForm map[string][]string
+	require.NoError(t, json.Unmarshal(raw, &byForm))
 
-	var golden struct {
-		Fields []struct {
-			Label string `json:"label"`
-		} `json:"fields"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &golden))
-
-	labels := make([]string, 0, len(golden.Fields))
-	for _, field := range golden.Fields {
-		labels = append(labels, field.Label)
-	}
-	require.NotEmpty(t, labels)
+	labels := byForm[fixture]
+	require.NotEmpty(t, labels, fixture)
 	return labels
 }
 

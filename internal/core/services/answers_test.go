@@ -12,14 +12,13 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
-func newTestAnswerService(t *testing.T) (*AnswerService, *fakeApplicationQuestionRepository, *fakeApplicationRepository, *fakeJobRepository, *fakeCandidateRepository, *fakeLLMProvider) {
+func newTestAnswerService(t *testing.T) (*AnswerService, *fakeApplicationQuestionRepository, *fakeApplicationRepository, *fakeJobRepository, *fakeCandidateRepository) {
 	t.Helper()
 	questionRepo := newFakeApplicationQuestionRepository()
 	appRepo := newFakeApplicationRepository()
 	jobRepo := newFakeJobRepository()
 	candRepo := newFakeCandidateRepository()
-	llm := &fakeLLMProvider{providerName: "fake-llm"}
-	return NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), llm, nil), questionRepo, appRepo, jobRepo, candRepo, llm
+	return NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, newFakeResumeRepository(), nil), questionRepo, appRepo, jobRepo, candRepo
 }
 
 // The label-by-label specification for profileFactAnswer now lives in
@@ -68,143 +67,176 @@ func TestDerivedAnswer(t *testing.T) {
 	})
 }
 
-func TestAnswerService_Resolve(t *testing.T) {
-	t.Parallel()
+// setupAnswers is an answer service over one application, for a candidate
+// whose profile answers some questions and not others.
+func setupAnswers(t *testing.T) (*AnswerService, *fakeApplicationQuestionRepository) {
+	t.Helper()
+	ctx := context.Background()
+	svc, questionRepo, appRepo, jobRepo, candRepo := newTestAnswerService(t)
+	require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1", Locations: []string{"Berlin, Germany"}}))
+	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", Email: "ada@example.com",
+		RemotePreference:   domain.RemotePreferenceRemote,
+		WorkAuthorizations: []domain.WorkAuthorization{{Country: "Germany", IsAuthorized: true}}}))
+	require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
+	return svc, questionRepo
+}
 
-	setup := func(t *testing.T) (*AnswerService, *fakeApplicationQuestionRepository, *fakeLLMProvider) {
-		t.Helper()
-		svc, questionRepo, appRepo, jobRepo, candRepo, llm := newTestAnswerService(t)
-		require.NoError(t, jobRepo.Save(context.Background(), &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
-		require.NoError(t, candRepo.Save(context.Background(), &domain.Candidate{ID: "cand-1", Email: "ada@example.com"}))
-		require.NoError(t, appRepo.Save(context.Background(), &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
-		return svc, questionRepo, llm
+func TestAnswerService_AddQuestion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("a question is noted unanswered, oldest first", func(t *testing.T) {
+		t.Parallel()
+		svc, _ := setupAnswers(t)
+
+		first, err := svc.AddQuestion(ctx, "app-1", "  Why do you want to work here?  ")
+		require.NoError(t, err)
+		_, err = svc.AddQuestion(ctx, "app-1", "Email address")
+		require.NoError(t, err)
+
+		assert.Equal(t, "Why do you want to work here?", first.Label, "the label is trimmed")
+		assert.Empty(t, first.Answer)
+		questions, err := svc.ListByApplication(ctx, "app-1")
+		require.NoError(t, err)
+		require.Len(t, questions, 2)
+		assert.Equal(t, "Why do you want to work here?", questions[0].Label)
+		assert.Equal(t, "Email address", questions[1].Label)
+	})
+
+	t.Run("an empty question is refused", func(t *testing.T) {
+		t.Parallel()
+		svc, questionRepo := setupAnswers(t)
+
+		_, err := svc.AddQuestion(ctx, "app-1", "   ")
+
+		assert.ErrorIs(t, err, ErrEmptyQuestion)
+		assert.Empty(t, questionRepo.questions)
+	})
+
+	t.Run("an application that does not exist is named", func(t *testing.T) {
+		t.Parallel()
+		svc, _ := setupAnswers(t)
+
+		_, err := svc.AddQuestion(ctx, "missing-app", "Email")
+
+		assert.ErrorIs(t, err, ports.ErrNotFound)
+	})
+}
+
+// Suggestions come only from the candidate's own material, and JobPilot
+// never fills an answer in (ADR-0034 §4).
+func TestAnswerService_Suggestions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		label  string
+		want   *domain.AnswerSuggestion
+		reason string
+	}{
+		{
+			label:  "Email address",
+			want:   &domain.AnswerSuggestion{Answer: "ada@example.com", Source: domain.SuggestionFromProfile, Field: "candidate.email"},
+			reason: "a fact the profile states",
+		},
+		{
+			label: "Are you authorized to work in Germany?",
+			want: &domain.AnswerSuggestion{Answer: "Yes", Source: domain.SuggestionFromProfile,
+				Field: "candidate.work_authorization.germany"},
+			reason: "work authorization for a country the job names and the candidate spoke about",
+		},
+		{
+			label:  "Are you open to remote work?",
+			want:   &domain.AnswerSuggestion{Answer: "Yes, I am looking for remote work.", Source: domain.SuggestionDerived, Field: "candidate.remote_preference"},
+			reason: "worked out from the profile",
+		},
+		{label: "What is your driver's license number?", reason: "a fact the profile does not hold is never guessed"},
+		{label: "Why do you want to work here?", reason: "nothing writes a narrative answer"},
+	} {
+		t.Run(tt.label, func(t *testing.T) {
+			t.Parallel()
+			svc, _ := setupAnswers(t)
+
+			question, err := svc.AddQuestion(ctx, "app-1", tt.label)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, question.Suggestion, tt.reason)
+			assert.Empty(t, question.Answer, "a suggestion is offered, never filled in")
+		})
 	}
 
-	t.Run("profile fact answers without calling the LLM", func(t *testing.T) {
+	t.Run("an answer the candidate kept is suggested for a similar question", func(t *testing.T) {
 		t.Parallel()
-		svc, questionRepo, llm := setup(t)
-		q := &domain.ApplicationQuestion{ID: "q-1", ApplicationID: "app-1", Label: "Email address", Type: domain.QuestionTypeFactual}
-		require.NoError(t, questionRepo.Save(context.Background(), q))
+		svc, questionRepo := setupAnswers(t)
+		about := NewAboutYouService(newFakePersonalAnswerRepository(), svc.candRepo, svc.appRepo, questionRepo)
+		svc.about = about
+		require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-old", ApplicationID: "app-1",
+			Label: "Why do you want to work at Acme?", Answer: "The tooling team."}))
+		_, err := about.Keep(ctx, "q-old")
+		require.NoError(t, err)
 
-		got, err := svc.Resolve(context.Background(), "q-1")
+		question, err := svc.AddQuestion(ctx, "app-1", "Why do you want to work with us?")
 
 		require.NoError(t, err)
-		assert.Equal(t, domain.AnswerCategoryProfileFact, got.Category)
-		assert.Equal(t, "ada@example.com", got.Answer)
-		assert.Equal(t, domain.QuestionStatusAnswered, got.Status)
-		assert.Zero(t, llm.generateCalls, "a profile-fact match must never call the LLM")
-	})
-
-	t.Run("narrative question with no profile match is generated by the LLM", func(t *testing.T) {
-		t.Parallel()
-		svc, questionRepo, llm := setup(t)
-		llm.response = ports.Response{Content: "I'm excited about this role because...", Model: "llama3"}
-		q := &domain.ApplicationQuestion{ID: "q-1", ApplicationID: "app-1", Label: "Why do you want to work here?", Type: domain.QuestionTypeNarrative}
-		require.NoError(t, questionRepo.Save(context.Background(), q))
-
-		got, err := svc.Resolve(context.Background(), "q-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, domain.AnswerCategoryGenerated, got.Category)
-		assert.Equal(t, "I'm excited about this role because...", got.Answer)
-		assert.Equal(t, domain.QuestionStatusAnswered, got.Status)
-		assert.Equal(t, 1, llm.generateCalls)
-	})
-
-	t.Run("factual question with no known answer is left for the user, never guessed", func(t *testing.T) {
-		t.Parallel()
-		svc, questionRepo, llm := setup(t)
-		q := &domain.ApplicationQuestion{ID: "q-1", ApplicationID: "app-1", Label: "What is your driver's license number?", Type: domain.QuestionTypeFactual}
-		require.NoError(t, questionRepo.Save(context.Background(), q))
-
-		got, err := svc.Resolve(context.Background(), "q-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, domain.AnswerCategoryNeedsUserInput, got.Category)
-		assert.Empty(t, got.Answer)
-		assert.Equal(t, domain.QuestionStatusPending, got.Status)
-		assert.Zero(t, llm.generateCalls, "an unresolved factual question must never reach the LLM")
-	})
-
-	t.Run("question fetch error propagates", func(t *testing.T) {
-		t.Parallel()
-		svc, _, _ := setup(t)
-
-		_, err := svc.Resolve(context.Background(), "missing-question")
-
-		assert.ErrorContains(t, err, "failed to fetch question")
+		assert.Equal(t, &domain.AnswerSuggestion{Answer: "The tooling team.", Source: domain.SuggestionKeptAnswer,
+			Field: "Why do you want to work at Acme?"}, question.Suggestion)
 	})
 }
 
-func TestAnswerService_SetUserAnswer(t *testing.T) {
+func TestAnswerService_SetAnswer(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
+	svc, questionRepo := setupAnswers(t)
+	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-1", ApplicationID: "app-1", Label: "Notice period"}))
 
-	svc, questionRepo, _, _, _, _ := newTestAnswerService(t)
-	q := &domain.ApplicationQuestion{ID: "q-1", Category: domain.AnswerCategoryNeedsUserInput, Status: domain.QuestionStatusPending}
-	require.NoError(t, questionRepo.Save(context.Background(), q))
-
-	got, err := svc.SetUserAnswer(context.Background(), "q-1", "42")
-
+	got, err := svc.SetAnswer(ctx, "q-1", "  One month\r\n")
 	require.NoError(t, err)
-	assert.Equal(t, "42", got.Answer)
-	assert.True(t, got.UserEdited)
-	assert.Equal(t, domain.QuestionStatusAnswered, got.Status)
-	assert.Equal(t, domain.AnswerCategoryNeedsUserInput, got.Category, "SetUserAnswer should not need to change how the question was originally categorized")
+	assert.Equal(t, "One month", got.Answer)
+	assert.Equal(t, "One month", questionRepo.questions["q-1"].Answer)
+
+	cleared, err := svc.SetAnswer(ctx, "q-1", "")
+	require.NoError(t, err)
+	assert.Empty(t, cleared.Answer, "an empty answer clears it")
+
+	_, err = svc.SetAnswer(ctx, "missing-question", "x")
+	assert.ErrorContains(t, err, "failed to fetch question")
 }
 
-func TestAnswerService_AddQuestionAndListByApplication(t *testing.T) {
+func TestAnswerService_DeleteQuestion(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
+	svc, questionRepo := setupAnswers(t)
+	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-1", ApplicationID: "app-1", Label: "Notice period"}))
 
-	svc, _, _, _, _, _ := newTestAnswerService(t)
+	require.NoError(t, svc.DeleteQuestion(ctx, "q-1"))
 
-	q, err := svc.AddQuestion(context.Background(), "app-1", "Why do you want to work here?", domain.QuestionTypeNarrative, true)
+	questions, err := svc.ListByApplication(ctx, "app-1")
 	require.NoError(t, err)
-	assert.Equal(t, domain.QuestionStatusPending, q.Status)
-	assert.True(t, q.Required)
-
-	require.NoError(t, err)
-	_, err = svc.AddQuestion(context.Background(), "app-2", "unrelated", domain.QuestionTypeFactual, false)
-	require.NoError(t, err)
-
-	questions, err := svc.ListByApplication(context.Background(), "app-1")
-	require.NoError(t, err)
-	require.Len(t, questions, 1)
-	assert.Equal(t, "Why do you want to work here?", questions[0].Label)
+	assert.Empty(t, questions)
+	assert.ErrorIs(t, svc.DeleteQuestion(ctx, "q-1"), ports.ErrNotFound)
 }
 
-// A generated answer carries the flags of its text whenever it is read,
-// and is never held to a letter's length; an answer the profile gave is a
-// fact and carries none (docs/02_features/19_draft_checks.md).
+// An answer the candidate wrote carries the flags of its text whenever it
+// is read, and is never held to a letter's length
+// (docs/02_features/19_draft_checks.md).
 func TestAnswerService_Flags(t *testing.T) {
 	t.Parallel()
-
-	svc, questionRepo, appRepo, jobRepo, candRepo, llm := newTestAnswerService(t)
 	ctx := context.Background()
-	require.NoError(t, jobRepo.Save(ctx, &domain.Job{ID: "job-1", CanonicalURL: "https://acme.example/job-1"}))
-	require.NoError(t, candRepo.Save(ctx, &domain.Candidate{ID: "cand-1", Email: "ada@example.com"}))
-	require.NoError(t, appRepo.Save(ctx, &domain.Application{ID: "app-1", JobID: "job-1", CandidateID: "cand-1"}))
-	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-why", ApplicationID: "app-1", Label: "Why do you want to work here?", Type: domain.QuestionTypeNarrative}))
-	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-email", ApplicationID: "app-1", Label: "Email", Type: domain.QuestionTypeFactual}))
+	svc, questionRepo := setupAnswers(t)
+	require.NoError(t, questionRepo.Save(ctx, &domain.ApplicationQuestion{ID: "q-why", ApplicationID: "app-1", Label: "Why do you want to work here?"}))
 
 	long := strings.Repeat("word ", 400)
-	llm.response = ports.Response{Content: "I am excited to apply. " + long}
-	generated, err := svc.Resolve(ctx, "q-why")
+	written, err := svc.SetAnswer(ctx, "q-why", "I am excited to apply. "+long)
 	require.NoError(t, err)
-	require.Len(t, generated.Flags, 1, "a stock phrase, and no length flag")
-	assert.Equal(t, domain.FlagStockPhrase, generated.Flags[0].Kind)
+	require.Len(t, written.Flags, 1, "a stock phrase, and no length flag")
+	assert.Equal(t, domain.FlagStockPhrase, written.Flags[0].Kind)
 
-	fact, err := svc.Resolve(ctx, "q-email")
-	require.NoError(t, err)
-	require.Equal(t, domain.AnswerCategoryProfileFact, fact.Category)
-	assert.Empty(t, fact.Flags)
-
-	edited, err := svc.SetUserAnswer(ctx, "q-why", "Your post on idempotent retries is why.")
+	edited, err := svc.SetAnswer(ctx, "q-why", "Your post on idempotent retries is why.")
 	require.NoError(t, err)
 	assert.Empty(t, edited.Flags, "an edit is checked as it now reads")
 
 	listed, err := svc.ListByApplication(ctx, "app-1")
 	require.NoError(t, err)
-	for _, question := range listed {
-		assert.Empty(t, question.Flags, question.Label)
-	}
+	require.Len(t, listed, 1)
+	assert.Empty(t, listed[0].Flags)
 }

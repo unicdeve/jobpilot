@@ -32,17 +32,19 @@ type CoverLetterRepository interface {
 	// Save inserts a new cover letter version.
 	Save(ctx context.Context, coverLetter *domain.CoverLetter) error
 	GetByID(ctx context.Context, id string) (*domain.CoverLetter, error)
-	// Update edits an existing version in place (a user editing generated
-	// content), rather than creating a new version.
+	// Update edits an existing version in place, rather than creating a
+	// new version.
 	Update(ctx context.Context, coverLetter *domain.CoverLetter) error
 	ListByApplication(ctx context.Context, applicationID string) ([]*domain.CoverLetter, error)
 }
 
-// ApplicationQuestionRepository persists and retrieves an application's
-// questions and their resolved (or pending) answers.
+// ApplicationQuestionRepository persists and retrieves the questions the
+// candidate notes on an application, with their answers.
 type ApplicationQuestionRepository interface {
 	Save(ctx context.Context, question *domain.ApplicationQuestion) error
 	GetByID(ctx context.Context, id string) (*domain.ApplicationQuestion, error)
 	Update(ctx context.Context, question *domain.ApplicationQuestion) error
+	// ListByApplication returns an application's questions, oldest first.
 	ListByApplication(ctx context.Context, applicationID string) ([]*domain.ApplicationQuestion, error)
+	Delete(ctx context.Context, id string) error
 }

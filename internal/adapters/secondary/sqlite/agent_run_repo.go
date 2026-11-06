@@ -37,16 +37,11 @@ func (r *AgentRunRepository) Save(ctx context.Context, run *domain.AgentRun) err
 	}
 
 	query := `INSERT INTO agent_runs (
-		id, application_id, scout_id, started_by, task_type, status, started_at, completed_at, error
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		id, scout_id, started_by, task_type, status, started_at, completed_at, error
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
-	// application_id is a foreign key and foreign keys are on, so an
-	// empty string is rejected outright — it names an application that
-	// does not exist. A scout run creates several applications and
-	// belongs to none of them, which is the first run that needs NULL
-	// here (ADR-0018 §4).
 	_, err := r.db.ExecContext(ctx, query,
-		run.ID, nullableString(run.ApplicationID), nullableString(run.ScoutID), string(run.Trigger),
+		run.ID, nullableString(run.ScoutID), string(run.Trigger),
 		run.TaskType, run.Status,
 		run.StartedAt, run.CompletedAt, nullableString(run.Error),
 	)
@@ -71,7 +66,7 @@ func (r *AgentRunRepository) Update(ctx context.Context, run *domain.AgentRun) e
 }
 
 const agentRunColumns = `
-	id, application_id, scout_id, started_by, task_type, status, started_at, completed_at, error`
+	id, scout_id, started_by, task_type, status, started_at, completed_at, error`
 
 func scanAgentRun(scanner interface{ Scan(...any) error }) (*domain.AgentRun, error) {
 	var run domain.AgentRun
@@ -86,7 +81,6 @@ func scanAgentRun(scanner interface{ Scan(...any) error }) (*domain.AgentRun, er
 func agentRunDest(run *domain.AgentRun) []any {
 	return []any{
 		&run.ID,
-		nullStringInto(&run.ApplicationID),
 		nullStringInto(&run.ScoutID),
 		(*string)(&run.Trigger),
 		nullStringInto(&run.TaskType),
@@ -113,51 +107,22 @@ func (r *AgentRunRepository) GetByID(ctx context.Context, id string) (*domain.Ag
 	return run, nil
 }
 
-// ListByApplication returns every agent run for an application, most recent
-// first.
-func (r *AgentRunRepository) ListByApplication(ctx context.Context, applicationID string) ([]*domain.AgentRun, error) {
-	query := `SELECT` + agentRunColumns + ` FROM agent_runs WHERE application_id = ? ORDER BY started_at DESC`
+// List returns runs newest first.
+func (r *AgentRunRepository) List(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
 
-	rows, err := r.db.QueryContext(ctx, query, applicationID)
+	query := `SELECT` + agentRunColumns + `
+		FROM agent_runs ORDER BY started_at DESC LIMIT ?`
+
+	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list agent runs: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	runs := make([]*domain.AgentRun, 0)
-	for rows.Next() {
-		run, err := scanAgentRun(rows)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan agent run: %w", err)
-		}
-		runs = append(runs, run)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating agent runs: %w", err)
-	}
-
-	return runs, nil
-}
-
-// ListUnattached returns runs belonging to no single application, newest
-// first — scout runs, which create several applications rather than
-// serving one.
-func (r *AgentRunRepository) ListUnattached(ctx context.Context, limit int) ([]*domain.AgentRun, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-
-	query := `SELECT` + agentRunColumns + `
-		FROM agent_runs WHERE application_id IS NULL
-		ORDER BY started_at DESC LIMIT ?`
-
-	rows, err := r.db.QueryContext(ctx, query, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list unattached agent runs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var runs []*domain.AgentRun
 	for rows.Next() {
 		run, err := scanAgentRun(rows)
 		if err != nil {
@@ -188,12 +153,11 @@ func (r *AgentRunRepository) LastScoutStart(ctx context.Context, scoutID string)
 	return &started, nil
 }
 
-// CloseUnfinished ends every run still running or waiting for the user.
+// CloseUnfinished ends every run still running.
 func (r *AgentRunRepository) CloseUnfinished(ctx context.Context, reason string, at time.Time) (int, error) {
 	result, err := r.db.ExecContext(ctx,
-		`UPDATE agent_runs SET status = ?, completed_at = ?, error = ? WHERE status IN (?, ?)`,
-		domain.AgentRunStatusFailed, at, reason,
-		domain.AgentRunStatusRunning, domain.AgentRunStatusWaitingForUser,
+		`UPDATE agent_runs SET status = ?, completed_at = ?, error = ? WHERE status = ?`,
+		domain.AgentRunStatusFailed, at, reason, domain.AgentRunStatusRunning,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to close unfinished agent runs: %w", err)
@@ -205,24 +169,19 @@ func (r *AgentRunRepository) CloseUnfinished(ctx context.Context, reason string,
 	return int(closed), nil
 }
 
-// agentRunSummaryQuery selects a run with what it served: the scout that
-// started it, or the job its application is for. Both are LEFT JOINs, so
-// a run whose scout or application has since been deleted is still listed.
+// agentRunSummaryQuery selects a run with the scout that started it. It is
+// a LEFT JOIN, so a run whose scout has since been deleted is still listed.
 const agentRunSummaryQuery = `SELECT
-	r.id, r.application_id, r.scout_id, r.started_by, r.task_type, r.status, r.started_at, r.completed_at, r.error,
-	s.name, j.title, j.company_name,
+	r.id, r.scout_id, r.started_by, r.task_type, r.status, r.started_at, r.completed_at, r.error,
+	s.name,
 	(SELECT COUNT(*) FROM agent_events e WHERE e.run_id = r.id)
 FROM agent_runs r
-LEFT JOIN scouts s ON s.id = r.scout_id
-LEFT JOIN applications a ON a.id = r.application_id
-LEFT JOIN jobs j ON j.id = a.job_id`
+LEFT JOIN scouts s ON s.id = r.scout_id`
 
 func scanAgentRunSummary(scanner interface{ Scan(...any) error }) (*domain.AgentRunSummary, error) {
 	var summary domain.AgentRunSummary
 	dest := append(agentRunDest(&summary.AgentRun),
 		nullStringInto(&summary.ScoutName),
-		nullStringInto(&summary.JobTitle),
-		nullStringInto(&summary.Company),
 		&summary.EventCount,
 	)
 	if err := scanner.Scan(dest...); err != nil {

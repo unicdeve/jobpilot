@@ -114,7 +114,7 @@ func (m *workspaceManager) open(workspace system.Workspace) (*workspaceRuntime, 
 		}
 	}
 	// Before anything can start a run: one still open now was cut off by a
-	// daemon that stopped without closing it (ADR-0033 §5).
+	// daemon that stopped without closing it.
 	if closed, err := services.Activity.CloseUnfinishedRuns(m.ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("closing unfinished runs: %w", err)
@@ -122,7 +122,6 @@ func (m *workspaceManager) open(workspace system.Workspace) (*workspaceRuntime, 
 		log.Printf("workspace %s: closed %d runs a stopped daemon left open", workspace.ID, closed)
 	}
 	services.Scouts.Start(m.ctx)
-	services.Browser.Start(m.ctx)
 	runtime := &workspaceRuntime{
 		db:       db,
 		services: services,
@@ -147,7 +146,6 @@ func (m *workspaceManager) close() {
 	defer m.mu.Unlock()
 	for id, runtime := range m.runtimes {
 		runtime.services.Scouts.Wait()
-		runtime.services.Browser.Wait()
 		runtime.services.Notifications.Wait()
 		if err := runtime.db.Close(); err != nil {
 			log.Printf("workspace %s: error closing database: %v", id, err)

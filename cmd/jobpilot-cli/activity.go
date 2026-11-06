@@ -11,8 +11,8 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/domain"
 )
 
-// newActivityCmd reads the trail every agent run leaves: browser
-// preparation and scout runs alike (docs/02_features/12_agent_activity.md).
+// newActivityCmd reads the trail every agent run leaves, which are all
+// Scout runs (docs/02_features/12_agent_activity.md).
 func newActivityCmd(client *httpapi.Client) *cobra.Command {
 	cmd := &cobra.Command{Use: "activity", Short: "See what JobPilot's agent runs did"}
 
@@ -20,10 +20,6 @@ func newActivityCmd(client *httpapi.Client) *cobra.Command {
 		Use:   "list",
 		Short: "List agent runs, newest first",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			kind, err := cmd.Flags().GetString("kind")
-			if err != nil {
-				return err
-			}
 			status, err := cmd.Flags().GetString("status")
 			if err != nil {
 				return err
@@ -38,10 +34,9 @@ func newActivityCmd(client *httpapi.Client) *cobra.Command {
 			}
 
 			page, err := client.ListActivity(context.Background(), domain.AgentRunFilter{
-				TaskType: kind,
-				Status:   domain.AgentRunStatus(status),
-				Limit:    limit,
-				Offset:   offset,
+				Status: domain.AgentRunStatus(status),
+				Limit:  limit,
+				Offset: offset,
 			})
 			if err != nil {
 				return fmt.Errorf("listing agent runs: %w", err)
@@ -72,8 +67,7 @@ func newActivityCmd(client *httpapi.Client) *cobra.Command {
 			return nil
 		},
 	}
-	listCmd.Flags().String("kind", "", "Only list runs of this kind: prepare_application or scout_run")
-	listCmd.Flags().String("status", "", "Only list runs with this status: running, completed, blocked or failed")
+	listCmd.Flags().String("status", "", "Only list runs with this status: running, completed or failed")
 	listCmd.Flags().Int("limit", 0, "Maximum runs to list (default 50, maximum 200)")
 	listCmd.Flags().Int("offset", 0, "Skip this many runs before listing")
 	cmd.AddCommand(listCmd)
@@ -123,15 +117,6 @@ func runSubject(run *domain.AgentRunSummary) string {
 			return "Scout run (scout deleted)"
 		}
 		return fmt.Sprintf("Scout %q", run.ScoutName)
-	case domain.AgentTaskPrepareApplication:
-		switch {
-		case run.JobTitle == "":
-			return "Prepared in browser (application deleted)"
-		case run.Company == "":
-			return "Prepared in browser: " + run.JobTitle
-		default:
-			return fmt.Sprintf("Prepared in browser: %s at %s", run.JobTitle, run.Company)
-		}
 	default:
 		return run.TaskType
 	}

@@ -32,13 +32,9 @@ func (r *CoverLetterRepository) Save(ctx context.Context, coverLetter *domain.Co
 		coverLetter.CreatedAt = time.Now()
 	}
 
-	query := `INSERT INTO cover_letters (
-		id, application_id, content, model_provider, model_name, user_edited, created_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		coverLetter.ID, coverLetter.ApplicationID, coverLetter.Content,
-		coverLetter.ModelProvider, coverLetter.ModelName, coverLetter.UserEdited, coverLetter.CreatedAt,
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO cover_letters (id, application_id, content, created_at) VALUES (?, ?, ?, ?)`,
+		coverLetter.ID, coverLetter.ApplicationID, coverLetter.Content, coverLetter.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save cover letter: %w", err)
@@ -47,12 +43,11 @@ func (r *CoverLetterRepository) Save(ctx context.Context, coverLetter *domain.Co
 	return nil
 }
 
-const coverLetterColumns = `
-	id, application_id, content, model_provider, model_name, user_edited, created_at`
+const coverLetterColumns = ` id, application_id, content, created_at`
 
 func scanCoverLetter(scanner interface{ Scan(...any) error }) (*domain.CoverLetter, error) {
 	var c domain.CoverLetter
-	if err := scanner.Scan(&c.ID, &c.ApplicationID, &c.Content, &c.ModelProvider, &c.ModelName, &c.UserEdited, &c.CreatedAt); err != nil {
+	if err := scanner.Scan(&c.ID, &c.ApplicationID, &c.Content, &c.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &c, nil
@@ -74,12 +69,10 @@ func (r *CoverLetterRepository) GetByID(ctx context.Context, id string) (*domain
 	return c, nil
 }
 
-// Update edits an existing cover letter version in place (a user editing
-// generated content), rather than creating a new version.
+// Update edits an existing cover letter version in place, rather than
+// creating a new version.
 func (r *CoverLetterRepository) Update(ctx context.Context, coverLetter *domain.CoverLetter) error {
-	query := `UPDATE cover_letters SET content = ?, user_edited = ? WHERE id = ?`
-
-	_, err := r.db.ExecContext(ctx, query, coverLetter.Content, coverLetter.UserEdited, coverLetter.ID)
+	_, err := r.db.ExecContext(ctx, `UPDATE cover_letters SET content = ? WHERE id = ?`, coverLetter.Content, coverLetter.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update cover letter: %w", err)
 	}
@@ -88,7 +81,7 @@ func (r *CoverLetterRepository) Update(ctx context.Context, coverLetter *domain.
 }
 
 // ListByApplication returns every cover letter version for an application,
-// oldest first, so callers can see the full regeneration history.
+// oldest first.
 func (r *CoverLetterRepository) ListByApplication(ctx context.Context, applicationID string) ([]*domain.CoverLetter, error) {
 	query := `SELECT` + coverLetterColumns + ` FROM cover_letters WHERE application_id = ? ORDER BY created_at ASC`
 

@@ -451,8 +451,8 @@ func (c *Client) SaveLLMSettings(ctx context.Context, settings domain.LLMSetting
 }
 
 // CreateApplication starts tracking a candidate's application to a job.
-func (c *Client) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
-	req := createApplicationRequest{JobID: jobID, CandidateID: candidateID, ResumeID: resumeID, Mode: mode}
+func (c *Client) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string) (*domain.Application, error) {
+	req := createApplicationRequest{JobID: jobID, CandidateID: candidateID, ResumeID: resumeID}
 	var app domain.Application
 	_, err := c.do(ctx, http.MethodPost, "/v1/applications", req, &app)
 	if err != nil {
@@ -506,29 +506,29 @@ func (c *Client) ListApplicationHistory(ctx context.Context, id string) ([]*doma
 	return history, err
 }
 
-// GenerateCoverLetter drafts a new cover letter version for an application
-// (also used to regenerate one).
-func (c *Client) GenerateCoverLetter(ctx context.Context, applicationID string) (*domain.CoverLetter, error) {
+// CreateCoverLetter saves a letter the candidate wrote as a new version of
+// an application's cover letter, and makes it the current one.
+func (c *Client) CreateCoverLetter(ctx context.Context, applicationID, content string) (*domain.CoverLetter, error) {
 	var coverLetter domain.CoverLetter
-	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/cover-letter", nil, &coverLetter)
+	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/cover-letters",
+		coverLetterRequest{Content: content}, &coverLetter)
 	if err != nil {
 		return nil, err
 	}
 	return &coverLetter, nil
 }
 
-// ListCoverLetterVersions returns every cover letter version generated for
-// an application.
+// ListCoverLetterVersions returns every version of an application's cover
+// letter, oldest first.
 func (c *Client) ListCoverLetterVersions(ctx context.Context, applicationID string) ([]*domain.CoverLetter, error) {
 	var versions []*domain.CoverLetter
 	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(applicationID)+"/cover-letters", nil, &versions)
 	return versions, err
 }
 
-// EditCoverLetter persists a user's manual edit to an existing cover letter
-// version.
+// EditCoverLetter changes an existing cover letter version in place.
 func (c *Client) EditCoverLetter(ctx context.Context, coverLetterID, content string) (*domain.CoverLetter, error) {
-	req := editCoverLetterRequest{Content: content}
+	req := coverLetterRequest{Content: content}
 	var coverLetter domain.CoverLetter
 	_, err := c.do(ctx, http.MethodPut, "/v1/cover-letters/"+url.PathEscape(coverLetterID), req, &coverLetter)
 	if err != nil {
@@ -537,9 +537,9 @@ func (c *Client) EditCoverLetter(ctx context.Context, coverLetterID, content str
 	return &coverLetter, nil
 }
 
-// AddQuestion registers a new question on an application.
-func (c *Client) AddQuestion(ctx context.Context, applicationID, label string, questionType domain.QuestionType, required bool) (*domain.ApplicationQuestion, error) {
-	req := addQuestionRequest{Label: label, Type: questionType, Required: required}
+// AddQuestion notes a question on an application, unanswered.
+func (c *Client) AddQuestion(ctx context.Context, applicationID, label string) (*domain.ApplicationQuestion, error) {
+	req := addQuestionRequest{Label: label}
 	var question domain.ApplicationQuestion
 	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/questions", req, &question)
 	if err != nil {
@@ -555,17 +555,8 @@ func (c *Client) ListQuestions(ctx context.Context, applicationID string) ([]*do
 	return questions, err
 }
 
-// ResolveQuestion attempts to answer a question via the resolver chain.
-func (c *Client) ResolveQuestion(ctx context.Context, questionID string) (*domain.ApplicationQuestion, error) {
-	var question domain.ApplicationQuestion
-	_, err := c.do(ctx, http.MethodPost, "/v1/questions/"+url.PathEscape(questionID)+"/resolve", nil, &question)
-	if err != nil {
-		return nil, err
-	}
-	return &question, nil
-}
-
-// SetQuestionAnswer records a user-supplied answer for a question.
+// SetQuestionAnswer records the candidate's answer to a question. An empty
+// answer clears it.
 func (c *Client) SetQuestionAnswer(ctx context.Context, questionID, answer string) (*domain.ApplicationQuestion, error) {
 	req := setQuestionAnswerRequest{Answer: answer}
 	var question domain.ApplicationQuestion
@@ -576,28 +567,14 @@ func (c *Client) SetQuestionAnswer(ctx context.Context, questionID, answer strin
 	return &question, nil
 }
 
-// PrepareInBrowser starts preparing the application in a real, visible
-// browser window and returns the run as it began. The run goes on in the
-// daemon; follow it with GetActivityRun, and stop it with StopAgentRun
-// (ADR-0033 §5). The browser window is left open however it ends, for the
-// user to review and submit themselves.
-func (c *Client) PrepareInBrowser(ctx context.Context, applicationID string) (*domain.AgentRun, error) {
-	var run domain.AgentRun
-	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/prepare-in-browser", nil, &run)
-	if err != nil {
-		return nil, err
-	}
-	return &run, nil
-}
-
-// StopAgentRun stops a browser run in progress.
-func (c *Client) StopAgentRun(ctx context.Context, runID string) error {
-	_, err := c.do(ctx, http.MethodPost, "/v1/agent-runs/"+url.PathEscape(runID)+"/stop", nil, nil)
+// DeleteQuestion removes a question and its answer.
+func (c *Client) DeleteQuestion(ctx context.Context, questionID string) error {
+	_, err := c.do(ctx, http.MethodDelete, "/v1/questions/"+url.PathEscape(questionID), nil, nil)
 	return err
 }
 
-// SetApplyURL records where the application's form is, for a browser run
-// to start from instead of the job's own link. An empty link clears it.
+// SetApplyURL records where the application's form is, to open instead of
+// the job's own link. An empty link clears it.
 func (c *Client) SetApplyURL(ctx context.Context, applicationID, applyURL string) (*domain.Application, error) {
 	var app domain.Application
 	_, err := c.do(ctx, http.MethodPut, "/v1/applications/"+url.PathEscape(applicationID)+"/apply-url",
@@ -606,14 +583,6 @@ func (c *Client) SetApplyURL(ctx context.Context, applicationID, applyURL string
 		return nil, err
 	}
 	return &app, nil
-}
-
-// ListAgentRuns returns every agent run (with its events) recorded for an
-// application, most recent first.
-func (c *Client) ListAgentRuns(ctx context.Context, applicationID string) ([]AgentRunWithEvents, error) {
-	var runs []AgentRunWithEvents
-	_, err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(applicationID)+"/agent-runs", nil, &runs)
-	return runs, err
 }
 
 // do sends an HTTP request to path with an optional JSON body, decodes a
@@ -877,27 +846,12 @@ func (c *Client) DeleteKeptAnswer(ctx context.Context, id string) error {
 	return err
 }
 
-// KeepAnswer keeps a written answer the candidate wrote, for later ones.
+// KeepAnswer keeps the answer the candidate wrote to a question, so a
+// similar question later is offered it.
 func (c *Client) KeepAnswer(ctx context.Context, questionID string) (*domain.PersonalAnswer, error) {
 	var kept domain.PersonalAnswer
 	if _, err := c.do(ctx, http.MethodPost, "/v1/questions/"+url.PathEscape(questionID)+"/keep", nil, &kept); err != nil {
 		return nil, err
 	}
 	return &kept, nil
-}
-
-// PreparePersonalQuestions returns the questions asked before a letter for
-// an application, proposing some from the posting the first time.
-func (c *Client) PreparePersonalQuestions(ctx context.Context, applicationID string) ([]*domain.PersonalAnswer, error) {
-	var questions []*domain.PersonalAnswer
-	_, err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(applicationID)+"/personal-questions/prepare", nil, &questions)
-	return questions, err
-}
-
-// SavePersonalAnswers records the candidate's answers for an application.
-func (c *Client) SavePersonalAnswers(ctx context.Context, applicationID string, answers []services.ApplicationAnswer) ([]*domain.PersonalAnswer, error) {
-	var questions []*domain.PersonalAnswer
-	_, err := c.do(ctx, http.MethodPut, "/v1/applications/"+url.PathEscape(applicationID)+"/personal-questions",
-		applicationAnswersRequest{Answers: answers}, &questions)
-	return questions, err
 }

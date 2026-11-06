@@ -16,25 +16,23 @@ type DraftFlagKind string
 
 // The kinds of flag a draft can carry.
 const (
-	FlagPreamble         DraftFlagKind = "preamble"
 	FlagStockPhrase      DraftFlagKind = "stock_phrase"
 	FlagLength           DraftFlagKind = "length"
 	FlagUnsupportedClaim DraftFlagKind = "unsupported_claim"
 )
 
-// DraftFlag is one thing in a draft the reviewer should look at: what the
-// model was told not to write, and wrote. It is advice, never a gate.
+// DraftFlag is one thing in a draft the candidate may want to look at
+// before they send it. It is advice, never a gate.
 type DraftFlag struct {
 	Kind DraftFlagKind `json:"kind"`
-	// Excerpt is the flagged words as the draft has them, for the reviewer
-	// to find; a length flag has none.
+	// Excerpt is the flagged words as the draft has them, for the
+	// candidate to find; a length flag has none.
 	Excerpt string `json:"excerpt,omitempty"`
 	Reason  string `json:"reason"`
 }
 
-// DefaultLetterWords is the length a letter is held to when the candidate's
-// writing preferences name none. It is the number the prompt gives.
-const DefaultLetterWords = 250
+// LetterWords is the length a letter is held to (D2).
+const LetterWords = 250
 
 // DraftBasis is what a draft is checked against: the candidate's own facts
 // and words, never the posting's.
@@ -42,9 +40,6 @@ type DraftBasis struct {
 	// WordLimit is the most words the draft may have. Zero checks no
 	// length, which is how a written answer is checked (D2).
 	WordLimit int
-	// LimitIsTheirs says the limit came from the candidate's writing
-	// preferences rather than the default, so the reason can say whose it is.
-	LimitIsTheirs bool
 
 	Skills []CandidateSkill
 	// CareerYears is the span of the candidate's dated work history, when
@@ -58,7 +53,7 @@ type DraftBasis struct {
 
 // DraftBasisFor gathers a candidate's facts into a basis, with their
 // profile's prose and any further text of their own, such as the resume.
-// It sets no word limit; a letter adds one with LetterWordLimit.
+// It sets no word limit; a letter sets LetterWords.
 func DraftBasisFor(candidate Candidate, now time.Time, ownWords ...string) DraftBasis {
 	basis := DraftBasis{Skills: candidate.Skills, OwnWords: []string{candidate.Summary}}
 	basis.CareerYears, basis.HasCareer = candidate.TotalYearsOfExperience(now)
@@ -69,55 +64,17 @@ func DraftBasisFor(candidate Candidate, now time.Time, ownWords ...string) Draft
 	return basis
 }
 
-// wordLimit finds a length in words the candidate wrote into their
-// preferences: "under 200 words", "about 150 words", "150-200 words".
-var wordLimit = regexp.MustCompile(`(?i)\b(\d{2,4})(?:\s*(?:-|–|—|to)\s*(\d{2,4}))?\s*words?\b`)
-
-// LetterWordLimit is the length a letter is held to: the number the
-// candidate's writing preferences give, the upper end of a range, or
-// DefaultLetterWords when they give none (D2).
-func LetterWordLimit(preferences string) (limit int, theirs bool) {
-	m := wordLimit.FindStringSubmatch(preferences)
-	if m == nil {
-		return DefaultLetterWords, false
-	}
-	upper := m[1]
-	if m[2] != "" {
-		upper = m[2]
-	}
-	n, err := strconv.Atoi(upper)
-	if err != nil || n == 0 {
-		return DefaultLetterWords, false
-	}
-	return n, true
-}
-
-// CheckDraft returns what a reviewer should look at in a letter or written
-// answer: a preamble, stock phrases, a length past the limit, and claims of
+// CheckDraft returns what the candidate may want to look at in a letter or
+// written answer: stock phrases, a length past the limit, and claims of
 // years the basis does not support. It involves no model; the same text and
 // basis always give the same flags.
 func CheckDraft(text string, basis DraftBasis) []DraftFlag {
 	flags := make([]DraftFlag, 0)
-	// A preamble is not part of the draft, so the rest is checked without
-	// it: it would otherwise count towards the letter's length.
-	if m := preamble.FindStringSubmatchIndex(text); m != nil {
-		flags = append(flags, DraftFlag{
-			Kind:    FlagPreamble,
-			Excerpt: strings.TrimSpace(text[m[2]:m[3]]),
-			Reason:  "The model's note to you, not part of what you send.",
-		})
-		text = text[m[1]:]
-	}
-
 	if basis.WordLimit > 0 {
 		if words := len(strings.Fields(text)); words > basis.WordLimit {
-			whose := "a letter is kept to"
-			if basis.LimitIsTheirs {
-				whose = "your writing preferences ask for"
-			}
 			flags = append(flags, DraftFlag{
 				Kind:   FlagLength,
-				Reason: fmt.Sprintf("%d words, over the %d %s.", words, basis.WordLimit, whose),
+				Reason: fmt.Sprintf("%d words, over the %d a letter reads best within.", words, basis.WordLimit),
 			})
 		}
 	}
@@ -152,16 +109,6 @@ func CheckDraft(text string, basis DraftBasis) []DraftFlag {
 	return flags
 }
 
-// preamble is a first line in which the model presents what it wrote
-// instead of writing it: "Here is a tailored cover letter for the Senior
-// Backend Engineer position at CertiK:". Measured on llama3.2:1b under
-// guidance of the candidate's own, five letters in sixteen opened so
-// (docs/02_features/19_draft_checks.md D5). "Here is my letter" is the
-// candidate's own voice and is not one.
-var preamble = regexp.MustCompile(`(?i)^\s*((?:(?:sure|certainly|of course|okay)[,!.]?\s+)?` +
-	`(?:here(?:['’]s|\s+is)|below\s+is)\s+(?:a|an|the|your)\b` +
-	`[^\n:]*?\b(?:letter|answer|response|draft)\b[^\n:]*:?)`)
-
 // iAm and its kind match a phrase whether or not it is contracted.
 const (
 	iAm    = `i(?:\s+am|['’]m)`
@@ -169,8 +116,9 @@ const (
 )
 
 // stockPhrases are the openings, closings and fillers that make a letter
-// read as anyone's: the ones the prompt names, and the ones measured in
-// letters written by llama3.2:1b (docs/02_features/16_about_you.md).
+// read as anyone's, and as written by a model: the ones measured in letters
+// llama3.2:1b wrote while JobPilot still drafted them
+// (docs/02_features/16_about_you.md).
 var stockPhrases = func() []*regexp.Regexp {
 	sources := []string{
 		iAm + ` (?:so |very |truly )?(?:excited|thrilled|delighted|eager) to apply`,

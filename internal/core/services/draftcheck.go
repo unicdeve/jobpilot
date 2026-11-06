@@ -9,10 +9,10 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
-// draftBasis is what an application's letter and written answers are
-// checked against (docs/02_features/19_draft_checks.md): the candidate's
-// facts, the resume the application uses, and what they said about
-// themselves. A letter is also held to a length, which an answer is not.
+// draftBasis is what an application's letter and answers are checked
+// against (docs/02_features/19_draft_checks.md): the candidate's facts, the
+// resume the application uses, and what they said about themselves. A
+// letter is also held to a length, which an answer is not.
 //
 // It is built on every read rather than stored (D3), so a draft is always
 // checked against the profile as it is now.
@@ -28,12 +28,11 @@ func draftBasis(
 	if err != nil {
 		return domain.DraftBasis{}, fmt.Errorf("failed to fetch candidate: %w", err)
 	}
-	material, err := about.Material(ctx, candidate.ID, application.ID)
+	ownWords, err := about.OwnWords(ctx, candidate.ID)
 	if err != nil {
 		return domain.DraftBasis{}, err
 	}
 
-	ownWords := material.OwnWords()
 	if application.ResumeID != "" {
 		resume, err := resumes.GetByID(ctx, application.ResumeID)
 		if err != nil {
@@ -44,7 +43,7 @@ func draftBasis(
 
 	basis := domain.DraftBasisFor(*candidate, time.Now(), ownWords...)
 	if forLetter {
-		basis.WordLimit, basis.LimitIsTheirs = domain.LetterWordLimit(material.WritingPreferences())
+		basis.WordLimit = domain.LetterWords
 	}
 	return basis, nil
 }

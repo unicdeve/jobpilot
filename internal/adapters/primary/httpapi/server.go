@@ -32,7 +32,6 @@ type Services struct {
 	Application   *services.ApplicationService
 	CoverLetter   *services.CoverLetterService
 	Answers       *services.AnswerService
-	Browser       *services.BrowserWorkerService
 	Scouts        *services.ScoutService
 	Credentials   *services.CredentialService
 	Activity      *services.AgentActivityService
@@ -94,7 +93,6 @@ func NewHandler(svc Services) http.Handler {
 
 	mux.HandleFunc("GET /v1/agent-runs", handleListActivity(svc.Activity))
 	mux.HandleFunc("GET /v1/agent-runs/{id}", handleGetActivityRun(svc.Activity))
-	mux.HandleFunc("POST /v1/agent-runs/{id}/stop", handleStopAgentRun(svc.Browser))
 
 	mux.HandleFunc("POST /v1/matches/analyze", handleAnalyzeMatch(svc.Matching))
 	mux.HandleFunc("GET /v1/matches", handleListMatches(svc.Matching))
@@ -121,18 +119,16 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("GET /v1/applications/{id}/history", handleApplicationHistory(svc.Application))
 	mux.HandleFunc("GET /v1/applications/{id}/transitions", handleAllowedTransitions(svc.Application))
 
-	mux.HandleFunc("POST /v1/applications/{id}/cover-letter", handleGenerateCoverLetter(svc.CoverLetter))
+	mux.HandleFunc("POST /v1/applications/{id}/cover-letters", handleCreateCoverLetter(svc.CoverLetter))
 	mux.HandleFunc("GET /v1/applications/{id}/cover-letters", handleListCoverLetterVersions(svc.CoverLetter))
 	mux.HandleFunc("PUT /v1/cover-letters/{id}", handleEditCoverLetter(svc.CoverLetter))
 
 	mux.HandleFunc("POST /v1/applications/{id}/questions", handleAddQuestion(svc.Answers))
 	mux.HandleFunc("GET /v1/applications/{id}/questions", handleListQuestions(svc.Answers))
-	mux.HandleFunc("POST /v1/questions/{id}/resolve", handleResolveQuestion(svc.Answers))
 	mux.HandleFunc("PUT /v1/questions/{id}/answer", handleSetQuestionAnswer(svc.Answers))
+	mux.HandleFunc("DELETE /v1/questions/{id}", handleDeleteQuestion(svc.Answers))
 
 	mux.HandleFunc("PUT /v1/applications/{id}/apply-url", handleSetApplyURL(svc.Application))
-	mux.HandleFunc("POST /v1/applications/{id}/prepare-in-browser", handlePrepareInBrowser(svc.Browser))
-	mux.HandleFunc("GET /v1/applications/{id}/agent-runs", handleListAgentRuns(svc.Browser))
 
 	registerDeletions(mux, svc.Deletion)
 	registerAboutYou(mux, svc.AboutYou)

@@ -215,7 +215,7 @@ func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (http
 	// is what keeps discovery working on a fresh install with nothing
 	// configured. Google Search is deliberately absent (ADR-0020): it returns a
 	// JavaScript gate rather than results to anything but a browser, and
-	// getting past that is the one thing ADR-0013 and ADR-0014 say the
+	// getting past that is the one thing ADR-0014 and ADR-0033 say the
 	// product never does. Working Nomads is absent too: it publishes a feed
 	// and no terms for using it (ADR-0023 §7). See
 	// docs/02_features/04_job_discovery.md.
@@ -229,14 +229,12 @@ func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (http
 		discovery.NewJobicySource(discovery.DefaultJobicyBaseURL),
 	}
 
-	// headless: false — real use always shows a visible window so the user
-	// can review and submit themselves; see docs/01_architecture/03_browser_worker.md.
-	// One session, because Chrome allows one process per profile directory
-	// and every task leaves its window open: each task gets its own tab
-	// instead. JobDiscoveryService uses the same factory as a fallback for
-	// importing a job by URL when no registered source recognizes it, but
-	// closes its own tab once the page is read — see
-	// JobDiscoveryService.importViaBrowser.
+	// The browser reads a job posting no registered source recognizes, for
+	// JobDiscoveryService.ImportJob, and closes its tab once the page is
+	// read. It never fills or submits a form (ADR-0034). headless: false,
+	// so a page that will not load, or asks whether the user is a person,
+	// is not hidden from them; see docs/01_architecture/03_browser_worker.md.
+	// One session, because Chrome allows one process per profile directory.
 	chrome := browser.NewChromeSession(browserProfileDir, false)
 	newBrowserWorker := chrome.NewWorker
 
@@ -257,18 +255,15 @@ func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (http
 
 	discoverySvc := services.NewJobDiscoveryService(jobRepo, sources, llmProv, newBrowserWorker, docConverter).
 		WithCandidates(candRepo)
-	// The three prompts the user may give guidance to read it from the
-	// settings on every request, as the model settings are (ADR-0031).
+	// Matching reads the user's guidance from the settings on every
+	// request, as the model settings are (ADR-0031).
 	matchingSvc := services.NewMatchingService(matchRepo, jobRepo, candRepo, resRepo, llmProv).
 		WithGuidance(settingsSvc)
 	applicationSvc := services.NewApplicationService(appRepo, jobRepo, candRepo, resRepo)
 	aboutYouSvc := services.NewAboutYouService(
-		sqlite.NewPersonalAnswerRepository(db.Conn()), candRepo, appRepo, jobRepo, questionRepo, llmProv)
-	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc).
-		WithGuidance(settingsSvc)
-	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, llmProv, aboutYouSvc).
-		WithGuidance(settingsSvc)
-	applyChooser := services.NewApplyControlChooser(llmProv)
+		sqlite.NewPersonalAnswerRepository(db.Conn()), candRepo, appRepo, questionRepo)
+	coverLetterSvc := services.NewCoverLetterService(coverLetterRepo, appRepo, candRepo, resRepo, aboutYouSvc)
+	answerSvc := services.NewAnswerService(questionRepo, appRepo, jobRepo, candRepo, resRepo, aboutYouSvc)
 	scoutSvc := services.NewScoutService(
 		sqlite.NewScoutRepository(db.Conn()), sqlite.NewSavedSearchRepository(db.Conn()),
 		candRepo, appRepo, agentRunRepo, agentEventRepo, discoverySvc, matchingSvc)
@@ -292,7 +287,6 @@ func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (http
 	notificationSvc := services.NewNotificationService(sqlite.NewNotificationRepository(db.Conn()),
 		settingsSvc, desktopapp.Launcher{})
 	scoutSvc.WithNotifier(notificationSvc)
-	browserSvc := services.NewBrowserWorkerService(applicationSvc, jobRepo, agentRunRepo, agentEventRepo, answerSvc, newBrowserWorker, applyChooser)
 	// "Delete all data" reaches past the database to the browser profile
 	// and the daemon's log (ADR-0021 §7).
 	deletionSvc := services.NewDeletionService(sqlite.NewDeletionStore(db), credentialSvc,
@@ -311,7 +305,6 @@ func wireServices(db *sqlite.DB, workspaceDir, credentialNamespace string) (http
 		Application:   applicationSvc,
 		CoverLetter:   coverLetterSvc,
 		Answers:       answerSvc,
-		Browser:       browserSvc,
 		Scouts:        scoutSvc,
 		Credentials:   credentialSvc,
 		Activity:      services.NewAgentActivityService(agentRunRepo, agentEventRepo),

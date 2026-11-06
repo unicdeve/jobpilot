@@ -18,7 +18,6 @@ func saveTestApplication(t *testing.T, db *DB, candidateID, jobID string) *domai
 	app := &domain.Application{
 		JobID:       jobID,
 		CandidateID: candidateID,
-		Mode:        domain.ApplicationModeReview,
 		State:       domain.ApplicationStateDiscovered,
 	}
 	require.NoError(t, NewApplicationRepository(db.Conn()).Save(context.Background(), app))
@@ -39,7 +38,6 @@ func TestApplicationRepository_SaveAndGetByID(t *testing.T) {
 	got, err := repo.GetByID(context.Background(), app.ID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.ApplicationStateDiscovered, got.State)
-	assert.Equal(t, domain.ApplicationModeReview, got.Mode)
 	assert.Empty(t, got.CurrentCoverLetterID, "unset nullable FK should round-trip as empty, not a literal string")
 }
 
@@ -67,14 +65,12 @@ func TestApplicationRepository_Update(t *testing.T) {
 	require.NoError(t, NewCoverLetterRepository(db.Conn()).Save(context.Background(), coverLetter))
 
 	app.CurrentCoverLetterID = coverLetter.ID
-	app.ApprovalStatus = "pending"
 	app.ApplyURL = "https://jobs.ashbyhq.com/acme/1/application"
 	require.NoError(t, repo.Update(context.Background(), app))
 
 	got, err := repo.GetByID(context.Background(), app.ID)
 	require.NoError(t, err)
 	assert.Equal(t, coverLetter.ID, got.CurrentCoverLetterID)
-	assert.Equal(t, "pending", got.ApprovalStatus)
 	assert.Equal(t, "https://jobs.ashbyhq.com/acme/1/application", got.ApplyURL)
 	assert.Equal(t, domain.ApplicationStateDiscovered, got.State, "Update must never change State")
 }
@@ -157,9 +153,7 @@ func TestApplicationRepository_TransitionState(t *testing.T) {
 		app := saveTestApplication(t, db, candidate.ID, job.ID)
 		ctx := context.Background()
 		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStateDiscovered, domain.ApplicationStateMatched, ""))
-		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStateMatched, domain.ApplicationStatePreparing, ""))
-		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStatePreparing, domain.ApplicationStateReadyForReview, ""))
-		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStateReadyForReview, domain.ApplicationStateApproved, ""))
+		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStateMatched, domain.ApplicationStateApproved, ""))
 		require.NoError(t, repo.TransitionState(ctx, app.ID, domain.ApplicationStateApproved, domain.ApplicationStateSubmitted, ""))
 
 		got, err := repo.GetByID(ctx, app.ID)

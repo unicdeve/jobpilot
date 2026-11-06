@@ -15,9 +15,6 @@ func registerAboutYou(mux *http.ServeMux, svc *services.AboutYouService) {
 	mux.HandleFunc("PUT /v1/profile/about", handleSaveAboutYou(svc))
 	mux.HandleFunc("DELETE /v1/profile/about/kept/{id}", handleDeleteKeptAnswer(svc))
 	mux.HandleFunc("POST /v1/questions/{id}/keep", handleKeepAnswer(svc))
-	mux.HandleFunc("GET /v1/applications/{id}/personal-questions", handleApplicationQuestions(svc))
-	mux.HandleFunc("POST /v1/applications/{id}/personal-questions/prepare", handlePrepareApplicationQuestions(svc))
-	mux.HandleFunc("PUT /v1/applications/{id}/personal-questions", handleSaveApplicationAnswers(svc))
 }
 
 // aboutYouStatus is the HTTP status for an About you error: no profile is
@@ -79,49 +76,5 @@ func handleKeepAnswer(svc *services.AboutYouService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, kept)
-	}
-}
-
-func handleApplicationQuestions(svc *services.AboutYouService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		questions, err := svc.ApplicationQuestions(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeError(w, aboutYouStatus(err), err)
-			return
-		}
-		writeJSON(w, http.StatusOK, questions)
-	}
-}
-
-// handlePrepareApplicationQuestions is a POST because it may ask the model
-// to propose questions, and stores what it proposes.
-func handlePrepareApplicationQuestions(svc *services.AboutYouService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		questions, err := svc.PrepareApplicationQuestions(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeError(w, aboutYouStatus(err), err)
-			return
-		}
-		writeJSON(w, http.StatusOK, questions)
-	}
-}
-
-type applicationAnswersRequest struct {
-	Answers []services.ApplicationAnswer `json:"answers"`
-}
-
-func handleSaveApplicationAnswers(svc *services.AboutYouService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req applicationAnswersRequest
-		if err := readJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		questions, err := svc.SaveApplicationAnswers(r.Context(), r.PathValue("id"), req.Answers)
-		if err != nil {
-			writeError(w, aboutYouStatus(err), err)
-			return
-		}
-		writeJSON(w, http.StatusOK, questions)
 	}
 }

@@ -22,14 +22,15 @@ func TestCoverLetterRepository_SaveAndGetByID(t *testing.T) {
 	app := saveTestApplication(t, db, candidate.ID, job.ID)
 	repo := NewCoverLetterRepository(db.Conn())
 
-	cl := &domain.CoverLetter{ApplicationID: app.ID, Content: "Dear hiring manager...", ModelProvider: "ollama", ModelName: "llama3"}
+	cl := &domain.CoverLetter{ApplicationID: app.ID, Content: "Dear hiring manager..."}
 	require.NoError(t, repo.Save(context.Background(), cl))
 	assert.NotEmpty(t, cl.ID)
 
 	got, err := repo.GetByID(context.Background(), cl.ID)
 	require.NoError(t, err)
+	assert.Equal(t, app.ID, got.ApplicationID)
 	assert.Equal(t, "Dear hiring manager...", got.Content)
-	assert.False(t, got.UserEdited)
+	assert.False(t, got.CreatedAt.IsZero())
 }
 
 func TestCoverLetterRepository_GetByID_NotFound(t *testing.T) {
@@ -56,13 +57,11 @@ func TestCoverLetterRepository_Update(t *testing.T) {
 	require.NoError(t, repo.Save(context.Background(), cl))
 
 	cl.Content = "edited by user"
-	cl.UserEdited = true
 	require.NoError(t, repo.Update(context.Background(), cl))
 
 	got, err := repo.GetByID(context.Background(), cl.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "edited by user", got.Content)
-	assert.True(t, got.UserEdited)
 }
 
 func TestCoverLetterRepository_ListByApplication(t *testing.T) {

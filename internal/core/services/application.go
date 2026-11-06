@@ -16,14 +16,15 @@ import (
 // (docs/02_features/08_applications.md): an explicit, deterministic rule
 // table, never delegated to the LLM (AGENTS.md: "deterministic business
 // rules must not be delegated to an LLM"). SUBMITTED is reachable only from
-// APPROVED, and only through TransitionState below, so an application can
-// never be marked submitted as a side effect of anything else.
+// MATCHED and APPROVED, and only through TransitionState below, so an
+// application can never be marked submitted as a side effect of anything
+// else (ADR-0034 §3).
 var allowedTransitions = map[domain.ApplicationState][]domain.ApplicationState{
-	domain.ApplicationStateDiscovered:     {domain.ApplicationStateMatched, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
-	domain.ApplicationStateMatched:        {domain.ApplicationStatePreparing, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
-	domain.ApplicationStatePreparing:      {domain.ApplicationStateReadyForReview, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
-	domain.ApplicationStateReadyForReview: {domain.ApplicationStateApproved, domain.ApplicationStateRejected, domain.ApplicationStateWithdrawn},
-	domain.ApplicationStateApproved:       {domain.ApplicationStateSubmitted, domain.ApplicationStateWithdrawn, domain.ApplicationStateFailed},
+	domain.ApplicationStateDiscovered: {domain.ApplicationStateMatched, domain.ApplicationStateWithdrawn},
+	// APPROVED is "ready to send", which a user may skip by recording that
+	// they sent it.
+	domain.ApplicationStateMatched:  {domain.ApplicationStateApproved, domain.ApplicationStateSubmitted, domain.ApplicationStateWithdrawn},
+	domain.ApplicationStateApproved: {domain.ApplicationStateSubmitted, domain.ApplicationStateMatched, domain.ApplicationStateWithdrawn},
 	// Everything below SUBMITTED is an outcome the user reports, never one
 	// the application works out for itself (08_applications.md AC-007).
 	domain.ApplicationStateSubmitted:    {domain.ApplicationStateInterviewing, domain.ApplicationStateOffered, domain.ApplicationStateRejected, domain.ApplicationStateNoResponse, domain.ApplicationStateWithdrawn},
@@ -33,7 +34,6 @@ var allowedTransitions = map[domain.ApplicationState][]domain.ApplicationState{
 	domain.ApplicationStateNoResponse: {domain.ApplicationStateInterviewing, domain.ApplicationStateRejected},
 	domain.ApplicationStateRejected:   {},
 	domain.ApplicationStateWithdrawn:  {},
-	domain.ApplicationStateFailed:     {domain.ApplicationStatePreparing},
 }
 
 // AllowedTransitions returns the states an application in `from` may move
@@ -73,14 +73,7 @@ func NewApplicationService(repo ports.ApplicationRepository, jobs ports.JobRepos
 // A job, candidate or resume that does not exist is a ports.ReferenceError,
 // found before anything is saved rather than left to the database's foreign
 // key, whose failure says nothing about which of the three was missing.
-func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string, mode domain.ApplicationMode) (*domain.Application, error) {
-	if mode == "" {
-		mode = domain.ApplicationModeReview
-	}
-	if !mode.IsValid() {
-		return nil, fmt.Errorf("unknown application mode %q", mode)
-	}
-
+func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candidateID, resumeID string) (*domain.Application, error) {
 	if _, err := s.jobs.GetByID(ctx, jobID); err != nil {
 		return nil, fmt.Errorf("failed to create application: %w", ports.AsReference(err))
 	}
@@ -97,7 +90,6 @@ func (s *ApplicationService) CreateApplication(ctx context.Context, jobID, candi
 		JobID:       jobID,
 		CandidateID: candidateID,
 		ResumeID:    resumeID,
-		Mode:        mode,
 		State:       domain.ApplicationStateDiscovered,
 	}
 
@@ -122,12 +114,11 @@ func (s *ApplicationService) GetApplication(ctx context.Context, id string) (*do
 var ErrInvalidApplyURL = errors.New("the application link must be a full http or https address")
 
 // SetApplyURL records where the user says an application's form is, or
-// clears it with an empty link, so a browser run starts from the job's own
-// link again (ADR-0033 §4).
+// clears it with an empty link, so "Open application page" opens the job's
+// own link again (ADR-0034 §2).
 //
-// The link is the user's, not a page's, but it is held to the same rule
-// every hop is (ADR-0013 §2): a web address, and nothing the browser would
-// hand to another program or treat as content of its own.
+// The link is opened in the user's browser, so it must be a web address:
+// nothing the operating system would hand to another program.
 func (s *ApplicationService) SetApplyURL(ctx context.Context, id, rawURL string) (*domain.Application, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL != "" && !isWebAddress(rawURL) {

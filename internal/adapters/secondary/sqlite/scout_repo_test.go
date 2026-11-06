@@ -89,28 +89,26 @@ func TestScoutRepository_DeletingTheSearchTakesTheScout(t *testing.T) {
 	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 
-// TestAgentRunRepository_ScoutRunHasNoApplication covers the fix ADR-0018
-// §4 identified: application_id is a foreign key and foreign keys are on,
-// so a run that belongs to no application must store NULL rather than the
-// empty string, which names an application that does not exist.
-func TestAgentRunRepository_ScoutRunHasNoApplication(t *testing.T) {
+// TestAgentRunRepository_List covers runs listed newest first, including
+// one whose scout_id is empty and so stores NULL: scout_id is a foreign
+// key, and the empty string names a scout that does not exist.
+func TestAgentRunRepository_List(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	db := newTestDB(t)
 	repo := NewAgentRunRepository(db.Conn())
 
+	older := &domain.AgentRun{TaskType: "scout_run", Status: domain.AgentRunStatusCompleted, StartedAt: time.Now().Add(-time.Hour)}
+	require.NoError(t, repo.Save(ctx, older))
 	run := &domain.AgentRun{TaskType: "scout_run", Status: domain.AgentRunStatusRunning}
-	require.NoError(t, repo.Save(ctx, run), "an empty application_id must store as NULL")
+	require.NoError(t, repo.Save(ctx, run), "an empty scout_id must store as NULL")
 
-	got, err := repo.GetByID(ctx, run.ID)
+	runs, err := repo.List(ctx, 10)
 	require.NoError(t, err)
-	assert.Empty(t, got.ApplicationID)
-
-	unattached, err := repo.ListUnattached(ctx, 10)
-	require.NoError(t, err)
-	require.Len(t, unattached, 1)
-	assert.Equal(t, run.ID, unattached[0].ID)
+	require.Len(t, runs, 2)
+	assert.Equal(t, run.ID, runs[0].ID, "newest first")
+	assert.Empty(t, runs[0].ScoutID)
 }
 
 func TestScoutRepository_Schedule(t *testing.T) {
@@ -207,7 +205,7 @@ func TestAgentRunRepository_LastScoutStart(t *testing.T) {
 	require.NotNil(t, last)
 	assert.True(t, later.Equal(*last))
 
-	runs, err := repo.ListUnattached(ctx, 10)
+	runs, err := repo.List(ctx, 10)
 	require.NoError(t, err)
 	require.Len(t, runs, 2)
 	assert.Equal(t, domain.RunTriggerSchedule, runs[0].Trigger)

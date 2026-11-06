@@ -16,20 +16,17 @@ func TestAgentEventRepository_SaveAndListByRun(t *testing.T) {
 	t.Parallel()
 
 	db := newTestDB(t)
-	candidate := saveTestCandidate(t, db)
-	job := saveTestJob(t, db, "https://acme.example/job-1")
-	app := saveTestApplication(t, db, candidate.ID, job.ID)
 	runRepo := NewAgentRunRepository(db.Conn())
-	run := &domain.AgentRun{ApplicationID: app.ID, TaskType: "prepare_application", Status: domain.AgentRunStatusRunning}
+	run := &domain.AgentRun{TaskType: domain.AgentTaskScoutRun, Status: domain.AgentRunStatusRunning}
 	require.NoError(t, runRepo.Save(context.Background(), run))
 
-	otherRun := &domain.AgentRun{ApplicationID: app.ID, TaskType: "prepare_application", Status: domain.AgentRunStatusRunning}
+	otherRun := &domain.AgentRun{TaskType: domain.AgentTaskScoutRun, Status: domain.AgentRunStatusRunning}
 	require.NoError(t, runRepo.Save(context.Background(), otherRun))
 
 	repo := NewAgentEventRepository(db.Conn())
-	navigate := &domain.AgentEvent{RunID: run.ID, Action: "navigate", Tool: "browser", Status: "ok", OutputSummary: "https://acme.example/job-1", DurationMs: 120}
-	extract := &domain.AgentEvent{RunID: run.ID, Action: "extract_form", Tool: "browser", Status: "ok", OutputSummary: "2 fields found"}
-	unrelated := &domain.AgentEvent{RunID: otherRun.ID, Action: "navigate", Tool: "browser", Status: "ok"}
+	navigate := &domain.AgentEvent{RunID: run.ID, Action: "scout_started", Tool: "scout", Status: "ok", OutputSummary: "Daily Go", DurationMs: 120}
+	extract := &domain.AgentEvent{RunID: run.ID, Action: "jobs_collected", Tool: "scout", Status: "ok", OutputSummary: "2 jobs found"}
+	unrelated := &domain.AgentEvent{RunID: otherRun.ID, Action: "scout_started", Tool: "scout", Status: "ok"}
 	require.NoError(t, repo.Save(context.Background(), navigate))
 	require.NoError(t, repo.Save(context.Background(), extract))
 	require.NoError(t, repo.Save(context.Background(), unrelated))
@@ -38,8 +35,8 @@ func TestAgentEventRepository_SaveAndListByRun(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, events, 2)
-	assert.Equal(t, "navigate", events[0].Action)
-	assert.Equal(t, "https://acme.example/job-1", events[0].OutputSummary)
+	assert.Equal(t, "scout_started", events[0].Action)
+	assert.Equal(t, "Daily Go", events[0].OutputSummary)
 	assert.Equal(t, int64(120), events[0].DurationMs)
-	assert.Equal(t, "extract_form", events[1].Action)
+	assert.Equal(t, "jobs_collected", events[1].Action)
 }

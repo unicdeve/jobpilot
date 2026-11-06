@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
@@ -10,10 +11,9 @@ import (
 // --- applications ---
 
 type createApplicationRequest struct {
-	JobID       string                 `json:"job_id"`
-	CandidateID string                 `json:"candidate_id"`
-	ResumeID    string                 `json:"resume_id"`
-	Mode        domain.ApplicationMode `json:"mode"`
+	JobID       string `json:"job_id"`
+	CandidateID string `json:"candidate_id"`
+	ResumeID    string `json:"resume_id"`
 }
 
 func handleCreateApplication(svc *services.ApplicationService) http.HandlerFunc {
@@ -24,7 +24,7 @@ func handleCreateApplication(svc *services.ApplicationService) http.HandlerFunc 
 			return
 		}
 
-		app, err := svc.CreateApplication(r.Context(), req.JobID, req.CandidateID, req.ResumeID, req.Mode)
+		app, err := svc.CreateApplication(r.Context(), req.JobID, req.CandidateID, req.ResumeID)
 		if writeErrIfAny(w, err) {
 			return
 		}
@@ -84,15 +84,61 @@ func handleApplicationHistory(svc *services.ApplicationService) http.HandlerFunc
 	}
 }
 
-// --- cover letters ---
+type setApplyURLRequest struct {
+	URL string `json:"url"`
+}
 
-func handleGenerateCoverLetter(svc *services.CoverLetterService) http.HandlerFunc {
+func handleSetApplyURL(svc *services.ApplicationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		coverLetter, err := svc.Generate(r.Context(), r.PathValue("id"))
+		var req setApplyURLRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		app, err := svc.SetApplyURL(r.Context(), r.PathValue("id"), req.URL)
+		if errors.Is(err, services.ErrInvalidApplyURL) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		if writeErrIfAny(w, err) {
 			return
 		}
-		writeJSON(w, http.StatusOK, coverLetter)
+		writeJSON(w, http.StatusOK, app)
+	}
+}
+
+// --- cover letters ---
+
+type coverLetterRequest struct {
+	Content string `json:"content"`
+}
+
+// coverLetterStatus is the status for a cover letter error: an empty
+// letter is the client's.
+func coverLetterStatus(err error) int {
+	if errors.Is(err, services.ErrEmptyCoverLetter) {
+		return http.StatusBadRequest
+	}
+	return fallbackStatus(err)
+}
+
+// handleCreateCoverLetter saves a letter the candidate wrote as a new
+// version (ADR-0034 §1).
+func handleCreateCoverLetter(svc *services.CoverLetterService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req coverLetterRequest
+		if err := readJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		coverLetter, err := svc.Create(r.Context(), r.PathValue("id"), req.Content)
+		if err != nil {
+			writeError(w, coverLetterStatus(err), err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, coverLetter)
 	}
 }
 
@@ -106,20 +152,17 @@ func handleListCoverLetterVersions(svc *services.CoverLetterService) http.Handle
 	}
 }
 
-type editCoverLetterRequest struct {
-	Content string `json:"content"`
-}
-
 func handleEditCoverLetter(svc *services.CoverLetterService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req editCoverLetterRequest
+		var req coverLetterRequest
 		if err := readJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
 		coverLetter, err := svc.Edit(r.Context(), r.PathValue("id"), req.Content)
-		if writeErrIfAny(w, err) {
+		if err != nil {
+			writeError(w, coverLetterStatus(err), err)
 			return
 		}
 		writeJSON(w, http.StatusOK, coverLetter)
@@ -129,9 +172,7 @@ func handleEditCoverLetter(svc *services.CoverLetterService) http.HandlerFunc {
 // --- application questions ---
 
 type addQuestionRequest struct {
-	Label    string              `json:"label"`
-	Type     domain.QuestionType `json:"type"`
-	Required bool                `json:"required"`
+	Label string `json:"label"`
 }
 
 func handleAddQuestion(svc *services.AnswerService) http.HandlerFunc {
@@ -142,11 +183,15 @@ func handleAddQuestion(svc *services.AnswerService) http.HandlerFunc {
 			return
 		}
 
-		question, err := svc.AddQuestion(r.Context(), r.PathValue("id"), req.Label, req.Type, req.Required)
+		question, err := svc.AddQuestion(r.Context(), r.PathValue("id"), req.Label)
+		if errors.Is(err, services.ErrEmptyQuestion) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		if writeErrIfAny(w, err) {
 			return
 		}
-		writeJSON(w, http.StatusOK, question)
+		writeJSON(w, http.StatusCreated, question)
 	}
 }
 
@@ -157,16 +202,6 @@ func handleListQuestions(svc *services.AnswerService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, questions)
-	}
-}
-
-func handleResolveQuestion(svc *services.AnswerService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		question, err := svc.Resolve(r.Context(), r.PathValue("id"))
-		if writeErrIfAny(w, err) {
-			return
-		}
-		writeJSON(w, http.StatusOK, question)
 	}
 }
 
@@ -182,11 +217,20 @@ func handleSetQuestionAnswer(svc *services.AnswerService) http.HandlerFunc {
 			return
 		}
 
-		question, err := svc.SetUserAnswer(r.Context(), r.PathValue("id"), req.Answer)
+		question, err := svc.SetAnswer(r.Context(), r.PathValue("id"), req.Answer)
 		if writeErrIfAny(w, err) {
 			return
 		}
 		writeJSON(w, http.StatusOK, question)
+	}
+}
+
+func handleDeleteQuestion(svc *services.AnswerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if writeErrIfAny(w, svc.DeleteQuestion(r.Context(), r.PathValue("id"))) {
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

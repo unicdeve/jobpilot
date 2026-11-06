@@ -15,18 +15,14 @@ import (
 	"github.com/unicdev/jobpilot/internal/core/ports"
 )
 
-// TestAgentRunRepository_ListSummaries_NamesWhatEachRunServed covers the
-// activity list: every kind of run in one list, newest first, each named by
-// its scout or its application's job, with its step count.
-func TestAgentRunRepository_ListSummaries_NamesWhatEachRunServed(t *testing.T) {
+// TestAgentRunRepository_ListSummaries_NamesEachRunsScout covers the
+// activity list: runs newest first, each named by its scout, with its step
+// count.
+func TestAgentRunRepository_ListSummaries_NamesEachRunsScout(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	db := newTestDB(t)
-	candidate := saveTestCandidate(t, db)
-	job := &domain.Job{CanonicalURL: "https://acme.example/job-1", Title: "Backend Engineer", CompanyName: "Acme"}
-	require.NoError(t, NewJobRepository(db.Conn()).Save(ctx, job))
-	app := saveTestApplication(t, db, candidate.ID, job.ID)
 	scout := &domain.Scout{
 		Name: "Daily Go", SavedSearchID: seedSavedSearch(t, db).ID,
 		MaxApplicationsPerRun: 5, Source: domain.ScoutSourceLocal, IsEnabled: true,
@@ -37,11 +33,11 @@ func TestAgentRunRepository_ListSummaries_NamesWhatEachRunServed(t *testing.T) {
 	events := NewAgentEventRepository(db.Conn())
 	start := time.Now().Add(-time.Hour)
 
-	prepare := &domain.AgentRun{
-		ApplicationID: app.ID, TaskType: domain.AgentTaskPrepareApplication,
-		Status: domain.AgentRunStatusBlocked, StartedAt: start,
+	failed := &domain.AgentRun{
+		ScoutID: scout.ID, TaskType: domain.AgentTaskScoutRun,
+		Status: domain.AgentRunStatusFailed, StartedAt: start,
 	}
-	require.NoError(t, runs.Save(ctx, prepare))
+	require.NoError(t, runs.Save(ctx, failed))
 	scoutRun := &domain.AgentRun{
 		ScoutID: scout.ID, TaskType: domain.AgentTaskScoutRun,
 		Status: domain.AgentRunStatusCompleted, StartedAt: start.Add(time.Minute),
@@ -61,22 +57,19 @@ func TestAgentRunRepository_ListSummaries_NamesWhatEachRunServed(t *testing.T) {
 	assert.Equal(t, scout.ID, page.Runs[0].ScoutID)
 	assert.Equal(t, 3, page.Runs[0].EventCount)
 
-	assert.Equal(t, prepare.ID, page.Runs[1].ID)
-	assert.Equal(t, "Backend Engineer", page.Runs[1].JobTitle)
-	assert.Equal(t, "Acme", page.Runs[1].Company)
+	assert.Equal(t, failed.ID, page.Runs[1].ID)
+	assert.Equal(t, "Daily Go", page.Runs[1].ScoutName)
 	assert.Equal(t, 0, page.Runs[1].EventCount)
 
 	t.Run("filters by kind and status", func(t *testing.T) {
 		page, err := runs.ListSummaries(ctx, domain.AgentRunFilter{TaskType: domain.AgentTaskScoutRun, Limit: 10})
 		require.NoError(t, err)
-		assert.Equal(t, 1, page.Total)
-		require.Len(t, page.Runs, 1)
-		assert.Equal(t, scoutRun.ID, page.Runs[0].ID)
+		assert.Equal(t, 2, page.Total)
 
-		page, err = runs.ListSummaries(ctx, domain.AgentRunFilter{Status: domain.AgentRunStatusBlocked, Limit: 10})
+		page, err = runs.ListSummaries(ctx, domain.AgentRunFilter{Status: domain.AgentRunStatusFailed, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, page.Runs, 1)
-		assert.Equal(t, prepare.ID, page.Runs[0].ID)
+		assert.Equal(t, failed.ID, page.Runs[0].ID)
 	})
 
 	t.Run("pages, and reports the total across pages", func(t *testing.T) {
@@ -84,7 +77,7 @@ func TestAgentRunRepository_ListSummaries_NamesWhatEachRunServed(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2, page.Total)
 		require.Len(t, page.Runs, 1)
-		assert.Equal(t, prepare.ID, page.Runs[0].ID)
+		assert.Equal(t, failed.ID, page.Runs[0].ID)
 	})
 
 	t.Run("gets one run the same way", func(t *testing.T) {
@@ -167,13 +160,12 @@ func TestMigration00012_AgentActivity(t *testing.T) {
 			row[0], row[1], row[2], row[3], row[4])
 	}
 
-	_, err = provider.Up(ctx)
+	_, err = provider.UpTo(ctx, 12)
 	require.NoError(t, err)
 
-	run, err := NewAgentRunRepository(conn).GetSummary(ctx, "run-scout")
-	require.NoError(t, err)
-	assert.Equal(t, "scout-1", run.ScoutID)
-	assert.Equal(t, "Daily Go", run.ScoutName)
+	var scoutID string
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT scout_id FROM agent_runs WHERE id = 'run-scout'`).Scan(&scoutID))
+	assert.Equal(t, "scout-1", scoutID)
 
 	byID := map[string]*domain.AgentEvent{}
 	for _, runID := range []string{"run-scout", "run-browser"} {

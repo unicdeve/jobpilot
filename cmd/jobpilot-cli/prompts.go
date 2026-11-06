@@ -148,10 +148,6 @@ func printPromptGuidance(prompt domain.PromptGuidance) {
 	if !prompt.IsDefault() {
 		fmt.Printf("\nThe default:\n%s\n", indent(prompt.Default))
 	}
-	if prompt.Key == domain.PromptCoverLetter {
-		fmt.Println("\nHow long a letter is, and its tone, are your writing preferences:")
-		fmt.Println("  jobpilot-cli profile about set writing_preferences \"...\"")
-	}
 }
 
 func indent(text string) string {

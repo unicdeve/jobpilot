@@ -11,7 +11,7 @@ import (
 func TestPromptDefinitions(t *testing.T) {
 	t.Parallel()
 
-	keys := make([]PromptKey, 0, 3)
+	keys := make([]PromptKey, 0, 1)
 	for _, definition := range PromptDefinitions() {
 		keys = append(keys, definition.Key)
 		assert.NotEmpty(t, definition.Title, definition.Key)
@@ -19,16 +19,18 @@ func TestPromptDefinitions(t *testing.T) {
 		_, err := NormalizeGuidance(definition.Default)
 		assert.NoError(t, err, "%s's default must be guidance a user could have saved", definition.Key)
 	}
-	assert.Equal(t, []PromptKey{PromptMatch, PromptCoverLetter, PromptWrittenAnswer}, keys,
-		"only the three prompts that make a judgement are offered (ADR-0031 §1)")
+	assert.Equal(t, []PromptKey{PromptMatch}, keys,
+		"only the prompt that makes a judgement is offered (ADR-0031 §1, ADR-0034 §1)")
 
-	_, ok := PromptDefinitionFor("apply_control")
-	assert.False(t, ok, "an extraction prompt is not offered")
+	for _, key := range []PromptKey{"apply_control", "cover_letter", "written_answer"} {
+		_, ok := PromptDefinitionFor(key)
+		assert.False(t, ok, "%s is not offered: an extraction prompt, or one JobPilot no longer sends", key)
+	}
 }
 
 func TestGuidanceOf(t *testing.T) {
 	t.Parallel()
-	definition, ok := PromptDefinitionFor(PromptCoverLetter)
+	definition, ok := PromptDefinitionFor(PromptMatch)
 	require.True(t, ok)
 
 	t.Run("nothing saved is the default", func(t *testing.T) {
@@ -43,7 +45,7 @@ func TestGuidanceOf(t *testing.T) {
 	t.Run("saved guidance replaces the default", func(t *testing.T) {
 		t.Parallel()
 		guidance := GuidanceOf(definition, PromptGuidanceSettings{
-			PromptCoverLetter: {Text: "Open with the work.", DefaultDigest: GuidanceDigest(definition.Default)},
+			PromptMatch: {Text: "Open with the work.", DefaultDigest: GuidanceDigest(definition.Default)},
 		})
 
 		assert.False(t, guidance.IsDefault())
@@ -55,7 +57,7 @@ func TestGuidanceOf(t *testing.T) {
 	t.Run("a default changed since saving is pointed out", func(t *testing.T) {
 		t.Parallel()
 		guidance := GuidanceOf(definition, PromptGuidanceSettings{
-			PromptCoverLetter: {Text: "Open with the work.", DefaultDigest: GuidanceDigest("an older default")},
+			PromptMatch: {Text: "Open with the work.", DefaultDigest: GuidanceDigest("an older default")},
 		})
 
 		assert.True(t, guidance.DefaultChanged)
@@ -64,7 +66,7 @@ func TestGuidanceOf(t *testing.T) {
 
 	t.Run("another prompt's guidance is not this one's", func(t *testing.T) {
 		t.Parallel()
-		guidance := GuidanceOf(definition, PromptGuidanceSettings{PromptMatch: {Text: "Weigh remote work."}})
+		guidance := GuidanceOf(definition, PromptGuidanceSettings{"cover_letter": {Text: "Open with the work."}})
 
 		assert.True(t, guidance.IsDefault())
 	})

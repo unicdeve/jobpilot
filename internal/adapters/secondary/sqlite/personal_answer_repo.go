@@ -24,12 +24,11 @@ func NewPersonalAnswerRepository(db *sql.DB) *PersonalAnswerRepository {
 	return &PersonalAnswerRepository{db: db}
 }
 
-const personalAnswerColumns = `id, candidate_id, application_id, key, question, answer, created_at, updated_at`
+const personalAnswerColumns = `id, candidate_id, key, question, answer, created_at, updated_at`
 
 func scanPersonalAnswer(row interface{ Scan(...any) error }) (*domain.PersonalAnswer, error) {
 	var a domain.PersonalAnswer
-	err := row.Scan(&a.ID, nullStringInto(&a.CandidateID), nullStringInto(&a.ApplicationID),
-		&a.Key, &a.Question, &a.Answer, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.CandidateID, &a.Key, &a.Question, &a.Answer, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -38,17 +37,8 @@ func scanPersonalAnswer(row interface{ Scan(...any) error }) (*domain.PersonalAn
 
 // ListByCandidate returns the candidate's answers, oldest first.
 func (r *PersonalAnswerRepository) ListByCandidate(ctx context.Context, candidateID string) ([]*domain.PersonalAnswer, error) {
-	return r.list(ctx, `candidate_id = ?`, candidateID)
-}
-
-// ListByApplication returns an application's answers, oldest first.
-func (r *PersonalAnswerRepository) ListByApplication(ctx context.Context, applicationID string) ([]*domain.PersonalAnswer, error) {
-	return r.list(ctx, `application_id = ?`, applicationID)
-}
-
-func (r *PersonalAnswerRepository) list(ctx context.Context, where string, arg string) ([]*domain.PersonalAnswer, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+personalAnswerColumns+` FROM personal_answers WHERE `+where+` ORDER BY created_at, rowid`, arg)
+		`SELECT `+personalAnswerColumns+` FROM personal_answers WHERE candidate_id = ? ORDER BY created_at, rowid`, candidateID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list personal answers: %w", err)
 	}
@@ -89,9 +79,8 @@ func (r *PersonalAnswerRepository) Save(ctx context.Context, answer *domain.Pers
 		answer.ID = uuid.NewString()
 		answer.CreatedAt, answer.UpdatedAt = now, now
 		_, err := r.db.ExecContext(ctx,
-			`INSERT INTO personal_answers (`+personalAnswerColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			answer.ID, nullableString(answer.CandidateID), nullableString(answer.ApplicationID),
-			answer.Key, answer.Question, answer.Answer, answer.CreatedAt, answer.UpdatedAt)
+			`INSERT INTO personal_answers (`+personalAnswerColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			answer.ID, answer.CandidateID, answer.Key, answer.Question, answer.Answer, answer.CreatedAt, answer.UpdatedAt)
 		if err != nil {
 			answer.ID = ""
 			return fmt.Errorf("failed to save personal answer: %w", err)

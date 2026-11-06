@@ -13,17 +13,16 @@ import (
 // Storage, the API and the CLI name a prompt by its key.
 type PromptKey string
 
-// The prompts a user may give guidance to. The other four prompts JobPilot
-// sends are extraction, and are not offered.
+// The prompts a user may give guidance to. The others JobPilot sends are
+// extraction, and are not offered. Cover letters and written answers had
+// prompts here until ADR-0034, when JobPilot stopped writing them.
 const (
-	PromptMatch         PromptKey = "match"
-	PromptCoverLetter   PromptKey = "cover_letter"
-	PromptWrittenAnswer PromptKey = "written_answer"
+	PromptMatch PromptKey = "match"
 )
 
 // MaxGuidanceLength is the most characters a guidance may have, so it
 // cannot crowd a small local model's context out from under the material
-// it writes from (ADR-0031 §6).
+// it reads (ADR-0031 §6).
 const MaxGuidanceLength = 2000
 
 // ErrInvalidGuidance is returned for guidance that cannot be kept.
@@ -42,10 +41,9 @@ type PromptDefinition struct {
 	Default string
 }
 
-// promptDefinitions are the three prompts, in the order they are shown.
-// Each default is the style text its prompt carried before guidance could
-// be changed, lifted out unchanged; matching had none, and its default
-// states what "analyze the fit" already asked for.
+// promptDefinitions are the prompts, in the order they are shown.
+// Matching had no style text before guidance could be changed, so its
+// default states what "analyze the fit" already asked for.
 var promptDefinitions = []PromptDefinition{
 	{
 		Key:     PromptMatch,
@@ -53,21 +51,6 @@ var promptDefinitions = []PromptDefinition{
 		UsedFor: "Scoring how well a job fits you, and saying why. Scouts score with it too.",
 		Default: "Judge the fit on the skills, experience and seniority the job asks for, " +
 			"weighing what it requires above what it would merely like.",
-	},
-	{
-		Key:     PromptCoverLetter,
-		Title:   "Cover letters",
-		UsedFor: "Writing a cover letter for an application.",
-		Default: "No stock openings or closings (\"I am excited to apply\", \"I believe I would be a great fit\", " +
-			"\"Thank you for your consideration\").\n" +
-			"Concrete claims backed by something in the material, instead of adjectives about the candidate.\n" +
-			"One real reason for wanting this job, from what the candidate said about it, instead of flattery about the company.",
-	},
-	{
-		Key:     PromptWrittenAnswer,
-		Title:   "Written answers",
-		UsedFor: "Answering a written question on an application form.",
-		Default: "Answer only what is asked, as briefly as the question calls for, with no stock phrases.",
 	},
 }
 

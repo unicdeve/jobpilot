@@ -169,12 +169,11 @@ func (f *fakeDeletionStore) DeleteAll(context.Context) error {
 //
 //	candidate c, resume r
 //	job j1: match m1, application a1 (resume r, current letter cl1), with
-//	        letters cl0 and cl1, question q1, transition t1, browser run b1
-//	        and its step s1
+//	        letters cl0 and cl1, question q1, transition t1
 //	job j2: nothing uses it
 //	job j3: marked not interested, nothing uses it
 //	job j4: application a4, sent
-//	scout sc: run sr and its step ss
+//	scout sc: runs sr and sr2, and a step of each
 func newDeletionFixture() (*fakeDeletionStore, *[]string) {
 	calls := &[]string{}
 	f := &fakeDeletionStore{records: map[string]*fakeRecord{}, calls: calls}
@@ -198,12 +197,12 @@ func newDeletionFixture() (*fakeDeletionStore, *[]string) {
 	f.add("cl1", domain.RecordCoverLetter, R(domain.RecordApplication, "a1"))
 	f.add("q1", domain.RecordQuestion, R(domain.RecordApplication, "a1"))
 	f.add("t1", domain.RecordStateTransition, R(domain.RecordApplication, "a1"))
-	f.add("b1", domain.RecordAgentRun, R(domain.RecordApplication, "a1"))
-	f.add("s1", domain.RecordAgentStep, R(domain.RecordAgentRun, "b1"))
 	f.add("a4", domain.RecordApplication, R(domain.RecordJob, "j4", domain.RecordCandidate, "c")).sent = true
 	f.add("sc", domain.RecordScout, nil)
 	f.add("sr", domain.RecordAgentRun, R(domain.RecordScout, "sc"))
 	f.add("ss", domain.RecordAgentStep, R(domain.RecordAgentRun, "sr"))
+	f.add("sr2", domain.RecordAgentRun, R(domain.RecordScout, "sc"))
+	f.add("ss2", domain.RecordAgentStep, R(domain.RecordAgentRun, "sr2"))
 	return f, calls
 }
 
@@ -285,7 +284,7 @@ func TestDeletionService_Preview(t *testing.T) {
 			name: "a job takes its match, its applications and everything under them", target: domain.DeleteJob, id: "j1",
 			deleted: map[domain.RecordKind]int{
 				domain.RecordJob: 1, domain.RecordMatch: 1, domain.RecordApplication: 1, domain.RecordCoverLetter: 2,
-				domain.RecordQuestion: 1, domain.RecordStateTransition: 1, domain.RecordAgentRun: 1, domain.RecordAgentStep: 1,
+				domain.RecordQuestion: 1, domain.RecordStateTransition: 1,
 			},
 			// The application's reference to its own letter does not count as
 			// detached: the application goes too.
@@ -311,7 +310,6 @@ func TestDeletionService_Preview(t *testing.T) {
 			deleted: map[domain.RecordKind]int{
 				domain.RecordCandidate: 1, domain.RecordResume: 1, domain.RecordMatch: 1, domain.RecordApplication: 2,
 				domain.RecordCoverLetter: 2, domain.RecordQuestion: 1, domain.RecordStateTransition: 1,
-				domain.RecordAgentRun: 1, domain.RecordAgentStep: 1,
 			},
 			detached: map[domain.RecordKind]int{}, sent: 1,
 		},

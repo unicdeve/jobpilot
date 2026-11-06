@@ -68,42 +68,19 @@ func TestCheckDraft_StockPhrases(t *testing.T) {
 }
 
 // AC-002.
-func TestLetterWordLimit(t *testing.T) {
-	t.Parallel()
-
-	for preferences, want := range map[string]int{
-		"Keep it under 200 words, plain and direct.": 200,
-		"about 150 words":                     150,
-		"150-200 words, no exclamation marks": 200,
-		"Between 120 to 180 words.":           180,
-		"Short and warm.":                     DefaultLetterWords,
-		"":                                    DefaultLetterWords,
-	} {
-		limit, theirs := LetterWordLimit(preferences)
-		assert.Equal(t, want, limit, preferences)
-		assert.Equal(t, want != DefaultLetterWords, theirs, preferences)
-	}
-}
-
-// AC-002.
 func TestCheckDraft_Length(t *testing.T) {
 	t.Parallel()
 
 	words := func(n int) string { return strings.TrimSpace(strings.Repeat("word ", n)) }
 
 	basis := basisWith()
-	basis.WordLimit, basis.LimitIsTheirs = 200, true
-	assert.Empty(t, CheckDraft(words(200), basis), "at the limit")
+	basis.WordLimit = LetterWords
+	assert.Empty(t, CheckDraft(words(LetterWords), basis), "at the limit")
 
-	got := flagsOf(FlagLength, CheckDraft(words(201), basis))
+	got := flagsOf(FlagLength, CheckDraft(words(300), basis))
 	require.Len(t, got, 1)
-	assert.Equal(t, "201 words, over the 200 your writing preferences ask for.", got[0].Reason)
+	assert.Equal(t, "300 words, over the 250 a letter reads best within.", got[0].Reason)
 	assert.Empty(t, got[0].Excerpt)
-
-	basis.WordLimit, basis.LimitIsTheirs = DefaultLetterWords, false
-	got = flagsOf(FlagLength, CheckDraft(words(300), basis))
-	require.Len(t, got, 1)
-	assert.Equal(t, "300 words, over the 250 a letter is kept to.", got[0].Reason)
 
 	basis.WordLimit = 0
 	assert.Empty(t, CheckDraft(words(1000), basis), "an answer is never checked for length")
@@ -178,47 +155,4 @@ func TestCheckDraft_MeasuredLetter(t *testing.T) {
 	flags := CheckDraft(letter, basisWith())
 	assert.Len(t, flagsOf(FlagStockPhrase, flags), 3, "the repeated opening is flagged once")
 	assert.Len(t, flagsOf(FlagUnsupportedClaim, flags), 1)
-}
-
-// AC-009.
-func TestCheckDraft_Preamble(t *testing.T) {
-	t.Parallel()
-
-	for text, want := range map[string]string{
-		"Here is a tailored cover letter for the Senior Backend Engineer position at CertiK:\n\nDear Hiring Manager,": "Here is a tailored cover letter for the Senior Backend Engineer position at CertiK:",
-		"Here's a tailored cover letter for the role:\nI rebuilt Acme's billing pipeline.":                            "Here's a tailored cover letter for the role:",
-		"  Sure! Here is your cover letter:\n\nDear Hiring Manager,":                                                  "Sure! Here is your cover letter:",
-		"Certainly, here’s a draft answer to the question:\nI have run Go services for four years.":                   "Certainly, here’s a draft answer to the question:",
-		"Here is the letter: Dear Hiring Manager,":                                                                    "Here is the letter:",
-	} {
-		t.Run(want, func(t *testing.T) {
-			t.Parallel()
-			got := flagsOf(FlagPreamble, CheckDraft(text, basisWith()))
-			require.Len(t, got, 1)
-			assert.Equal(t, want, got[0].Excerpt)
-			assert.Equal(t, "The model's note to you, not part of what you send.", got[0].Reason)
-		})
-	}
-
-	for _, text := range []string{
-		"Here is my cover letter for the Senior Backend Engineer role.",
-		"Here is what I would bring to your team: a billing pipeline rebuilt in Go.",
-		"Here is the thing: I wrote the letter myself.",
-		"Dear Hiring Manager,\n\nHere is a tailored cover letter for the role:",
-	} {
-		t.Run(text, func(t *testing.T) {
-			t.Parallel()
-			assert.Empty(t, flagsOf(FlagPreamble, CheckDraft(text, basisWith())))
-		})
-	}
-
-	t.Run("is not counted in the letter's length", func(t *testing.T) {
-		t.Parallel()
-		basis := basisWith()
-		basis.WordLimit = DefaultLetterWords
-		text := "Here is a tailored cover letter for the role:\n\n" + strings.TrimSpace(strings.Repeat("word ", DefaultLetterWords))
-		flags := CheckDraft(text, basis)
-		assert.Len(t, flagsOf(FlagPreamble, flags), 1)
-		assert.Empty(t, flagsOf(FlagLength, flags))
-	})
 }
