@@ -33,33 +33,20 @@ Discovery alone does not analyze every result.
 A Scout combines discovery and analysis; browsing stored jobs is a separate local operation.
 Custom job URLs can also be imported and analyzed.
 
-## Application content
+## Applying
 
 User selects a job
 → creates an application and optionally chooses a resume
-→ adds personal context
-→ generates a letter or resolves questions
-→ reviews draft flags and edits content
-→ prepares for review
+→ opens the application page in their own browser
+→ copies their profile details and own answers into the form
+→ writes their cover letter in JobPilot, reading its draft flags
+→ notes the form's questions and writes their answers, using a suggestion from their profile or a kept answer where one fits
+→ submits on the employer's site
+→ records that they sent it, and later what happened
 
-Cover-letter versions and application transitions remain in local history.
-Unknown factual answers are left for the user.
-
-## Review and browser handoff
-
-User asks to prepare a Review application in the browser
-→ open posting in JobPilot's Chrome profile
-→ find and verify an application form
-→ extract questions and resolve supported answers
-→ fill resolved fields
-→ leave the browser open with unresolved fields blank
-→ user reviews and submits in the browser
-→ user records approval/submission and subsequent outcomes in JobPilot
-
-JobPilot never clicks the external submit control.
-Approval and submission tracking are local records, not commands to an employer.
-A detected blocker or preparation failure stops automation and leaves the browser open for the user.
-Assist applications do not enter this browser flow.
+JobPilot never writes the letter or an answer, and never touches the employer's form (ADR-0034).
+Cover-letter versions, questions and application transitions remain in local history.
+Marking an application ready to send and recording submission are local records, not commands to an employer.
 
 ## Scouts
 
@@ -68,11 +55,11 @@ User configures a Scout over a saved search
 → Scout obtains local or freshly discovered jobs
 → analyzes eligible jobs
 → deterministic rules evaluate score and per-run limits
-→ creates applications for review
+→ creates applications for the candidate
 → records decisions in Activity and eligible notifications
-→ user reviews the shortlist
+→ user reviews the shortlist and applies to the ones they want
 
-A Scout stops before browser preparation and never contacts an employer.
+A Scout never contacts an employer.
 
 ## Offline
 

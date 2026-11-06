@@ -2,12 +2,13 @@
 
 Open-source, local-first AI job search and application assistant.
 
-JobPilot discovers jobs, explains how they match your profile and resume, and drafts cover letters and application answers.
+JobPilot discovers jobs, explains how they match your profile and resume, and keeps track of the applications you send.
 It keeps your data on your computer and offers a Go CLI and a Tauri desktop app for macOS, Linux and Windows.
 
-Review is the default application mode.
-JobPilot can fill a form in your installed Chrome and leave it open for you to review and submit; **JobPilot never submits applications** ([ADR-0014](docs/09_decisions/0014-scouts-and-no-unattended-submission.md)).
-A Scout runs a saved search, scores jobs against deterministic eligibility rules, and creates applications for review without contacting employers.
+**You write and send your own applications.**
+JobPilot never writes a cover letter or an answer for you, and never fills in or submits an employer's form ([ADR-0034](docs/09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
+It opens the application page in your own browser and keeps your details, letter and answers ready to copy.
+A Scout runs a saved search, scores jobs against deterministic eligibility rules, and creates applications for you to work on, without contacting employers.
 
 ## Current status
 
@@ -21,14 +22,15 @@ The plugin ecosystem is post-MVP.
 - Keep your profile, resumes, job history and applications locally.
 - Discover and deduplicate jobs from public boards and watched company hiring pages.
 - Match jobs against your profile and resume, with structured explanations.
-- Draft and edit cover letters and answers, with checks that flag text for review.
+- Write your cover letter and answers beside the job, with your profile details one click from the clipboard and checks that point out stock phrases and unsupported claims.
+- Record what happened after you applied: interviewing, offered, rejected or no response.
 - Run Scouts manually or on an operating-system schedule, with local notifications.
 - Configure model providers, prompt guidance and saved searches through the desktop or CLI.
 
 Ollama is the default local model provider; other local servers and hosted models are supported.
 Using a hosted model sends candidate context and job postings to that provider, which JobPilot identifies in its settings.
 Fresh job discovery needs internet access; stored history remains available offline.
-Candidate facts come from your profile, resume and answers, and deterministic rules take precedence over model suggestions.
+The model scores and explains matches; it writes nothing that goes to an employer, and deterministic rules take precedence over it.
 
 ## Installing
 
@@ -47,7 +49,7 @@ The packaging workflow produces the following artifacts.
   It installs JobPilot for you alone, so it never asks for an administrator.
 - **Linux:** Install the package with `sudo apt install ./JobPilot_<version>_amd64.deb` or `sudo dnf install ./JobPilot-<version>-1.x86_64.rpm`.
 
-Install Google Chrome to use browser preparation or import a job from an unsupported source.
+Install Google Chrome to import a job from a source JobPilot does not support.
 JobPilot downloads its Playwright driver on first browser use, so that step needs internet access.
 
 The first time JobPilot opens, it asks which AI model to use, a local one such as [Ollama](https://ollama.com) or a hosted one with an API key, then for your profile, your resume and a job search.
@@ -116,7 +118,7 @@ Your data is in `~/Library/Application Support/jobpilot` on macOS, `%AppData%\jo
 ## Development
 
 The core and CLI use Go, persistence uses SQLite, and the desktop uses Tauri 2, React and TypeScript.
-Browser automation uses Go Playwright with installed Chrome.
+Reading a job page for import uses Go Playwright with installed Chrome.
 
 For the CLI, install Go at the version required by [go.mod](go.mod) or later, then run:
 

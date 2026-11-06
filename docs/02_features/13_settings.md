@@ -9,7 +9,7 @@ Saving model or prompt settings takes effect on the running daemon without a res
 | --- | --- | --- |
 | Appearance | System, light or dark theme | Desktop-local preference |
 | AI model | Provider, base URL, model and optional credential label | `settings show`, `settings set-llm`; [LLM architecture](../01_architecture/05_llm.md) |
-| Prompts | Guidance for matching, letters and written answers | `settings prompts`; [prompt customization](20_prompt_customization.md) |
+| Prompts | Guidance for matching | `settings prompts`; [prompt customization](20_prompt_customization.md) |
 | Job searches | Saved searches, templates, launch refresh and watched companies | `search saved`, `search templates`, `company`; [discovery](04_job_discovery.md) |
 | Notifications | Posting toggle and strong-match score | `settings notifications`; [notifications](11_notifications.md) |
 | API keys | Named credentials, without displaying stored values | `credentials`; [ADR-0019](../09_decisions/0019-storing-a-credential.md) |
@@ -28,8 +28,8 @@ Saved-search criteria cannot be empty; onboarding configures at least one search
 
 ## Remaining categories
 
-A global application-mode setting, retention policy, storage-location changes, browser configuration and additional policies remain unimplemented.
-Application mode is already chosen per application, and Scout eligibility is configured on each Scout and its saved search.
+Retention policy, storage-location changes, browser configuration and additional policies remain unimplemented.
+Scout eligibility is configured on each Scout and its saved search.
 These are distinct from a global settings category.
 
 ## Acceptance Criteria

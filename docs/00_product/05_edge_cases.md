@@ -40,18 +40,20 @@
 ## Applications
 
 - Already applied to job
-- Application already prepared
 - Application expires
-- Required question cannot be answered
+- The job's link is the posting, not the application form
 - Question asks for sensitive information
 - Question requires a factual answer not present in profile
+- A suggestion matches the question's words but not what it asks
+- The user's submission on the employer's site fails
+- The user forgets to record that they sent it
+
+## Importing a job by URL
+
 - Browser closes
-- CAPTCHA appears, or the page is a site's human check (ADR-0033)
-- A site refuses JobPilot's browser even after its check is answered
-- Session expires
-- Form changes
-- The user's submission in the external browser fails
-- Network disconnects mid-flow
+- The page is a site's human check (ADR-0033)
+- The page needs a sign-in to show the posting
+- Network disconnects mid-read
 
 ## Local storage
 

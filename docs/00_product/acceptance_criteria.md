@@ -63,16 +63,16 @@ Match explanations contain structured strengths/gaps/concerns.
 ## Applications
 
 ### AC-G-017
-Review is the default mode.
+JobPilot never writes a cover letter, a written answer, or any other text for an employer (ADR-0034).
 
 ### AC-G-018
-Review mode leaves the prepared browser window open for the user to review and submit themselves.
+JobPilot never fills in an external application form; it opens the application page in the user's own browser (ADR-0034).
 
 ### AC-G-019
-JobPilot never submits an application to an external system, in any mode, under any configuration.
+JobPilot never submits an application to an external system, under any configuration.
 
 ### AC-G-020
-Unknown factual application questions are not guessed.
+Unknown factual application questions are not guessed: a suggestion comes only from the profile, a deterministic derivation, or an answer the candidate kept.
 
 ## Data lifecycle
 
@@ -91,7 +91,5 @@ External webpages are treated as untrusted input.
 LLM output cannot escalate tool permissions.
 
 ### AC-G-025
-Browser automation never gets past a CAPTCHA or anti-bot check itself: it waits for the user to answer one, and stops when the user does not or the site refuses its browser (ADR-0033).
-It stops safely on ambiguous required fields.
-Unresolved factual questions are left blank for the user; a preparation result does not imply every required field was filled.
-CAPTCHA detection and unreadable-field reporting have known limitations; see [current state](current_state.md).
+The browser that reads a job page for import never gets past a CAPTCHA or anti-bot check: a page that is a human check is reported, not read as the posting (ADR-0033 §1).
+CAPTCHA detection has known limitations; see [current state](current_state.md).

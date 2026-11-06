@@ -4,16 +4,22 @@
 
 A job and an application are separate entities.
 
-The preparation path is DISCOVERED → MATCHED → PREPARING → READY_FOR_REVIEW → APPROVED.
-The user can then record an external submission as SUBMITTED.
-Outcomes branch from there; they are not a single sequence.
+The path to sending is DISCOVERED → MATCHED → APPROVED (ready to send) → SUBMITTED.
+APPROVED is optional: the user can record SUBMITTED straight from MATCHED, and move a ready-to-send application back to MATCHED.
+Outcomes branch from SUBMITTED; they are not a single sequence.
+PREPARING, READY_FOR_REVIEW and FAILED existed for browser preparation and were removed with it ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md) §3).
 The transition table in `internal/core/services/application.go` is authoritative, and the API exposes allowed next states to clients.
 
 ### Before submission
 
-JobPilot finds, matches, prepares and records review/approval.
-It never sends an application to an employer.
-SUBMITTED is reachable only from APPROVED, when the user explicitly records that they submitted externally.
+JobPilot finds and matches jobs, and keeps what the candidate needs to apply beside the job:
+
+- "Open application page" opens the job's link, or one the user saved for the form itself, in the user's own browser.
+- Their profile details, About you answers and kept answers are listed, each a click from the clipboard.
+- Their cover letter (`06_cover_letters.md`) and their notes on the form's questions (`07_application_answers.md`).
+
+It never writes the application, fills in the form, or sends it.
+SUBMITTED is reachable only from MATCHED and APPROVED, when the user explicitly records that they submitted externally.
 
 ### After submission
 
@@ -46,7 +52,7 @@ Invalid transitions are rejected.
 Application history is persisted.
 
 ### AC-004
-An application can reference generated answers and cover letters.
+An application can reference the candidate's own answers and cover letters.
 
 ### AC-005
 A job cannot silently become marked as submitted.

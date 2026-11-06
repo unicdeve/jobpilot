@@ -30,17 +30,19 @@ The system detects duplicate jobs across sources.
 
 The system evaluates jobs against the candidate profile and resume and produces a match score and structured explanation.
 
-### PR-008 Application answer generation
+### PR-008 Application answers
 
-The system generates tailored answers for application questions using the job description and candidate context.
+The candidate notes the questions an application asks and writes their own answers.
+The system may suggest an answer only from the candidate's profile, a deterministic derivation from it, or an answer they kept; it never generates one ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
 
 ### PR-009 Cover letters
 
-The system can generate a tailored cover letter for a job.
+The candidate writes their cover letter in JobPilot, which keeps its versions and points out stock phrases and unsupported claims.
+The system never generates a letter ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
 
 ### PR-010 Local history
 
-Jobs, analyses, generated application content, and application history are stored locally.
+Jobs, analyses, the candidate's application content, and application history are stored locally.
 
 ### PR-011 LLM abstraction
 
@@ -52,7 +54,7 @@ Ollama is supported as the initial local LLM provider.
 
 ### PR-013 Prompt customization
 
-Users can customize the guidance for matching, cover letters and written answers without editing source code.
+Users can customize the guidance for matching without editing source code.
 The safety rules and response contracts remain code-owned ([ADR-0031](../09_decisions/0031-what-a-user-may-change-in-a-prompt.md)).
 
 ### PR-014 CLI
@@ -65,7 +67,7 @@ The application exposes equivalent core user workflows through a native-feeling 
 
 ### PR-016 Offline history
 
-Previously stored jobs, analyses, generated content, and history remain accessible without internet.
+Previously stored jobs, analyses, application content, and history remain accessible without internet.
 
 ### PR-017 Local workspaces
 
@@ -75,13 +77,14 @@ This requires no hosted account and does not make a workspace an authentication 
 ## Post-MVP requirements
 
 This is the original scope boundary, not a list of unimplemented features.
-Browser preparation, Review mode, Scouts, desktop notifications, Activity, application memory, OS scheduling and packaging are now built.
+Scouts, desktop notifications, Activity, application memory, OS scheduling and packaging are now built.
+Browser preparation and Review mode were built and then removed by [ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md).
 Published installers and cross-platform runtime verification remain outstanding.
 See [current state](current_state.md) for status and [roadmap](roadmap.md) for phases.
 
-- Browser automation for application forms.
-- Review workflow with browser form filling.
-- Scouts: unattended discovery and matching that prepares applications for review.
+- Browser automation for application forms (built, then removed by ADR-0034).
+- Review workflow with browser form filling (built, then removed by ADR-0034).
+- Scouts: unattended discovery and matching that creates applications for the candidate.
 - More job source connectors.
 - Authenticated website sessions.
 - Connector SDK.
@@ -99,6 +102,6 @@ See [current state](current_state.md) for status and [roadmap](roadmap.md) for p
 - No mandatory hosted backend.
 - Local-first storage.
 - User controls consequential external actions.
-- JobPilot never submits an application; the user submits in the browser.
+- JobPilot never writes, fills in or submits an application; the candidate does, in their own browser.
 - No assumption that arbitrary websites permit automation.
 - No guarantee that every job site can be automated.

@@ -2,7 +2,7 @@
 
 Persist structured events, not hidden chain-of-thought.
 
-Browser preparation and scout runs already persist `AgentRun` and `AgentEvent` records.
+Scout runs persist `AgentRun` and `AgentEvent` records; browser preparation did until ADR-0034 removed it.
 The desktop Activity screen and `jobpilot-cli activity` expose these records.
 
 An event includes:

@@ -15,7 +15,7 @@ Return structured errors for:
 - page unavailable
 - navigation failure
 - authentication required
-- CAPTCHA, which the run waits for the user to answer (ADR-0033)
+- CAPTCHA or a page that is a human check, which stops the import (ADR-0033 §1)
 - unsupported form
 - selector mismatch
 - timeout

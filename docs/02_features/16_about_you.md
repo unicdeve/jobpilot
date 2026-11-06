@@ -1,8 +1,13 @@
-# Feature: About You — Personal Cover Letters and Answers
+# Feature: About You
 
 ## Status
 
-Implemented.
+Implemented, and narrowed by [ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md) on 2026-11-06.
+JobPilot no longer writes cover letters or answers, so nothing is generated from what the candidate says here.
+About you is now the candidate's own material: their standing answers and the answers they kept, ready to copy on an application, and the source of kept-answer suggestions.
+The writing sample, writing preferences, the "never mention" question and the per-application questions were removed with the generation they steered, and migration 00026 deleted them.
+The rest of this page is the original design, kept for why each part exists; where it describes generation, it describes what was removed.
+
 D1 to D7 were decided on 2026-09-29, and ADR-0022 records how answers are stored.
 Migration `00018` creates `personal_answers` and moves `candidates.application_preferences` into it.
 Roadmap: this comes before prompt customization (PR-013); see "Prompt customization" below for why.
@@ -29,7 +34,7 @@ What each generator is given, read from the code:
 | Why this candidate wants this job | no | no |
 | What they value, their stories, their voice | no | no |
 
-A written answer is generated when an application is prepared in the browser (`BrowserWorkerService`, through `AnswerService.Resolve`) or when the user resolves a question, for questions of type narrative only.
+A written answer was generated when an application was prepared in the browser (`BrowserWorkerService`, through `AnswerService.Resolve`) or when the user resolved a question, for questions of type narrative only; ADR-0034 removed both.
 So "Why do you want to work here?" is answered today from the summary, skills and work history, with nothing about why.
 
 `docs/02_features/06_cover_letters.md` already names "user prompt preferences" as an input and "avoid generic filler where relevant evidence exists" as a rule.
@@ -235,44 +240,31 @@ Preparation is already a step the candidate reviews before submitting; the per-a
 
 ## Deletion
 
-About you answers and the writing sample belong to the candidate, and go when the profile is deleted.
-Per-application answers belong to their application, and go when it is deleted.
-Kept answers belong to the candidate.
-These are new record kinds for ADR-0021's rule table, and its agreement test holds the schema to them.
+About you answers and kept answers belong to the candidate, and go when the profile is deleted.
 
 ## Where it is offered
 
 | | Desktop | CLI |
 | --- | --- | --- |
-| About you, the writing sample | Profile → About you | `profile about` (asks each question in turn), `profile about set <key>` |
-| Per-application questions | before "Write one" and "Rewrite" on the application | `application cover-letter generate` asks them first; `--no-questions` skips |
-| Keeping an answer | on a narrative answer the candidate edited | `application question keep <question-id>` |
+| About you | Profile → About you, and copyable on every application | `profile about` (asks each question in turn), `profile about set <key>` |
+| Keeping an answer | on any answered question on an application | `application question keep <question-id>` |
 
 ## Acceptance Criteria
 
 ### AC-001
-The candidate can answer, change and clear each About you question, and add a writing sample; none is required.
+The candidate can answer, change and clear each About you question; none is required.
 
 ### AC-002
-A letter is written from the About you answers, the application's answers and the sample's voice, as well as what it uses today.
+Nothing is generated from About you: no letter, no answer.
 
 ### AC-003
-Before a letter is written, the candidate is offered the per-application questions, and can skip them.
+The candidate's answers are listed on each application, each copyable.
 
 ### AC-004
-No answer to an About you question or a per-application question is ever written by the model.
+No answer to an About you question is ever written by the model.
 
 ### AC-005
-A written answer on a form is given the same material as a letter, and the resume.
+An answer the candidate wrote to a question on an application can be kept, and is then suggested for a similar question on another application.
 
 ### AC-006
-A narrative answer the candidate wrote can be kept, and is then material for later narrative questions.
-
-### AC-007
-Nothing the writing sample says is stated as a fact about the candidate.
-
-### AC-008
-Deleting the profile deletes the About you answers, the sample and kept answers; deleting an application deletes its answers.
-
-### AC-009
-Without a model configured, the questions are still offered, and only proposing questions from the posting is skipped.
+Deleting the profile deletes the About you answers and kept answers.

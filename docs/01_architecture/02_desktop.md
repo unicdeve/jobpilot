@@ -22,7 +22,7 @@ The goal above is met by a handful of rules, and a screen that breaks one is wha
 `desktop/src/index.css` defines every colour for a light theme (`:root`) and a dark one (`.dark`), and screens use the tokens — `text-muted-foreground`, `bg-card`, `border-border` — never `text-slate-500`.
 A literal looks right in one theme and wrong in the other, and before this rule 21 files held 276 of them, which is why the app had no dark theme even though the dark tokens existed.
 Status colours are roles (`success`, `warning`, `info`, `highlight`, `destructive`), used as a tint behind text of the same tone: `bg-success/12 text-success`.
-`StatusBadge` maps every state the daemon reports to a tone and a readable label; a raw value such as `READY_FOR_REVIEW` is never shown.
+`StatusBadge` maps every state the daemon reports to a tone and a readable label; a raw value such as `NO_RESPONSE` is never shown.
 
 **The theme is the user's, and follows the OS by default.**
 System, Light or Dark, under Settings → Appearance.
@@ -51,11 +51,10 @@ Other screens are a page (`components/page.tsx`): a sticky toolbar with the titl
 
 **Two kinds of wait, told apart.**
 A read from the daemon is quick and quiet: a small spinner where the content will appear (`Loading` in `components/status-line.tsx`).
-Work JobPilot does for the user — the model writing a letter, weighing a match or reading a resume, a search across the job sources, a running scout — can take a minute on a local model, and is shown by an animated orb from `thinking-orbs` beside words saying what is happening (`Thinking` and `Orb` in `components/thinking.tsx`).
+Work JobPilot does for the user — the model weighing a match or reading a resume, a search across the job sources, a running scout — can take a minute on a local model, and is shown by an animated orb from `thinking-orbs` beside words saying what is happening (`Thinking` and `Orb` in `components/thinking.tsx`).
 The orb is never spent on a plain load, so it always means "working for you", and its animation names the verb: composing, solving, searching or working.
 The line sits where the result will land, not only on the button that asked for it, and a result being replaced stays readable until the new one arrives.
-A cover letter being rewritten is also framed by a slow glow from `border-beam` (`components/thinking-frame.tsx`), the one place the beam is used.
-Both follow the theme the user chose, and stand still under reduced motion.
+It follows the theme the user chose, and stands still under reduced motion.
 
 **Few boxes.**
 A section is a heading, not a card; a bordered `Panel` holds a grouped list or form, divided by hairlines.
@@ -74,7 +73,7 @@ The desktop app handles:
 - settings
 - prompt customization
 - agent activity
-- approval/review UI
+- the application page: the link to apply on, copyable details, the candidate's letter and answers, and outcomes
 
 The desktop app does not own business logic that must also work through the CLI.
 
@@ -83,7 +82,7 @@ The desktop app does not own business logic that must also work through the CLI.
 Screens are reached through the objects they are about, not by carrying
 identifiers between them. `docs/00_product/03_user_flows.md` describes the
 flows job-first — "user opens job → loads candidate context → match score
-persisted", "user selects job → system generates cover letter" — and the job
+persisted", "user selects job → creates an application and applies" — and the job
 detail route (`/jobs/:id`) is where that happens: it shows the job, its match
 if it has one, its applications, and the actions that create either.
 
@@ -122,11 +121,10 @@ What that buys, beyond avoiding a hand-written `useEffect` per screen:
 - **Declared invalidation.** A mutation names the queries it affects, so
   panels no longer reload everything after every action. Invalidation
   belongs on settle rather than on success wherever a *failed* call still
-  changed server state — `usePrepareInBrowser` is the example: a start the
-  daemon refuses may still have moved the application into PREPARING.
-- **Polling while the daemon works.** A browser run goes on in the daemon
-  after the request that started it, so `useAgentRuns` reads the runs again
-  every two seconds while one is in progress, and stops when none is.
+  changed server state.
+- **Polling while the daemon works.** A scout run goes on in the daemon
+  after the request that started it, so an open run is read again every two
+  seconds while it is in progress, and stops when it is not.
 
 Cached data belongs to one daemon, so reconnecting with Retry clears the cache
 rather than showing a previous daemon's data.

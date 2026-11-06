@@ -6,6 +6,7 @@ Implemented.
 D1 to D10 were decided on 2026-09-25, and ADR-0021 (D1) records how deletion is built.
 Migration `00015` gives the foreign keys their rules and `00016` adds `jobs.not_interested_at`.
 ADR-0032 scopes “delete all data” to the selected local profile once more than one profile can exist.
+Since ADR-0034 there are no browser runs and no per-application About you answers, so an application's deletion reaches only its questions, letters and history; D4 is kept for the record.
 
 ## Purpose
 
@@ -115,7 +116,6 @@ Deleting a job marked not interested forgets that decision with it.
 ### Delete an application
 
 Deletes the application, its questions and answers, its cover letter versions and its state history.
-Its browser runs go with it; see D4.
 A submitted application can be deleted; see D3.
 The confirmation says that deleting it does not withdraw anything sent to an employer.
 
@@ -130,7 +130,7 @@ This keeps "the letter this application uses" from silently changing.
 ### Delete a resume
 
 Deletes the resume.
-Applications that used it keep everything already generated from it and record that their resume was deleted (`resume_id` becomes null); see D5.
+Applications that used it keep everything written for them and record that their resume was deleted (`resume_id` becomes null); see D5.
 
 ### Delete the profile
 

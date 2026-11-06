@@ -31,14 +31,14 @@ Add selectively for:
 ## Browser tests
 
 `internal/adapters/secondary/browser/playwright_worker_test.go` (tagged
-`integration`) runs a real headless Chrome against a local `httptest`-served
-fixture form — no live internet site or visible window needed, so it's
-deterministic and safe for CI/local pre-push. `internal/core/services/browserworker_test.go`
-covers the orchestration logic (extraction → question → resolve → fill,
-blocker/failure handling, state transitions) with a fake `ports.BrowserWorker`
-and needs no browser at all. The first run of the browser-adapter test
-downloads the Playwright driver (~50MB, cached afterward) — expect that run
-to take longer.
+`integration`) runs a real headless Chrome against local `httptest`-served
+pages: reading a job posting, sharing one browser between reads, and telling
+a human-check page from a posting — no live internet site or visible window
+needed, so it's deterministic and safe for CI/local pre-push. Job import's
+use of it is covered in `internal/core/services` with a fake
+`ports.BrowserWorker`. The first run of the browser-adapter test downloads
+the Playwright driver (~50MB, cached afterward) — expect that run to take
+longer.
 The real-browser tests skip when installed Chrome or the driver is unavailable, so a passing tagged suite alone does not prove these tests executed.
 
 ## Running tests

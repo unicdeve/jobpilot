@@ -30,47 +30,43 @@ IDs in the examples are placeholders; use the IDs printed by the corresponding l
   Shows what goes and asks first; `--yes` skips the question.
 - `jobpilot-cli profile update`: Interactively update the current candidate profile.
   Allows updating First Name, Last Name, Contact, Location, Summary, Skills and remote preference.
-- `jobpilot-cli profile about`: Asks each About you question in turn — what you are looking for, what you value, the work you are proudest of, what colleagues come to you for, your career story, anything never to mention — and how you want letters to sound.
+- `jobpilot-cli profile about`: Asks each About you question in turn — what you are looking for, what you value, the work you are proudest of, what colleagues come to you for, your career story.
   Enter keeps an answer; clearing one removes it; nothing is required.
-  Cover letters and written answers are built from what you say here (`docs/02_features/16_about_you.md`).
-- `jobpilot-cli profile about show`: Shows your answers, writing preferences, writing sample and kept answers.
-- `jobpilot-cli profile about set [key] [answer]`: Sets or clears one answer by its key, or `writing_sample` / `writing_preferences`.
-  `--file` reads it from a file, which suits a writing sample.
+  These are your own answers, kept ready to copy when you apply; JobPilot writes nothing from them (`docs/02_features/16_about_you.md`).
+- `jobpilot-cli profile about show`: Shows your answers and kept answers.
+- `jobpilot-cli profile about set [key] [answer]`: Sets or clears one answer by its question's key.
+  `--file` reads it from a file.
 - `jobpilot-cli profile about forget [id]`: Forgets an answer you kept for similar questions.
 
 ## Matching and Applications
 
 - `jobpilot-cli match analyze <job-id>`: Analyze fit against the current profile and print the score, confidence, rationale, strengths and gaps.
 - `jobpilot-cli match list`: List stored match analyses.
-- `jobpilot-cli application create <job-id>`: Start tracking an application; `--resume <resume-id>` associates a resume and `--mode assist|review` chooses the mode (default `review`).
+- `jobpilot-cli application create <job-id>`: Start tracking an application; `--resume <resume-id>` associates a resume.
 - `jobpilot-cli application list`: List applications for the current profile.
 - `jobpilot-cli application show <application-id>`: Show the application, its content and allowed next states.
 - `jobpilot-cli application transition <application-id> <state>`: Request an allowed state transition; `--reason` records a note.
-- `jobpilot-cli application prepare-in-browser <application-id>`: Fill known answers in the dedicated Chrome profile and leave the browser open for your review and submission.
-  Assist applications cannot use this command.
-  JobPilot never clicks Submit; inspect the application and run trail if preparation fails.
-  The command follows the run until it ends: if a page asks whether you're a person, answer it in the browser window and the run carries on, and Ctrl-C stops the run.
-  `--from <url>` starts from that application form address instead of the job's own link, and keeps it for later runs — the way round a site that refuses JobPilot's browser.
-- `jobpilot-cli application apply-url <application-id> <url>`: Set the address later runs start from; `--clear` goes back to the job's own link.
-- `jobpilot-cli application submitted <application-id>`: Record that you submitted it yourself after the application is `APPROVED`; `--reason` records a note.
-- `jobpilot-cli application agent-runs <application-id>`: Show browser preparation runs for this application.
+- `jobpilot-cli application link <application-id>`: Print the address to apply at — the one you saved, or the job's own — to open in your own browser.
+  JobPilot never fills in or submits the form (ADR-0034).
+- `jobpilot-cli application apply-url <application-id> <url>`: Save the address to apply at, when the job's link is only the posting; `--clear` goes back to the job's own link.
+- `jobpilot-cli application submitted <application-id>`: Record that you submitted it yourself, from `MATCHED` or `APPROVED` (ready to send); `--reason` records a note.
 
 `application show` reports the daemon's allowed transitions.
 Every outcome after `SUBMITTED` is recorded by you; JobPilot does not infer an employer's response.
 
 ## Cover Letters and Answers
 
-- `jobpilot-cli application cover-letter generate [application-id]`: Asks a few questions about this job first — what draws you to it, and up to two the model proposes from the posting — then writes the letter from your answers, your About you and your profile.
-  Enter skips a question; `--no-questions` skips them all.
-  Rewriting offers the same questions, prefilled.
-- `jobpilot-cli application cover-letter list <application-id>`: Show every version and its review flags.
-- `jobpilot-cli application cover-letter edit <cover-letter-id> "<content>"`: Replace a version's text.
-- `jobpilot-cli application question add <application-id> "<label>"`: Add a question; `--type factual|narrative` defaults to `factual` and `--required` marks it required.
-- `jobpilot-cli application question resolve <question-id>`: Resolve through the existing answer chain, leaving unsupported facts for you.
-- `jobpilot-cli application question answer <question-id> "<answer>"`: Supply your answer.
-- `jobpilot-cli application question list <application-id>`: Show questions, answers and resolution status.
-- `jobpilot-cli application question keep [question-id]`: Keeps a written answer you wrote yourself, so written answers to similar questions draw on it.
-- Every letter and written answer the CLI prints is followed by "To review" when there is something to look at: a model preamble, a stock phrase, a letter longer than you asked for, or a number of years you never gave (`docs/02_features/19_draft_checks.md`).
+You write your letter and answers yourself; JobPilot never generates them (ADR-0034).
+
+- `jobpilot-cli application cover-letter write <application-id> ["<content>"]`: Save the letter you wrote as a new version and make it the current one; `--file` reads it from a file.
+- `jobpilot-cli application cover-letter list <application-id>`: Show every version and its flags.
+- `jobpilot-cli application cover-letter edit <cover-letter-id> ["<content>"]`: Replace a version's text; `--file` reads it from a file.
+- `jobpilot-cli application question add <application-id> "<question>"`: Note a question the form asks, and see a suggestion when your profile or a kept answer gives one.
+- `jobpilot-cli application question answer <question-id> ["<answer>"]`: Write your answer; `--file` reads it from a file, and an empty answer clears it.
+- `jobpilot-cli application question list <application-id>`: Show questions, your answers and suggestions.
+- `jobpilot-cli application question keep [question-id]`: Keep your answer, so a similar question on another application suggests it.
+- `jobpilot-cli application question delete [question-id]`: Remove a question and your answer.
+- Every letter and answer the CLI prints is followed by "Worth a look" when there is something to look at: a stock phrase, a letter over 250 words, or a number of years you never gave (`docs/02_features/19_draft_checks.md`).
   Nothing is changed or blocked; you decide.
 
 ## Resume Management
@@ -147,7 +143,7 @@ It never contacts an employer and never submits (`docs/02_features/10_scouts.md`
 
 ## Activity and Credentials
 
-- `jobpilot-cli activity list`: List agent runs; narrow with `--kind prepare_application|scout_run` or `--status running|completed|blocked|failed` and page with `--limit` (default 50, maximum 200) and `--offset`.
+- `jobpilot-cli activity list`: List scout runs; narrow with `--status running|completed|failed` and page with `--limit` (default 50, maximum 200) and `--offset`.
 - `jobpilot-cli activity show <run-id>`: Show a run's steps and policy results.
 - `jobpilot-cli credentials list`: List configured credential references without showing values.
 - `jobpilot-cli credentials set <source> --label <label>`: Store or replace a key in the OS keychain using a masked prompt or piped standard input.
@@ -165,7 +161,7 @@ Without `--yes`, a noninteractive invocation does not delete anything.
 If the impact changes before deletion, JobPilot shows the new list and asks again.
 Saved-search, scout, watched-company and credential removal commands do not use this confirmation flow.
 
-- `jobpilot-cli application delete [id]`: Deletes an application with its answers, cover letter versions, status history and browser runs.
+- `jobpilot-cli application delete [id]`: Deletes an application with its questions and answers, cover letter versions and status history.
   Nothing already sent to an employer is withdrawn.
 - `jobpilot-cli application cover-letter delete [id]`: Deletes an earlier cover letter version.
   The version an application uses cannot be deleted while it is in use.
@@ -178,10 +174,9 @@ Saved-search, scout, watched-company and credential removal commands do not use 
 ## Settings
 
 - `jobpilot-cli settings show`: Displays the configured LLM provider, base URL, and model (or the default if not yet configured), the API key's label and whether it is stored, and, for a model that is not on this computer, where the candidate's data is sent.
-- `jobpilot-cli settings prompts`: Lists the prompts you can give guidance to — matching, cover letters and written answers — and whether each follows its default or your own guidance (ADR-0031).
+- `jobpilot-cli settings prompts`: Lists the prompts you can give guidance to — matching — and whether each follows its default or your own guidance (ADR-0031).
   The rules that keep JobPilot to what you have told it are not guidance and cannot be changed.
 - `jobpilot-cli settings prompts show <key>`: Shows a prompt's guidance, and its default beside your own.
-  For cover letters, also says that length and tone are your writing preferences.
 - `jobpilot-cli settings prompts edit <key>`: Replaces a prompt's guidance with your own, edited in `$VISUAL` or `$EDITOR` starting from what it is now.
   `--file <path>` reads it from a file, or `-` from standard input.
   Empty guidance, or more than 2,000 characters, is refused.
@@ -221,10 +216,11 @@ jobpilot-cli search list --limit 20 --offset 20
 ```
 
 ```bash
-# After preparing and reviewing the application
-jobpilot-cli application transition <application-id> APPROVED
+# Open the application page in your own browser, and write your letter
+jobpilot-cli application link <application-id>
+jobpilot-cli application cover-letter write <application-id> --file letter.txt
 
-# After you submit it yourself in the browser
+# After you submit it yourself on the employer's site
 jobpilot-cli application submitted <application-id>
 
 # Record an interview, then an offer, when each happens

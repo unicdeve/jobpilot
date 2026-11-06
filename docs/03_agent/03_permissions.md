@@ -1,7 +1,7 @@
 # Tool Permissions
 
 These are conceptual categories for a future general tool runtime.
-Current services enforce their own explicit boundaries; a Scout cannot enter the browser, and Assist mode cannot prepare an external form.
+Current services enforce their own explicit boundaries; a Scout cannot enter the browser, and nothing prepares an external form (ADR-0034).
 
 ## Categories
 

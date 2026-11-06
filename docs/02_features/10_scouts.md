@@ -19,9 +19,9 @@ application.
 A Scout runs a saved search, analyzes what it finds against the candidate,
 and creates applications for the ones worth the user's attention.
 The output is a shortlist waiting for them.
-The user opens one, reviews the match, and prepares it in the browser
-themselves — the flow that already exists, entered from a list someone else
-assembled.
+The user opens one, reviews the match, and applies themselves, on the
+employer's site, with their details ready to copy (ADR-0034) — the flow that
+already exists, entered from a list someone else assembled.
 
 Autopilot, the feature this replaces, fused two separate ideas: unattended
 work, and automatic submission.
@@ -44,7 +44,7 @@ The second was declined — see "Why nothing submits" below.
 
 ## Boundaries
 
-- A Scout contacts no employer. It stops before the browser.
+- A Scout contacts no employer, and opens no browser.
 - A Scout's only external traffic is the job-source APIs discovery already
   calls.
 - A Scout creates applications. It never submits one, and neither does
@@ -96,8 +96,8 @@ Measured on a real run over 50 stored jobs, one job matched and exactly one mode
 An application is a representation by the candidate, about themselves, under
 their name.
 
-In Review mode a wrong answer is caught by the person looking at the filled
-form, and the cost of a miss is an awkward moment before they send it.
+When the candidate writes and checks every answer themselves, a wrong one is
+caught before they send it, and the cost of a miss is an awkward moment.
 Submitted unattended, the same wrong answer is irreversible, attributable to
 a named real person, and discovered by them only after an employer has read
 it.
@@ -164,9 +164,5 @@ scout and says why it is not scheduled.
 
 ## Deferred
 
-**Unattended preparation in the browser.**
-Waking up to filled forms is the natural next step.
-It needs the browser worker's tab contract resolved first: filled answers
-persisted and the window re-opened on demand, rather than every run leaving
-a window behind. It also needs an answer for boards that want a login, which
-a Scout running unattended cannot provide.
+**Unattended preparation in the browser** was deferred here, and is now
+declined: ADR-0034 removed browser preparation altogether.

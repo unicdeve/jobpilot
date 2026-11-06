@@ -2,34 +2,32 @@
 
 ## Requirements
 
-Generate a tailored cover letter from:
-- job description
-- candidate profile
-- relevant resume content
-- user prompt preferences
+The candidate writes their own cover letter for an application, in JobPilot, beside the job and their own material ([ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md)).
+JobPilot never writes, drafts or rewrites a letter.
 
-What the candidate says about themselves — the About you answers, this application's answers, the writing sample and how they want to sound — is `docs/02_features/16_about_you.md`, which also sets the default prompt's style rules.
+What the candidate has said about themselves, under About you, is shown beside the application ready to copy (`16_about_you.md`).
+Draft checks point out stock phrases, an unusually long letter and claims the candidate's own material does not support (`19_draft_checks.md`).
 
 ## Rules
 
-- Never invent experience.
-- Avoid generic filler where relevant evidence exists.
-- Respect user-selected tone and length.
-- Generated content is editable.
+- No model writes any part of a letter.
+- A letter is kept as versions: saving a new one keeps the earlier ones, and the current version can be edited in place.
+- An empty letter is refused.
+- Draft checks advise; they never block saving.
 
 ## Acceptance Criteria
 
 ### AC-001
-A user can generate a cover letter for a stored job.
+A user can write and save a cover letter for an application.
 
 ### AC-002
-The letter references relevant candidate experience when available.
+Saving a new letter adds a version and makes it the application's current letter.
 
 ### AC-003
-The system does not invent candidate facts.
+No code path generates letter text.
 
 ### AC-004
-The user can regenerate and edit the result.
+The user can edit the current version in place, and copy it.
 
 ### AC-005
-The generated content is stored in application history.
+Every version is stored in application history until the user deletes an earlier one.

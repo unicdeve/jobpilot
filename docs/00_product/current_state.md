@@ -8,8 +8,8 @@ The [roadmap](roadmap.md) records the original phase scope.
 
 | Phase | Status |
 | --- | --- |
-| 0–6: foundation through browser preparation | Substantially implemented; limitations below |
-| 7: Review mode | Implemented, including approval, browser handoff and user-reported submission/outcomes |
+| 0–6: foundation through browser preparation | Substantially implemented; generated letters and answers and form filling removed by ADR-0034 |
+| 7: Review mode | Replaced by ADR-0034: the candidate applies themselves, with ready-to-send and user-reported submission/outcomes |
 | 8: Scouts | Implemented, including deterministic eligibility, OS schedules and desktop notifications |
 | 9: Extensibility | Deferred; the plugin protocol remains proposed |
 | 10: Distribution | Packaging and release automation built; first release and installed-build verification outstanding |
@@ -24,10 +24,10 @@ Implemented does not mean verified on every target platform or guaranteed to wor
 - Data stays local by default, with no application account or mandatory hosted backend.
 - Ollama is the default local model; llama.cpp, LM Studio and custom OpenAI-compatible endpoints are supported.
 - Hosted model use sends candidate context and job content to the configured host, with a notice when configured (ADR-0030).
-- Review is the default mode; Assist never prepares external forms.
-- JobPilot never submits applications, in any mode or configuration; the user submits in the browser (ADR-0014).
-- Scouts stop before the browser and create applications for review.
-- Candidate facts, eligibility rules, answer derivation and draft checks remain deterministic where required; external content is untrusted.
+- The candidate writes and sends their own applications (ADR-0034): JobPilot never writes a letter or an answer, and never fills in or submits an employer's form.
+  There are no application modes.
+- Scouts create applications for the candidate and never contact an employer.
+- Candidate facts, eligibility rules, answer suggestions and draft checks are deterministic; external content is untrusted.
 - Go Playwright uses installed Chrome and a dedicated JobPilot profile; document conversion uses a port, with JobPilot's PDF extraction and Go MarkItDown for other supported formats (ADR-0016).
 
 ## Implemented workflows
@@ -40,7 +40,7 @@ Implemented does not mean verified on every target platform or guaranteed to wor
   Calendar dates use `YYYY-MM-DD`; experience spans do not double-count overlapping roles.
 - PDF, DOCX, TXT, MD and HTML resumes can be imported, listed and deleted.
   Resume-to-profile suggestions require review and never directly overwrite saved candidate facts (ADR-0011).
-- About you stores the candidate's own stories, preferences, writing sample and reusable personal answers, with per-application context (ADR-0022).
+- About you stores the candidate's own answers about themselves and the answers they kept from applications, ready to copy (ADR-0022, narrowed by ADR-0034).
 
 See [onboarding](../02_features/01_onboarding.md), [profile](../02_features/02_candidate_profile.md), [resumes](../02_features/03_resume_management.md) and [About you](../02_features/16_about_you.md).
 
@@ -62,39 +62,31 @@ See [onboarding](../02_features/01_onboarding.md), [profile](../02_features/02_c
 
 See [discovery](../02_features/04_job_discovery.md), [matching](../02_features/05_job_matching.md), [templates](../02_features/14_search_templates.md), [watchlists](../02_features/17_company_watchlists.md) and [working hours](../02_features/18_time_zones.md).
 
-### Applications and browser preparation
+### Applications
 
-- Applications have a validated state machine and durable transition history.
-  Approval, external submission and subsequent outcomes are explicitly recorded by the user; no outcome is inferred.
-- Cover letters are versioned and editable.
-  Answers resolve through profile facts, deterministic derivation, narrative generation, or a request for user input; unknown factual answers never reach the model.
-- Deterministic draft checks flag preambles, stock phrases, excess letter length and unsupported years of experience.
-  Flags are recomputed on read and advise the reviewer without blocking actions.
-- Model generation streams with inactivity limits rather than a fixed total duration; incomplete streams fail.
-- Browser preparation shares one Chrome session, with a tab per task.
-  Apply-control rules choose the route to a form, with a constrained model fallback; a form gate prevents filling unrelated signup boxes (ADR-0013).
-- Resolved fields are filled; unanswered questions remain for the user.
-  Success, detected blockers and failures leave the preparation browser window open, and no submit control is clicked.
-- Preparation runs in the daemon's background, and starting it moves a matched or failed application into PREPARING.
-  A page asking whether the user is a person — Cloudflare's challenge page included — pauses the run until the user answers it in the browser window; the user can stop the run, and it stops by itself after five minutes (ADR-0033).
-  A site that asks again after its check is answered is refusing JobPilot's browser, which is never disguised; the run stops, and the user can continue from their own browser by pasting the application form's address, which later runs start from.
-  Himalayas postings are behind such a check and take that hand-off.
-- Chrome runs with its sandbox on.
-  Custom job import closes its reading window after extraction.
-- Recorded Ashby, Greenhouse and Lever forms and negative posting-page fixtures exercise extraction and routing offline.
+- Applications have a validated state machine and durable transition history: DISCOVERED, MATCHED, APPROVED (ready to send), SUBMITTED and the outcomes after it.
+  Ready to send, external submission and subsequent outcomes are explicitly recorded by the user; no outcome is inferred.
+- The application page opens the posting, or a link the user saved, in their own browser, and lists their profile details and About you answers, each copyable.
+- Cover letters are written by the candidate and kept as versions; the current version can be edited in place.
+- Questions are the candidate's notes with their own answers.
+  A suggestion comes only from a profile fact, a deterministic derivation, or an answer they kept, and is used only when they choose it.
+- Deterministic draft checks flag stock phrases, excess letter length and unsupported years of experience in what the candidate wrote.
+  Flags are recomputed on read and advise without blocking actions.
+- Migration 00026 deleted the letters, questions and browser runs JobPilot had generated or extracted, and moved applications left in a removed state back to MATCHED with a history entry (ADR-0034 §6).
+- The browser only reads a job page that no source recognizes, for import by URL, and closes its tab afterwards.
+  Chrome runs with its sandbox on, and a page that is a human check is reported rather than read as the posting (ADR-0033 §1).
 
-See [letters](../02_features/06_cover_letters.md), [answers](../02_features/07_application_answers.md), [applications](../02_features/08_applications.md), [Review](../02_features/09_review_mode.md), [draft checks](../02_features/19_draft_checks.md) and [browser architecture](../01_architecture/03_browser_worker.md).
+See [letters](../02_features/06_cover_letters.md), [answers](../02_features/07_application_answers.md), [applications](../02_features/08_applications.md), [draft checks](../02_features/19_draft_checks.md) and [browser architecture](../01_architecture/03_browser_worker.md).
 
 ### Scouts, notifications and activity
 
-- Scouts use a saved search, a score floor and a per-run ceiling to analyze local or freshly discovered jobs and create applications for review (ADR-0018).
+- Scouts use a saved search, a score floor and a per-run ceiling to analyze local or freshly discovered jobs and create applications for the candidate (ADR-0018).
   Runs serialize, skip ineligible or already handled jobs, and preserve completed applications on cancellation.
 - Manual, every-N-hours and daily schedules are supported through launchd, systemd user timers and Task Scheduler (ADR-0027).
   The database is authoritative; core decides whether a wake is due and reconciles alarms after changes and daemon startup.
 - Notification delivery records a claim to avoid duplicate posting; undelivered items appear on the Dashboard.
   Settings control posting and the strong-match score (ADR-0028).
-- Desktop Activity and CLI activity commands show browser/scout runs, steps, failures and deterministic policy results.
-  Filled-field events do not retain the candidate's answers.
+- Desktop Activity and CLI activity commands show Scout runs, steps, failures and deterministic policy results.
 
 See [Scouts](../02_features/10_scouts.md), [notifications](../02_features/11_notifications.md) and [Activity](../02_features/12_agent_activity.md).
 
@@ -146,13 +138,13 @@ See [testing](../08_development/testing.md) for check coverage and [packaging](.
 
 ## Limitations and deliberate exclusions
 
-- Other settings categories remain unimplemented: a global application-mode setting, retention policy, storage relocation, browser configuration and additional policies.
-  Application modes and Scout eligibility can already be chosen on their own records.
+- Other settings categories remain unimplemented: retention policy, storage relocation, browser configuration and additional policies.
+  Scout eligibility can already be chosen on each Scout.
 - Resume/model work can still show only a busy label for a long operation; discovery has queue/progress feedback.
-- Browser CAPTCHA detection and radio labeling are heuristic.
+- Browser CAPTCHA detection during job import is heuristic.
   A check is recognised by its frame's size, Cloudflare's signals and a short list of phrases; a vendor that uses none of them is not.
-  Machine-identifier-only fields can be skipped without a reported count; there is no vision-based field understanding or guided first-use board login.
-- Answer derivation is limited, and draft checks do not cover “Never mention” or claims beyond years.
+- Answer suggestions are limited to the profile facts and derivations the resolver knows, and to kept answers that share words with the question; draft checks do not cover claims beyond years.
+- The tailored resume builder is planned and not designed yet; it must follow ADR-0034 and write nothing for an employer without a new decision.
 - Only Ollama uses response schemas as sampling constraints; other providers rely on validation after decoding.
 - Education/certifications are deliberately absent until a recorded form demonstrates a need.
   Skill durations are self-reported, never inferred; salary questions remain for the user and salary floors belong to saved searches.
@@ -162,7 +154,7 @@ See [testing](../08_development/testing.md) for check coverage and [packaging](.
   Google discovery is declined (ADR-0020); Brave is deferred.
 - Regional remote titles can be narrower in the stored reading than intended when a source lists one city (for example “EMEA Remote” listed as Paris).
   Changing that interpretation remains open under ADR-0026/ADR-0023.
-- Email notifications, third-party plugin/tool SDKs, in-app updates and unattended browser preparation remain deferred.
+- Email notifications, third-party plugin/tool SDKs and in-app updates remain deferred.
   Idle daemon auto-exit is not implemented.
 
 ## Next
@@ -171,6 +163,6 @@ See [testing](../08_development/testing.md) for check coverage and [packaging](.
    The arm64 Linux runner requires a public repository or paid runner.
 2. Verify downloaded installers: macOS quarantine/sidecars/Login Items attribution, Windows install/upgrade/uninstall hooks, and Linux packages.
    Measure real schedules, notification attribution, daemon upgrades and keystore behavior on Linux/Windows before claiming cross-platform verification.
-3. Address the documented browser/answer/draft-check gaps and remaining settings requirements within their specifications.
+3. Address the documented suggestion/draft-check gaps and remaining settings requirements within their specifications.
 4. Build a keyed source (Adzuna first) once a key is available and source credential selection is defined.
 5. Resolve regional-title versus single-location eligibility before changing the reading across sources.

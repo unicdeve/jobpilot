@@ -1,8 +1,13 @@
-# Feature: Checking what the model wrote
+# Feature: Draft checks
 
 ## Status
 
 Decided, and implemented.
+Since [ADR-0034](../09_decisions/0034-the-candidate-writes-and-fills-their-own-application.md) JobPilot writes no letters or answers, and the checks run over what the candidate wrote: the stock phrases are the ones that make a letter read as anyone's, or as written by a model, and an unsupported claim of years is worth catching whoever wrote it.
+The preamble check (D5) and the length taken from writing preferences (D2) were removed: a preamble is a model's note, and writing preferences were an instruction to the model.
+A letter is held to 250 words.
+D4, the time a model has to write, still applies to matching.
+The rest of this page is the original design.
 D1 to D4 were decided on 2026-10-02, each as recommended.
 D5, the preamble, was added on 2026-10-06.
 It is the follow-up `docs/02_features/16_about_you.md` names in "What the model makes of it".
@@ -21,7 +26,7 @@ A rule a model may ignore needs a check that does not depend on the model.
   It is ordinary code over the text and the candidate's material, with no model involved, as AGENTS.md asks of every business rule.
 - **A flag is advice for the reviewer, never a gate.**
   Nothing is blocked, rewritten or removed.
-  The candidate reads the flag and decides; Review mode already requires them to.
+  The candidate reads the flag and decides; they write and send the application themselves.
 - **A claim is unsupported until something the candidate gave supports it.**
   Principle 6 — never invent candidate facts — read the other way round: a number the candidate never stated is one the model invented.
 - **Say what was found and why.**
@@ -130,11 +135,11 @@ A duration is compared after rounding to the nearest whole year, the way a perso
 ## Acceptance criteria
 
 ### AC-001
-Given a letter or generated answer containing a phrase from the stock list, in any capitalization and with "I am" or "I'm", when it is read, then it carries a stock-phrase flag quoting the phrase.
+Given a letter or answer containing a phrase from the stock list, in any capitalization and with "I am" or "I'm", when it is read, then it carries a stock-phrase flag quoting the phrase.
 
 ### AC-002
-Given writing preferences that name a number of words, or a range, when a letter is read, then it is flagged only if its word count is over that number, or the upper end of the range; given preferences that name none, the limit is 250.
-A generated answer is never flagged for length.
+Given a letter, when it is read, then it is flagged only if its word count is over 250.
+An answer is never flagged for length.
 
 ### AC-003
 Given a claim of *n* years about a skill the candidate gave a duration for, when it is read, then it is flagged only if *n* exceeds that duration rounded to the nearest year.
@@ -152,15 +157,10 @@ Given a number of years that is not a claim — a time ago, a time to come, an a
 Given a letter the candidate edits, when it is read again, then its flags are those of the edited text.
 
 ### AC-008
-Given a model that writes for longer than 30 seconds while still producing output, when it generates, then the letter is returned; given a server that stops sending for 60 seconds, or sends nothing for five minutes, then the request fails saying so.
-
-### AC-009
-Given a letter or generated answer whose first line presents it — "Here is a tailored cover letter for the role:" — when it is read, then it carries a preamble flag quoting that line, and the line is not counted in the letter's length; given the same line anywhere but first, or in the candidate's own voice ("Here is my cover letter"), then it is not flagged.
+Given a model that writes for longer than 30 seconds while still producing output, when it generates, then the reply is returned; given a server that stops sending for 60 seconds, or sends nothing for five minutes, then the request fails saying so.
 
 ## Out of scope
 
-- Anything listed under "Never mention".
-  It is the candidate's free text, and matching it deterministically means guessing what counts as a mention.
 - Claims other than years: an employer, a tool or an accomplishment the material does not contain.
   Telling those apart from the posting's own words needs more than a pattern.
 - Rewriting anything a flag points at.

@@ -10,18 +10,14 @@ Conceptual local and discovery tools:
 - analyze_job
 - get_candidate_profile
 - get_resume
-- generate_cover_letter
-- generate_application_answer
 - save_application_content
 - request_user_approval
 - notify_user
 
-Conceptual browser tools (browser preparation itself is implemented):
+Conceptual browser tools (the browser only reads a job page for import, and never touches an application form; ADR-0034):
 
 - browser_open
 - browser_navigate
-- extract_application_form
-- fill_application_field
 
 Submission is never a tool capability (ADR-0014).
 Only the user submits in the browser JobPilot leaves open.
