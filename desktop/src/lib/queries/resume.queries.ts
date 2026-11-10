@@ -1,5 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../daemon";
+import type { ChosenFile } from "../platform";
 import type { Resume } from "../types";
 import { keys } from "./keys";
 import type { MutationOpts } from "./mutation";
@@ -14,14 +15,14 @@ export function useResumes(candidateId: string | null) {
 
 interface ImportResumeVars {
   candidateId: string;
-  filePath: string;
+  file: ChosenFile;
 }
 
 export function useImportResume(opts?: MutationOpts<Resume, ImportResumeVars>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ candidateId, filePath }: ImportResumeVars) => api.importResume(candidateId, filePath),
+    mutationFn: ({ candidateId, file }: ImportResumeVars) => api.importResume(candidateId, file),
     ...opts,
     onSuccess: (resume, variables, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: keys.resumes.list(variables.candidateId) });

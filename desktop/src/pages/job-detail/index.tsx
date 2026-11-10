@@ -1,4 +1,3 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, Briefcase, Ellipsis, ExternalLink, EyeOff, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -18,6 +17,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { isNotFound } from "../../lib/api";
 import { dateTime, relativeTime } from "../../lib/format";
+import { openExternal } from "../../lib/platform";
 import { useApplications } from "../../lib/queries/application.queries";
 import { useJob, useSetJobInterest } from "../../lib/queries/job.queries";
 import { useJobMatch } from "../../lib/queries/match.queries";
@@ -77,7 +77,7 @@ export function JobDetail() {
         actions={
           <>
             {job.canonical_url && (
-              <Button size="sm" variant="ghost" onClick={() => void openUrl(job.canonical_url)}>
+              <Button size="sm" variant="ghost" onClick={() => void openExternal(job.canonical_url)}>
                 <ExternalLink data-icon="inline-start" />
                 Open posting
               </Button>

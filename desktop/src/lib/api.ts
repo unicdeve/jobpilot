@@ -2,6 +2,7 @@
 // internal/adapters/primary/httpapi/client.go (Go) method-for-method. See
 // docs/09_decisions/0012-loopback-http-ipc.md.
 
+import type { ChosenFile } from "./platform";
 import type {
   AboutYou,
   AboutYouUpdate,
@@ -113,7 +114,9 @@ export interface ApiClient {
   updateProfile(profile: Candidate): Promise<Candidate>;
   initializeProfile(profile: Partial<Candidate>): Promise<Candidate>;
 
-  importResume(candidateId: string, filePath: string): Promise<Resume>;
+  /// importResume reads a resume the daemon can find by its path, or one
+  /// sent as its content from a browser, which has no path (ADR-0035 §4).
+  importResume(candidateId: string, file: ChosenFile): Promise<Resume>;
   listResumes(candidateId: string): Promise<Resume[]>;
   /// previewDeletion returns what deleting target would take with it, and
   /// the token deleteRecords needs. A preview deletes nothing.
@@ -252,16 +255,19 @@ interface Daemon {
   workspaceId?: string;
 }
 
+/// request sends body as JSON, or a form as multipart/form-data, whose
+/// boundary fetch writes into the Content-Type itself.
 async function request<T>(daemon: Daemon, method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (daemon.workspaceId && !path.startsWith("/v1/workspaces")) {
     headers["X-JobPilot-Workspace"] = daemon.workspaceId;
   }
   const res = await fetch(`${daemon.baseUrl}${path}`, {
     method,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: form ? body : body !== undefined ? JSON.stringify(body) : undefined,
   }).catch((err: unknown) => {
     // fetch says only "Failed to fetch", whatever went wrong, so the detail
     // goes to the console rather than in front of the user.
@@ -325,11 +331,12 @@ function deletionPath(target: DeletionTarget, id?: string): string {
   }
 }
 
-/// createApiClient returns a client for the daemon on port. onUnreachable
-/// is called whenever a request cannot reach it at all, which is how a
-/// daemon that stopped or restarted on another port is noticed.
-export function createApiClient(port: number, onUnreachable?: () => void, workspaceId?: string): ApiClient {
-  const daemon: Daemon = { baseUrl: `http://127.0.0.1:${port}`, onUnreachable, workspaceId };
+/// createApiClient returns a client for the daemon at baseUrl, which is ""
+/// for the daemon that served the page. onUnreachable is called whenever a
+/// request cannot reach it at all, which is how a daemon that stopped or
+/// restarted on another port is noticed.
+export function createApiClient(baseUrl: string, onUnreachable?: () => void, workspaceId?: string): ApiClient {
+  const daemon: Daemon = { baseUrl, onUnreachable, workspaceId };
   const credentialPath = (source: string, label: string) =>
     `/v1/credentials/${encodeURIComponent(source)}/${encodeURIComponent(label || "default")}`;
 
@@ -346,11 +353,15 @@ export function createApiClient(port: number, onUnreachable?: () => void, worksp
     updateProfile: (profile) => request<Candidate>(daemon, "PUT", "/v1/profile", profile),
     initializeProfile: (profile) => request<Candidate>(daemon, "POST", "/v1/onboarding/profile", profile),
 
-    importResume: (candidateId, filePath) =>
-      request<Resume>(daemon, "POST", "/v1/resumes", {
-        candidate_id: candidateId,
-        file_path: filePath,
-      }),
+    importResume: (candidateId, file) => {
+      if (file.kind === "path") {
+        return request<Resume>(daemon, "POST", "/v1/resumes", { candidate_id: candidateId, file_path: file.path });
+      }
+      const form = new FormData();
+      form.append("candidate_id", candidateId);
+      form.append("file", file.file, file.file.name);
+      return request<Resume>(daemon, "POST", "/v1/resumes/upload", form);
+    },
     listResumes: (candidateId) =>
       request<Resume[]>(daemon, "GET", `/v1/resumes${query({ candidate_id: candidateId })}`),
     previewDeletion: (target, id) => request<DeletionReach>(daemon, "GET", `${deletionPath(target, id)}/deletion`),

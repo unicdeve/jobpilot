@@ -144,6 +144,50 @@ func TestConverter_ConvertFile_NonPDF(t *testing.T) {
 	})
 }
 
+func TestConverter_ConvertBytes(t *testing.T) {
+	t.Run("an upload converts as the same file on disk does", func(t *testing.T) {
+		html, err := os.ReadFile("testdata/resume.html")
+		require.NoError(t, err)
+
+		doc, err := NewConverter().ConvertBytes(context.Background(), "Ada Lovelace CV.HTML", html)
+
+		require.NoError(t, err)
+		assert.Contains(t, doc.Markdown, "Ada Lovelace")
+		assert.Contains(t, doc.Markdown, "PROFESSIONAL SUMMARY")
+	})
+
+	t.Run("a PDF is recognised by its bytes, whatever it is called", func(t *testing.T) {
+		pdf, err := os.ReadFile(fixturePDF)
+		require.NoError(t, err)
+
+		doc, err := NewConverter().ConvertBytes(context.Background(), "resume", pdf)
+
+		require.NoError(t, err)
+		assert.Contains(t, doc.Markdown, "Ada Lovelace")
+	})
+
+	t.Run("anything else needs an extension to say what it is", func(t *testing.T) {
+		for _, name := range []string{"resume", "resume.", "resume.t/xt", "resume.with spaces"} {
+			_, err := NewConverter().ConvertBytes(context.Background(), name, []byte("Ada Lovelace"))
+			assert.ErrorContains(t, err, "no extension", name)
+		}
+	})
+
+	t.Run("the temporary copy is gone afterwards", func(t *testing.T) {
+		tmp := t.TempDir()
+		t.Setenv("TMPDIR", tmp)
+		t.Setenv("TMP", tmp)
+		t.Setenv("TEMP", tmp)
+
+		_, err := NewConverter().ConvertBytes(context.Background(), "notes.txt", []byte("Ada Lovelace\n"))
+		require.NoError(t, err)
+
+		left, err := os.ReadDir(tmp)
+		require.NoError(t, err)
+		assert.Empty(t, left)
+	})
+}
+
 func TestConverter_ConvertHTML(t *testing.T) {
 	t.Parallel()
 

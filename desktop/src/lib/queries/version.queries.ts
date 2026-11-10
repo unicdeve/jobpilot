@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import { useApi } from "../daemon";
+import { appVersion } from "../platform";
 import { keys } from "./keys";
 
 interface Versions {
-  app: string;
+  /// app is null in a browser, whose page the daemon served.
+  app: string | null;
   daemon: string;
 }
 
@@ -16,7 +17,7 @@ export function useVersions() {
   return useQuery<Versions>({
     queryKey: keys.versions,
     queryFn: async () => {
-      const [app, health] = await Promise.all([invoke<string>("app_version"), api.health()]);
+      const [app, health] = await Promise.all([appVersion(), api.health()]);
       return { app, daemon: health.version };
     },
   });

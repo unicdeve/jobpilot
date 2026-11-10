@@ -868,6 +868,10 @@ func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (por
 	return f.convert(path)
 }
 
+func (f *fakeDocumentConverter) ConvertBytes(_ context.Context, name string, data []byte) (ports.Document, error) {
+	return f.convert(name + ":" + string(data))
+}
+
 func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {
 	return f.convert(html)
 }

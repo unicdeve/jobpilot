@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { setWindowTheme } from "./platform";
 
 /// ThemePreference is what the user chose. "system" follows the operating
 /// system, and keeps following it when it changes.
@@ -41,16 +42,8 @@ function applyTheme(preference: ThemePreference) {
   const resolved = resolve(preference);
   document.documentElement.classList.toggle("dark", resolved === "dark");
 
-  if ("__TAURI_INTERNALS__" in window) {
-    void import("@tauri-apps/api/window")
-      .then(({ getCurrentWindow }) =>
-        // null hands the choice back to the OS, which is what "system" means.
-        getCurrentWindow().setTheme(preference === "system" ? null : preference),
-      )
-      .catch(() => {
-        // A window that cannot be themed still has a themed page.
-      });
-  }
+  // null hands the choice back to the OS, which is what "system" means.
+  setWindowTheme(preference === "system" ? null : preference);
 }
 
 // Applied before React renders, so the first frame is already in the right

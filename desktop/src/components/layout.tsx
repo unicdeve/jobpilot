@@ -13,7 +13,7 @@ import {
 import { Activity, Suspense, useEffect, useRef, useState } from "react";
 import { Link, type Location, Navigate, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useDaemon } from "../lib/daemon";
-import { isMac, modLabel } from "../lib/platform";
+import { isMac, modLabel, overlaidTitleBar } from "../lib/platform";
 import { PortalContainer } from "../lib/portal-container";
 import { useApplications } from "../lib/queries/application.queries";
 import { useLLMSettings } from "../lib/queries/llm.queries";
@@ -174,7 +174,7 @@ function Sidebar({ active, hrefFor }: { active: Section; hrefFor: HrefFor }) {
       {/* The top strip is where macOS draws the window controls, and on
           every platform it is somewhere to drag the window from. */}
       <div data-tauri-drag-region className="flex h-13 shrink-0 items-center px-4">
-        {!isMac && (
+        {!overlaidTitleBar && (
           <span data-tauri-drag-region className="text-sm font-semibold">
             JobPilot
           </span>

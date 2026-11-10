@@ -1,8 +1,8 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "cn";
 import { Ellipsis, Plus } from "lucide-react";
 import { useState } from "react";
 import { dateTime, relativeTime } from "../lib/format";
+import { openExternal } from "../lib/platform";
 import {
   useCompanies,
   useCompanySuggestions,
@@ -210,7 +210,7 @@ function CompanyRow({ company }: { company: WatchedCompany }) {
           <Ellipsis />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => void openUrl(company.url)}>Open hiring page</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void openExternal(company.url)}>Open hiring page</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

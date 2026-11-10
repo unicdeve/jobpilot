@@ -3,6 +3,7 @@
 ## Status
 
 Desktop notifications are implemented (ADR-0028).
+They are posted by the desktop app, so someone who uses JobPilot only in a browser gets none (ADR-0035 §6).
 Email is designed for and not built.
 
 ## Purpose

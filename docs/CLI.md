@@ -12,6 +12,8 @@ IDs in the examples are placeholders; use the IDs printed by the corresponding l
 - `jobpilot-cli profiles use <id>`: Makes a profile active for desktop and unscoped CLI requests.
 - `jobpilot-cli profiles rename <id> <name>`: Renames a local profile.
 - `jobpilot-cli --workspace <id> <command>`: Runs one command against that profile without changing the active profile.
+- `jobpilot-cli ui`: Opens JobPilot in your web browser, served by the daemon (ADR-0035), and prints its address; `--no-open` only prints it.
+  The address changes whenever the daemon restarts, so run it again to reopen JobPilot.
 - `jobpilot-cli --version`: Prints the CLI's version, without starting the daemon.
   A CLI older than the running daemon uses it, and says on stderr that it is older; a newer one stops the daemon and starts its own (ADR-0029 §4).
 - `jobpilot --version` and `jobpilot stop`: The daemon's version, and stopping the running daemon, which waits for its process to exit.

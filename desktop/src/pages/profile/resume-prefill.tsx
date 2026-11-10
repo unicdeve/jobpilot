@@ -65,8 +65,8 @@ export function ResumePrefill({
       return;
     }
 
-    const path = await pickResumeFile();
-    if (!path) return;
+    const file = await pickResumeFile();
+    if (!file) return;
 
     try {
       let current = profile;
@@ -75,7 +75,7 @@ export function ResumePrefill({
         onDraft(current);
       }
 
-      const resume = await importResume.mutateAsync({ candidateId: current.id, filePath: path });
+      const resume = await importResume.mutateAsync({ candidateId: current.id, file });
       notify("Resume imported.", "success");
 
       try {

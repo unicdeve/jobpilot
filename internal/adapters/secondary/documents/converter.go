@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/conductor-oss/markitdown"
@@ -38,13 +40,57 @@ func (c *Converter) ConvertFile(ctx context.Context, path string) (ports.Documen
 	}
 
 	if isPDF(data) {
-		markdown, err := c.pdf.extract(ctx, data)
-		if err != nil {
-			return ports.Document{}, err
-		}
-		return ports.Document{Markdown: markdown}, nil
+		return c.convertPDF(ctx, data)
+	}
+	return convertWithMarkItDown(path)
+}
+
+// ConvertBytes converts a document handed over as its content, such as a
+// file a browser uploaded (ADR-0035 §4).
+//
+// A PDF is recognised by its content. Anything else goes to MarkItDown,
+// which reads a file and goes by its extension, so the content is written
+// to a temporary file named with name's extension, and removed afterwards.
+func (c *Converter) ConvertBytes(ctx context.Context, name string, data []byte) (ports.Document, error) {
+	if isPDF(data) {
+		return c.convertPDF(ctx, data)
 	}
 
+	ext := strings.ToLower(filepath.Ext(filepath.Base(name)))
+	if !documentExtension.MatchString(ext) {
+		return ports.Document{}, fmt.Errorf("%q has no extension that says what kind of document it is", name)
+	}
+	dir, err := os.MkdirTemp("", "jobpilot-document-")
+	if err != nil {
+		return ports.Document{}, fmt.Errorf("failed to make room to convert %s: %w", name, err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	path := filepath.Join(dir, "document"+ext)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return ports.Document{}, fmt.Errorf("failed to make room to convert %s: %w", name, err)
+	}
+	doc, err := convertWithMarkItDown(path)
+	if err != nil {
+		return ports.Document{}, fmt.Errorf("failed to convert %s to markdown: %w", name, err)
+	}
+	return doc, nil
+}
+
+// documentExtension is an extension ConvertBytes will name a temporary
+// file with: a dot and a few letters or digits, and nothing a name sent by
+// a client could use to reach outside the temporary directory.
+var documentExtension = regexp.MustCompile(`^\.[a-z0-9]{1,10}$`)
+
+func (c *Converter) convertPDF(ctx context.Context, data []byte) (ports.Document, error) {
+	markdown, err := c.pdf.extract(ctx, data)
+	if err != nil {
+		return ports.Document{}, err
+	}
+	return ports.Document{Markdown: markdown}, nil
+}
+
+func convertWithMarkItDown(path string) (ports.Document, error) {
 	md := markitdown.New()
 	result, err := md.Convert(path)
 	if err != nil {

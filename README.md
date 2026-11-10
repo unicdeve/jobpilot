@@ -86,7 +86,8 @@ The desktop app carries the command line interface, `jobpilot-cli` ([docs/CLI.md
 
 On a machine without the desktop app, download `jobpilot-cli_<version>_<os>_<arch>` instead.
 The `.tar.gz` or `.zip` archive holds `jobpilot-cli` and the background service, `jobpilot`, which the CLI starts; keep the two in the same folder on your `PATH`.
-Run `jobpilot-cli onboard` to configure the model, profile, optional resume and first saved search.
+Run `jobpilot-cli ui` to open JobPilot in your web browser, or `jobpilot-cli onboard` to set it up in the terminal.
+In a browser, JobPilot cannot post notifications when a scout finds something; open it to see what scouts found.
 On macOS, a downloaded copy has to be cleared to run: `xattr -d com.apple.quarantine jobpilot jobpilot-cli`.
 
 ## Updating
@@ -135,6 +136,9 @@ After installing desktop dependencies, use two terminals for hot reload:
 make dev          # start the daemon first
 make run-desktop  # start the desktop in another terminal
 ```
+
+To work on the interface in a browser instead, run `cd desktop && bun run dev` beside `make dev` and open `http://localhost:1420`, which passes API requests on to the running daemon.
+`make build-web` builds the daemon with the interface compiled in, which `./bin/jobpilot-cli ui` then opens.
 
 | Command | Purpose |
 | --- | --- |

@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { type ChosenFile, chooseFile } from "./platform";
 
 /**
  * The formats the document converter can actually read.
@@ -18,12 +18,6 @@ const RESUME_EXTENSIONS = ["pdf", "docx", "txt", "md", "markdown", "html", "htm"
  *
  * Returns null when the user cancels.
  */
-export async function pickResumeFile(): Promise<string | null> {
-  const path = await open({
-    multiple: false,
-    title: "Select a resume file",
-    filters: [{ name: "Documents", extensions: RESUME_EXTENSIONS }],
-  });
-  if (!path || Array.isArray(path)) return null;
-  return path;
+export function pickResumeFile(): Promise<ChosenFile | null> {
+  return chooseFile("Select a resume file", RESUME_EXTENSIONS);
 }

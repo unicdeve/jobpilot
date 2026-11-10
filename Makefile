@@ -56,7 +56,7 @@ AIR=bin/air
 # instead of the real one, e.g. make migrate-up DB_PATH=/tmp/test.db.
 DB_PATH ?=
 
-.PHONY: all build dist sidecars bundle set-version version-check notices notices-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools desktop-deps desktop-check check-go \
+.PHONY: all build web build-web dist sidecars bundle set-version version-check notices notices-check clean run run-desktop dev air fmt fmt-check vet vet-integration lint lint-integration lint-fix tools desktop-deps desktop-check check-go \
 	tidy test test-integration check starter-list \
 	migrate-up migrate-down migrate-create migrate-status
 
@@ -66,13 +66,30 @@ build:
 	go build -o bin/$(BINARY_NAME) ./cmd/jobpilot
 	go build -o bin/$(CLI_BINARY_NAME) ./cmd/jobpilot-cli
 
+# The interface for a web browser (ADR-0035 §1) is the desktop's frontend,
+# compiled into the daemon by a build with the webui tag. web builds it and
+# copies it to where that build looks; without it, `go build` and every
+# check need no Bun, and the daemon's address says how to get it.
+WEBUI_DIST=internal/adapters/primary/webui/dist
+
+web: desktop-deps
+	cd desktop && bun run build
+	rm -rf $(WEBUI_DIST) && cp -R desktop/dist $(WEBUI_DIST)
+
+# build-web is build, with the interface for a browser in the daemon, which
+# `jobpilot-cli ui` opens.
+build-web: web
+	go build -tags webui -o bin/$(BINARY_NAME) ./cmd/jobpilot
+	go build -o bin/$(CLI_BINARY_NAME) ./cmd/jobpilot-cli
+
 # dist builds the daemon and CLI as a release, for every target, into
 # dist/<os>-<arch>/, and packs each target's pair as the standalone archive
 # a machine without the desktop installs: a .tar.gz, or a .zip for Windows.
 # Each archive carries LICENSE and NOTICE, as Apache-2.0 §4 asks of a copy,
 # and the third-party notices (make notices).
 # They are pure Go, so one machine cross-compiles every target (ADR-0029 §3).
-dist:
+# The daemon carries the interface for a browser (ADR-0035 §1).
+dist: web
 	@case "$(VERSION)" in \
 		"") echo "make dist needs a version, as in: make dist VERSION=1.2.3" >&2; exit 1;; \
 		v*) echo "VERSION is the tag without its v: $(patsubst v%,%,$(VERSION))" >&2; exit 1;; \
@@ -83,7 +100,7 @@ dist:
 		if [ "$$goos" = windows ]; then ext=.exe; fi; \
 		out=dist/$$goos-$$goarch; \
 		echo "building $(VERSION) for $$goos/$$goarch"; \
-		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
+		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -tags webui -ldflags "$(DIST_LDFLAGS)" \
 			-o $$out/$(BINARY_NAME)$$ext ./cmd/jobpilot || exit 1; \
 		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -trimpath -ldflags "$(DIST_LDFLAGS)" \
 			-o $$out/$(CLI_BINARY_NAME)$$ext ./cmd/jobpilot-cli || exit 1; \
@@ -101,12 +118,13 @@ dist:
 # expects. A universal macOS build carries universal binaries, made with
 # lipo from both architectures; each architecture's own is staged too, since
 # Tauri compiles the app once per architecture and each compile looks for
-# its own. Without VERSION they say "dev".
-sidecars:
+# its own. Without VERSION they say "dev". The daemon carries the interface
+# for a browser, as the standalone one does.
+sidecars: web
 	@rm -rf $(SIDECAR_DIR) && mkdir -p $(SIDECAR_DIR)
 	@build() { \
 		echo "building the sidecars ($(or $(VERSION),dev)) for $$1/$$2"; \
-		CGO_ENABLED=0 GOOS=$$1 GOARCH=$$2 go build -trimpath -ldflags "$(SIDECAR_LDFLAGS)" -o $$3/$(BINARY_NAME)$$4 ./cmd/jobpilot && \
+		CGO_ENABLED=0 GOOS=$$1 GOARCH=$$2 go build -trimpath -tags webui -ldflags "$(SIDECAR_LDFLAGS)" -o $$3/$(BINARY_NAME)$$4 ./cmd/jobpilot && \
 		CGO_ENABLED=0 GOOS=$$1 GOARCH=$$2 go build -trimpath -ldflags "$(SIDECAR_LDFLAGS)" -o $$3/$(CLI_BINARY_NAME)$$4 ./cmd/jobpilot-cli; \
 	}; \
 	place() { mv $$1/$(BINARY_NAME)$$2 $(SIDECAR_DIR)/$(BINARY_NAME)-$(TARGET)$$2 && \
@@ -207,7 +225,7 @@ air:
 	fi
 
 clean:
-	rm -rf bin/
+	rm -rf bin/ $(WEBUI_DIST)
 
 # migrate-* wrap cmd/migrate, a thin dev-only wrapper around the same goose
 # library calls the app itself uses (sqlite.DB.InitializeSchema and friends).

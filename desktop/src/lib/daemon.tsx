@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { type ApiClient, createApiClient, errorMessage } from "./api";
+import { connectDaemon, findDaemon } from "./platform";
 import type { Workspace } from "./types";
 
 interface DaemonState {
@@ -23,26 +22,27 @@ interface DaemonState {
 const DaemonContext = createContext<DaemonState | null>(null);
 
 async function connectToWorkspace(
-  port: number,
+  address: string,
   onUnreachable: () => void,
 ): Promise<{ client: ApiClient; workspaces: Workspace[]; active: Workspace }> {
-  const unscoped = createApiClient(port, onUnreachable);
+  const unscoped = createApiClient(address, onUnreachable);
   const catalog = await unscoped.listWorkspaces();
   const active = catalog.workspaces.find((workspace) => workspace.id === catalog.active_workspace_id);
   if (!active) throw new Error("The active JobPilot profile is missing");
   return {
-    client: createApiClient(port, onUnreachable, active.id),
+    client: createApiClient(address, onUnreachable, active.id),
     workspaces: catalog.workspaces,
     active,
   };
 }
 
-/// DaemonProvider ensures the jobpilot daemon is running (starting it if
-/// necessary, via the Rust ensure_daemon command in
+/// DaemonProvider ensures the jobpilot daemon is running (in the desktop,
+/// starting it if necessary, via the Rust ensure_daemon command in
 /// desktop/src-tauri/src/daemon.rs) and provides an ApiClient pointed at
-/// its resolved port to the rest of the app.
+/// its address to the rest of the app. In a browser the daemon served the
+/// page, and its address is the page's own (ADR-0035 §5).
 ///
-/// A daemon that stops answering is looked for again (find_daemon), which
+/// A daemon that stops answering is looked for again (findDaemon), which
 /// waits for a daemon but never starts one: the one that went away may be
 /// restarting — on another port, since each start takes a free one — and a
 /// daemon started in that gap would be a second on the same database. Found
@@ -60,26 +60,26 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const queryClient = useQueryClient();
 
-  const port = useRef<number | null>(null);
+  const address = useRef<string | null>(null);
   const finding = useRef(false);
   const refetchOnConnect = useRef(false);
 
   // Named, so a client created here reports to this same handler.
   const onUnreachable = useCallback(
     function onUnreachable() {
-      if (finding.current || port.current === null) return;
+      if (finding.current || address.current === null) return;
       finding.current = true;
-      invoke<number>("find_daemon")
+      findDaemon()
         .then((found) => {
           // The cache is kept: the daemon is found through the discovery
           // file in its data directory, so whichever daemon this is serves
           // the same database. What was fetched from the one that went away
           // is only refetched.
-          if (found === port.current) {
+          if (found === address.current) {
             void queryClient.invalidateQueries();
             return;
           }
-          port.current = found;
+          address.current = found;
           refetchOnConnect.current = true;
           return connectToWorkspace(found, onUnreachable).then((connected) => {
             setWorkspaces(connected.workspaces);
@@ -88,7 +88,7 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
           });
         })
         .catch((err) => {
-          port.current = null;
+          address.current = null;
           setState({ status: "error", client: null, error: errorMessage(err) });
         })
         .finally(() => {
@@ -111,11 +111,10 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setState({ status: "connecting", client: null, error: null });
     setWaiting(false);
-    const unlisten = listen("daemon-waiting", () => {
-      if (!cancelled) setWaiting(true);
-    });
 
-    invoke<number>("ensure_daemon")
+    connectDaemon(() => {
+      if (!cancelled) setWaiting(true);
+    })
       .then((resolved) => {
         if (cancelled) return;
         // A reconnect can resolve to a different daemon on a different port,
@@ -123,7 +122,7 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
         // from. Start that connection with an empty cache rather than
         // showing the previous daemon's data.
         if (attempt > 0) queryClient.clear();
-        port.current = resolved;
+        address.current = resolved;
         void connectToWorkspace(resolved, onUnreachable)
           .then((connected) => {
             if (cancelled) return;
@@ -145,19 +144,18 @@ export function DaemonProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      void unlisten.then((stop) => stop());
     };
   }, [attempt, queryClient, onUnreachable]);
 
   const switchWorkspace = useCallback(
     async (id: string) => {
-      if (!state.client || port.current === null || id === activeWorkspace?.id) return;
+      if (!state.client || address.current === null || id === activeWorkspace?.id) return;
       const selected = await state.client.activateWorkspace(id);
       queryClient.clear();
       setActiveWorkspace(selected);
       setState({
         status: "ready",
-        client: createApiClient(port.current, onUnreachable, selected.id),
+        client: createApiClient(address.current, onUnreachable, selected.id),
         error: null,
       });
     },

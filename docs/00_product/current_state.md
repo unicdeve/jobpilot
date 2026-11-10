@@ -20,6 +20,8 @@ Implemented does not mean verified on every target platform or guaranteed to wor
 ## Architecture and boundaries
 
 - Go daemon owns core services and SQLite; the Go CLI and Tauri 2 + React + TypeScript desktop are clients of its loopback HTTP API (ADR-0012).
+- The same React app is served by the daemon to a web browser, opened with `jobpilot-cli ui`, so the desktop app is optional (ADR-0035).
+  A browser user gets no OS notifications, and reopens the interface with `jobpilot-cli ui` after the daemon restarts.
 - One daemon serves isolated local workspaces, each with its own SQLite database, credentials namespace, browser profile and scheduled Scouts (ADR-0032).
 - Data stays local by default, with no application account or mandatory hosted backend.
 - Ollama is the default local model; llama.cpp, LM Studio and custom OpenAI-compatible endpoints are supported.
@@ -99,6 +101,7 @@ See [Scouts](../02_features/10_scouts.md), [notifications](../02_features/11_not
 - TanStack Query manages server state, including offline loopback access; sections retain selection, drafts and scroll positions between visits.
   Discovery is queued, shows source/search progress and can refresh stale saved searches once per launch.
 - Light, dark and system themes, keyboard navigation, split views and safely rendered job markdown are implemented.
+- In a browser, links open in a new tab and a resume is uploaded rather than read from its path; `desktop/src/lib/platform.ts` is the only module that knows which it is running in.
 - Settings cover appearance, model/key selection, prompt guidance, saved searches/watchlists, notifications, API keys, data deletion and About.
   Prompt guidance changes judgement/style; safety rules and response contracts remain code-owned (ADR-0031).
 - Credentials live in the OS keystore, with labels stored locally and no secret-read API.

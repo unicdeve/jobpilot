@@ -189,3 +189,19 @@ See `docs/01_architecture/07_ipc.md` and `docs/09_decisions/0012-loopback-http-i
 the daemon exposes a loopback HTTP API (`internal/adapters/primary/httpapi`)
 that the CLI already uses as a client. The desktop app is expected to talk to
 the same API rather than duplicating service wiring.
+
+## In a browser
+
+The same frontend runs in a web browser, served by the daemon at the API's own origin and opened with `jobpilot-cli ui` (ADR-0035).
+`src/lib/platform.ts` is the only module that imports a Tauri package, and decides from `__TAURI_INTERNALS__` which it is running in.
+
+| What | In the desktop | In a browser |
+| --- | --- | --- |
+| Reach the daemon | `ensure_daemon`, `find_daemon`, at `http://127.0.0.1:<port>` | The page's own origin |
+| Open a link | Opener plugin | A new tab, with `noopener` and `noreferrer` |
+| Pick a resume | Dialog plugin; the daemon reads the path | A file input; the file is uploaded |
+| The app's version | `app_version` | The daemon's |
+| Title bar | Overlaid on macOS, so the sidebar leaves room for the traffic lights | None; the sidebar shows the name |
+
+A page in a browser cannot follow a daemon that restarted on a new port, so the connection error says to run `jobpilot-cli ui` again.
+In development, `bun run dev` serves the app at `http://localhost:1420`, and `daemon-proxy.ts` passes `/v1/` on to whichever daemon the discovery file names.

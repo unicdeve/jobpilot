@@ -1,4 +1,5 @@
 import { useDaemon } from "../lib/daemon";
+import { isDesktop } from "../lib/platform";
 import { Loading } from "./status-line";
 import { Button } from "./ui/button";
 
@@ -23,6 +24,15 @@ export function RequireDaemon({ children }: { children: React.ReactNode }) {
       <div className="m-6 max-w-md space-y-3 rounded-lg border border-destructive/30 bg-destructive/8 p-4">
         <p className="text-sm font-medium text-destructive">Could not connect to the JobPilot daemon.</p>
         <p className="text-sm text-subtle-foreground select-text">{error}</p>
+        {!isDesktop && (
+          // A daemon that restarted listens on a new port, which this page
+          // cannot find (ADR-0035 §2).
+          <p className="text-sm text-subtle-foreground select-text">
+            If it restarted, it is at a new address: run{" "}
+            <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">jobpilot-cli ui</code> to open
+            JobPilot again.
+          </p>
+        )}
         <Button variant="outline" onClick={retry}>
           Retry
         </Button>

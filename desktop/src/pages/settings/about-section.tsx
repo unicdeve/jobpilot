@@ -19,12 +19,24 @@ export function AboutSection() {
         description="To update JobPilot, install a newer release over this one. Your data stays where it is, and JobPilot never checks for updates by itself."
       />
       <Panel className="divide-y divide-border">
-        <VersionRow label="JobPilot" detail="This app." version={versions.app} />
-        <VersionRow
-          label="Background service"
-          detail="Runs scouts and keeps your data, and carries on after the app is closed."
-          version={versions.daemon}
-        />
+        {versions.app === null ? (
+          // In a browser the page is the background service's own, so the
+          // two are one version (ADR-0035 §5).
+          <VersionRow
+            label="JobPilot"
+            detail="Open in your browser, served by the background service that runs scouts and keeps your data."
+            version={versions.daemon}
+          />
+        ) : (
+          <>
+            <VersionRow label="JobPilot" detail="This app." version={versions.app} />
+            <VersionRow
+              label="Background service"
+              detail="Runs scouts and keeps your data, and carries on after the app is closed."
+              version={versions.daemon}
+            />
+          </>
+        )}
       </Panel>
     </>
   );

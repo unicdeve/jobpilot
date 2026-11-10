@@ -65,6 +65,7 @@ func main() {
 	rootCmd.AddCommand(newCompanyCmd(client))
 	rootCmd.AddCommand(newNotificationsCmd(client))
 	rootCmd.AddCommand(newWorkspaceCmd(client))
+	rootCmd.AddCommand(newUICmd(client))
 
 	// This is the only place a command error is printed and turned into a
 	// non-zero exit code, via RunE (rather than log.Fatalf/os.Exit inside a

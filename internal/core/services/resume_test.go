@@ -79,6 +79,59 @@ func TestResumeService_ImportResume(t *testing.T) {
 	})
 }
 
+func TestResumeService_ImportUploadedResume(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stores the converted upload under the file's name, with no path", func(t *testing.T) {
+		t.Parallel()
+		repo := newFakeResumeRepository()
+		converter := &fakeDocumentConverter{markdown: "# Ada Lovelace"}
+		svc := NewResumeService(repo, candidatesWith("cand-1"), &fakeLLMProvider{}, converter)
+
+		resume, err := svc.ImportUploadedResume(context.Background(), "cand-1", "Ada Lovelace CV.pdf", []byte("%PDF"))
+
+		require.NoError(t, err)
+		assert.Equal(t, "Ada Lovelace CV.pdf", resume.Name)
+		assert.Empty(t, resume.OriginalFilePath)
+		assert.Equal(t, "# Ada Lovelace", resume.MarkdownContent)
+		assert.Equal(t, []string{"Ada Lovelace CV.pdf:%PDF"}, converter.converted)
+		_, err = repo.GetByID(context.Background(), resume.ID)
+		require.NoError(t, err)
+	})
+
+	t.Run("a name with a path keeps only the name", func(t *testing.T) {
+		t.Parallel()
+		converter := &fakeDocumentConverter{}
+		svc := NewResumeService(newFakeResumeRepository(), candidatesWith("cand-1"), &fakeLLMProvider{}, converter)
+
+		resume, err := svc.ImportUploadedResume(context.Background(), "cand-1", `C:\Users\ada\cv.docx`, []byte("x"))
+
+		require.NoError(t, err)
+		assert.Equal(t, "cv.docx", resume.Name)
+	})
+
+	t.Run("an unknown candidate is a reference error, found before converting", func(t *testing.T) {
+		t.Parallel()
+		converter := &fakeDocumentConverter{}
+		svc := NewResumeService(newFakeResumeRepository(), candidatesWith("cand-1"), &fakeLLMProvider{}, converter)
+
+		_, err := svc.ImportUploadedResume(context.Background(), "cand-404", "cv.pdf", []byte("x"))
+
+		require.ErrorIs(t, err, ports.ErrUnknownReference)
+		assert.Empty(t, converter.converted)
+	})
+
+	t.Run("no name or no content is refused", func(t *testing.T) {
+		t.Parallel()
+		svc := NewResumeService(newFakeResumeRepository(), candidatesWith("cand-1"), &fakeLLMProvider{}, &fakeDocumentConverter{})
+
+		_, err := svc.ImportUploadedResume(context.Background(), "cand-1", " ", []byte("x"))
+		require.Error(t, err)
+		_, err = svc.ImportUploadedResume(context.Background(), "cand-1", "cv.pdf", nil)
+		require.ErrorContains(t, err, "cv.pdf is empty")
+	})
+}
+
 func TestResumeService_ProposeProfileDraft(t *testing.T) {
 	t.Parallel()
 

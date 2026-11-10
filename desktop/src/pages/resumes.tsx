@@ -25,9 +25,9 @@ export function Resumes() {
 
   const importResume = async () => {
     if (!candidateId) return;
-    const path = await pickResumeFile();
-    if (!path) return;
-    importMutation.mutate({ candidateId, filePath: path });
+    const file = await pickResumeFile();
+    if (!file) return;
+    importMutation.mutate({ candidateId, file });
   };
 
   if (!candidateId) {
@@ -70,9 +70,10 @@ export function Resumes() {
               <FileText className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium">{r.name}</p>
-                <p className="truncate text-xs text-muted-foreground" title={r.original_file_path}>
-                  <span title={dateTime(r.created_at)}>Imported {relativeTime(r.created_at)}</span> ·{" "}
-                  {r.original_file_path}
+                <p className="truncate text-xs text-muted-foreground" title={r.original_file_path || undefined}>
+                  <span title={dateTime(r.created_at)}>Imported {relativeTime(r.created_at)}</span>
+                  {/* A resume uploaded from a browser has no path (ADR-0035 §4). */}
+                  {r.original_file_path && <> · {r.original_file_path}</>}
                 </p>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setDeleting(r)}>

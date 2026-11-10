@@ -59,6 +59,7 @@ func NewHandler(svc Services) http.Handler {
 	mux.HandleFunc("PUT /v1/profile", handleUpdateProfile(svc.Profile))
 
 	mux.HandleFunc("POST /v1/resumes", handleImportResume(svc.Resume))
+	mux.HandleFunc("POST /v1/resumes/upload", handleUploadResume(svc.Resume))
 	mux.HandleFunc("GET /v1/resumes", handleListResumes(svc.Resume))
 	mux.HandleFunc("POST /v1/resumes/propose-draft", handleProposeDraft(svc.Resume))
 

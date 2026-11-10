@@ -1,6 +1,7 @@
 // Command jobpilot is the JobPilot background daemon: it owns the SQLite
 // database and every core service, and exposes them to local clients (the
-// CLI, eventually the desktop app) over a loopback HTTP API. See
+// CLI and the desktop app) over a loopback HTTP API, beside the interface for
+// a web browser (ADR-0035). See
 // docs/01_architecture/01_daemon.md and
 // docs/09_decisions/0012-loopback-http-ipc.md.
 //
@@ -30,6 +31,7 @@ import (
 	"path/filepath"
 
 	"github.com/unicdev/jobpilot/internal/adapters/primary/httpapi"
+	"github.com/unicdev/jobpilot/internal/adapters/primary/webui"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/alarms"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/browser"
 	"github.com/unicdev/jobpilot/internal/adapters/secondary/credentials"
@@ -138,7 +140,13 @@ func run() error {
 		}
 	}()
 
-	server := &http.Server{Handler: httpapi.NewWorkspaceHandler(catalog, workspaces)}
+	// The API under /v1/, and the interface for a browser everywhere else,
+	// at the same origin (ADR-0035 §1). Every request to either is checked
+	// for where it came from first (§3).
+	routes := http.NewServeMux()
+	routes.Handle("/v1/", httpapi.NewWorkspaceHandler(catalog, workspaces))
+	routes.Handle("/", webui.Handler())
+	server := &http.Server{Handler: httpapi.RequireLoopback(routes)}
 
 	serveErr := make(chan error, 1)
 	go func() {

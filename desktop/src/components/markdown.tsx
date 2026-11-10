@@ -1,6 +1,6 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { openExternal } from "../lib/platform";
 
 /// Markdown renders untrusted markdown — job descriptions arrive from job
 /// boards and imported pages, and `docs/07_security/00_threat_model.md`
@@ -42,7 +42,7 @@ function ExternalLink({ href, children }: { href?: string; children?: React.Reac
       onClick={(event) => {
         // The webview would otherwise navigate away from the app itself.
         event.preventDefault();
-        void openUrl(href);
+        void openExternal(href);
       }}
     >
       {children}

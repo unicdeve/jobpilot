@@ -13,6 +13,11 @@ type DocumentConverter interface {
 	// ConvertFile reads a document from disk. The format is determined
 	// from the file itself, not from the caller.
 	ConvertFile(ctx context.Context, path string) (Document, error)
+	// ConvertBytes converts a document handed over as its content, such
+	// as a file a browser uploaded, which has a name and no path. The
+	// format is determined from the content where it can be, and
+	// otherwise from the extension of name.
+	ConvertBytes(ctx context.Context, name string, data []byte) (Document, error)
 	// ConvertHTML converts an HTML fragment, as returned by a job board's
 	// API or scraped from a posting.
 	ConvertHTML(ctx context.Context, html string) (Document, error)

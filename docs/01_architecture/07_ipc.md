@@ -4,7 +4,7 @@
 
 - Local only by default.
 - Cross-platform.
-- Supports desktop and CLI clients.
+- Supports desktop, browser and CLI clients.
 - Does not require a cloud service.
 - Supports structured requests and events.
 
@@ -19,6 +19,20 @@ simplicity with no new dependency) and consequences.
 The transport is hidden behind a client interface:
 `internal/adapters/primary/httpapi.Client`. The daemon's handler lives in the
 same package.
+
+## The interface in a browser
+
+The daemon serves the desktop's frontend at `/` and the API under `/v1/`, so a browser page and the API it calls are one origin (ADR-0035).
+`jobpilot-cli ui` opens it.
+The files are compiled in by a build with the `webui` tag (`internal/adapters/primary/webui`); a build without it answers `/` with how to get one.
+
+Every request, to the page or the API, passes `httpapi.RequireLoopback` first.
+Its `Host` must be `127.0.0.1`, `localhost` or `[::1]`, which refuses a website that rebinds its own name to the loopback address.
+Its `Origin`, when it sends one, must be the desktop's or the request's own host, which refuses a form another website submits.
+The CLI and the desktop's Rust code send no `Origin`.
+
+A browser cannot send a file's path, so `POST /v1/resumes/upload` takes a resume as `multipart/form-data` (`candidate_id`, and the file under `file`, up to 20 MiB).
+The desktop and CLI keep `POST /v1/resumes`, which reads a path.
 
 ## Local workspace selection
 

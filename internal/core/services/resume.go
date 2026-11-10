@@ -3,8 +3,11 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/unicdev/jobpilot/internal/core/domain"
 	"github.com/unicdev/jobpilot/internal/core/ports"
@@ -55,6 +58,42 @@ func (s *ResumeService) ImportResume(ctx context.Context, candidateID string, fi
 		return nil, fmt.Errorf("failed to import resume: %w", err)
 	}
 
+	return resume, nil
+}
+
+// ImportUploadedResume converts a document handed over as its content and
+// stores it, for a client that has the file but not its path: the
+// interface in a browser (ADR-0035 §4).
+//
+// The resume is named after the file and records no original path, which
+// the client never had.
+func (s *ResumeService) ImportUploadedResume(ctx context.Context, candidateID, fileName string, data []byte) (*domain.Resume, error) {
+	if _, err := s.candidates.GetByID(ctx, candidateID); err != nil {
+		return nil, fmt.Errorf("failed to import resume: %w", ports.AsReference(err))
+	}
+	// A browser sends only the name, but a client could send a path, from
+	// any platform, and the resume is named after the file either way.
+	name := path.Base(strings.ReplaceAll(fileName, `\`, "/"))
+	if name == "." || name == "/" || strings.TrimSpace(name) == "" {
+		return nil, errors.New("failed to import resume: the file has no name")
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("failed to import resume: %s is empty", name)
+	}
+
+	content, err := s.converter.ConvertBytes(ctx, name, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert resume to markdown: %w", err)
+	}
+
+	resume := &domain.Resume{
+		CandidateID:     candidateID,
+		Name:            name,
+		MarkdownContent: content.Markdown,
+	}
+	if err := s.resumeRepo.Save(ctx, resume); err != nil {
+		return nil, fmt.Errorf("failed to import resume: %w", err)
+	}
 	return resume, nil
 }
 

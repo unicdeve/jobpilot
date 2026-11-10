@@ -29,14 +29,11 @@ export function ResumeStep({
   const busy = importResume.isPending || proposeDraft.isPending || updateProfile.isPending;
 
   const pick = async () => {
-    const path = await pickResumeFile();
-    if (!path || !profile) return;
+    const file = await pickResumeFile();
+    if (!file || !profile) return;
 
     try {
-      const resume = await importResume.mutateAsync({
-        candidateId: profile.id,
-        filePath: path,
-      });
+      const resume = await importResume.mutateAsync({ candidateId: profile.id, file });
       notify("Resume imported.", "success");
 
       // A prefill failure must never undo the import, which succeeded and is

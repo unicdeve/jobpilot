@@ -1,4 +1,3 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
@@ -7,6 +6,7 @@ import { DetailSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LINK_LABELS } from "../../lib/format";
+import { openExternal } from "../../lib/platform";
 import { useAboutYou } from "../../lib/queries/about-you.queries";
 import { useSetApplyUrl } from "../../lib/queries/application.queries";
 import { useProfile } from "../../lib/queries/profile.queries";
@@ -22,7 +22,7 @@ export function ApplySection({ application, job }: { application: Application; j
   const link = application.apply_url || job?.canonical_url;
 
   const open = () => {
-    if (link) openUrl(link).catch(notifyError);
+    if (link) openExternal(link).catch(notifyError);
   };
 
   return (

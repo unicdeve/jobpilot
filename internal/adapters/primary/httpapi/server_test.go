@@ -2147,12 +2147,16 @@ func TestClient_AllowedTransitionsFollowTheApplication(t *testing.T) {
 }
 
 // fakeDocumentConverter converts nothing: it echoes the path or HTML it is
-// given. The HTTP layer's job is to carry a file path to the service and a
-// resume back, and that is what these tests are about.
+// given. The HTTP layer's job is to carry a file path or an upload to the
+// service and a resume back, and that is what these tests are about.
 type fakeDocumentConverter struct{}
 
 func (f *fakeDocumentConverter) ConvertFile(_ context.Context, path string) (ports.Document, error) {
 	return ports.Document{Markdown: "# Resume\n\nConverted from " + path}, nil
+}
+
+func (f *fakeDocumentConverter) ConvertBytes(_ context.Context, name string, data []byte) (ports.Document, error) {
+	return ports.Document{Markdown: "# Resume\n\nConverted from " + name + ": " + string(data)}, nil
 }
 
 func (f *fakeDocumentConverter) ConvertHTML(_ context.Context, html string) (ports.Document, error) {

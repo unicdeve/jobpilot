@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -98,6 +99,31 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 	var resp healthResponse
 	_, err := c.do(ctx, http.MethodGet, "/v1/health", nil, &resp)
 	return resp.Version, err
+}
+
+// InterfaceURL is the address of the interface the daemon serves to a web
+// browser, and whether this daemon was built with it (ADR-0035 §1). A
+// daemon built without it answers its address with a page saying so, and
+// that page's text is returned as the error.
+func (c *Client) InterfaceURL(ctx context.Context) (string, error) {
+	address := c.baseURL + "/"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("could not reach the jobpilot daemon: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		if message := strings.TrimSpace(string(body)); message != "" {
+			return "", errors.New(message)
+		}
+		return "", fmt.Errorf("the daemon answered %s at %s", res.Status, address)
+	}
+	return address, nil
 }
 
 // Shutdown asks the daemon to stop. It answers before it has stopped, so
