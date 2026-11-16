@@ -1,9 +1,10 @@
-import type { Answer, Result, Sources } from './app.contract.d.ts';
+import type { Answer, Database, Result, Sources, Storage } from './app.contract.d.ts';
 
 // The JobPilot daemon's loopback address (ADR-0012). The daemon picks a free port on every start, so a real
 // run sets API_BASE_URL to the address `jobpilot-cli ui` prints; the default is the test server's (server.ts).
 import { emptyCriteria, matches } from './core/criteria.ts';
 import { fetchRemotive, type SourceJob } from './core/remotive.ts';
+import { choices, day, isLocal, move, newApplication, setApplyLink, applicationId, type Tracked } from './core/tracking.ts';
 
 export const API: string = import.meta.env.API_BASE_URL ?? 'http://127.0.0.1:4417';
 const SOURCE: string = import.meta.env.REMOTIVE_URL ?? 'https://remotive.com/api/remote-jobs';
@@ -12,7 +13,9 @@ const SOURCE: string = import.meta.env.REMOTIVE_URL ?? 'https://remotive.com/api
 // A data source cannot read the clock, so the view passes the current hour.
 const FRESH_HOURS = 4;
 const CACHE = 'app:/data/jobs.db';
-export const grants = `net.fetch ${API}\nnet.fetch ${SOURCE}\nsqlite.open ${CACHE}`;
+// Applications kept on the device, with their history (ADR-0037).
+const KEPT = 'app:/data/applications.db';
+export const grants = `net.fetch ${API}\nnet.fetch ${SOURCE}\nsqlite.open ${CACHE}\nsqlite.open ${KEPT}`;
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -60,6 +63,48 @@ const STATES: Record<string, string> = {
   INTERVIEWING: 'Interviewing', OFFERED: 'Offer', NO_RESPONSE: 'No response', REJECTED: 'Rejected', WITHDRAWN: 'Withdrawn',
 };
 
+async function daemonApplications(): Promise<Result<'loadApplications'>> {
+  const profile = await get('/v1/profile');
+  if (!isObject(profile)) return [];
+  const list = await get(`/v1/applications?candidate_id=${encodeURIComponent(str(profile.id))}`);
+  if (!Array.isArray(list)) throw new Error('The daemon returned an invalid application list.');
+  return Promise.all(list.filter(isObject).map(async (a) => {
+    const job = toJob(await get(`/v1/jobs/${encodeURIComponent(str(a.job_id))}`));
+    return {
+      id: str(a.id), applyUrl: str(a.apply_url), jobId: str(a.job_id), title: job?.title ?? 'A job that is no longer stored',
+      company: job?.company ?? '', state: STATES[str(a.state)] ?? str(a.state), updated: str(a.updated_at).slice(0, 10),
+      local: false, next: [],
+    };
+  }));
+}
+
+
+// One connection at a time: a refresh and a write that overlap would find the file busy.
+let turn: Promise<unknown> = Promise.resolve();
+function kept<T>(storage: Storage, work: (db: Database) => Promise<T>): Promise<T> {
+  const run = turn.then(() => keptNow(storage, work), () => keptNow(storage, work));
+  turn = run;
+  return run;
+}
+async function keptNow<T>(storage: Storage, work: (db: Database) => Promise<T>): Promise<T> {
+  const db = await storage.sqlite.open(KEPT);
+  try {
+    await db.execute('CREATE TABLE IF NOT EXISTS applications (id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, company TEXT NOT NULL, url TEXT NOT NULL, apply_url TEXT NOT NULL, state TEXT NOT NULL, updated_at INTEGER NOT NULL)');
+    await db.execute('CREATE TABLE IF NOT EXISTS transitions (id TEXT PRIMARY KEY, application_id TEXT NOT NULL, seq INTEGER NOT NULL, from_state TEXT NOT NULL, to_state TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL)');
+    return await work(db);
+  } finally { await db.close(); }
+}
+const COLUMNS = 'id, job_id, title, company, url, apply_url, state, updated_at';
+const toTracked = (r: unknown[]): Tracked => ({ id: String(r[0]), jobId: String(r[1]), title: String(r[2]), company: String(r[3]), url: String(r[4]),
+  applyUrl: String(r[5]), state: String(r[6]) as Tracked['state'], updatedAt: Number(r[7]) });
+const getTracked = async (db: Database, id: string): Promise<Tracked | undefined> => {
+  const row = (await db.query(`SELECT ${COLUMNS} FROM applications WHERE id = ?`, [id])).rows[0];
+  return row ? toTracked(row) : undefined;
+};
+const saveSql = (a: Tracked) => ({ sql: `INSERT OR REPLACE INTO applications (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  params: [a.id, a.jobId, a.title, a.company, a.url, a.applyUrl, a.state, a.updatedAt] });
+const label = (code: string) => STATES[code] ?? code;
+
 const sources: Sources = {
   loadJobs: async (): Promise<Result<'loadJobs'>> => {
     const page = await get('/v1/jobs?limit=100');
@@ -71,18 +116,16 @@ const sources: Sources = {
     if (!isObject(m)) return { jobId, score: -1, rationale: '', strengths: [], gaps: [] };
     return { jobId, score: Math.round(num(m.score)), rationale: str(m.rationale), strengths: strings(m.strengths), gaps: strings(m.gaps) };
   },
-  loadApplications: async (): Promise<Result<'loadApplications'>> => {
-    const profile = await get('/v1/profile');
-    if (!isObject(profile)) return [];
-    const list = await get(`/v1/applications?candidate_id=${encodeURIComponent(str(profile.id))}`);
-    if (!Array.isArray(list)) throw new Error('The daemon returned an invalid application list.');
-    return Promise.all(list.filter(isObject).map(async (a) => {
-      const job = toJob(await get(`/v1/jobs/${encodeURIComponent(str(a.job_id))}`));
-      return {
-        id: str(a.id), applyUrl: str(a.apply_url), jobId: str(a.job_id), title: job?.title ?? 'A job that is no longer stored',
-        company: job?.company ?? '', state: STATES[str(a.state)] ?? str(a.state), updated: str(a.updated_at).slice(0, 10),
-      };
+  loadApplications: async (_args, _store, storage): Promise<Result<'loadApplications'>> => {
+    const local = await kept(storage, async (db) => (await db.query(`SELECT ${COLUMNS} FROM applications ORDER BY updated_at DESC, id`)).rows.map((r) => {
+      const a = toTracked(r);
+      return { id: a.id, applyUrl: a.applyUrl, jobId: a.jobId, title: a.title, company: a.company, state: label(a.state), updated: day(a.updatedAt),
+        local: true, next: choices(a.state).map((code) => ({ code, label: label(code) })) };
     }));
+    // The daemon is optional now: when it is not running, the applications on the device still show.
+    let remote: Result<'loadApplications'> = [];
+    try { remote = await daemonApplications(); } catch { remote = []; }
+    return [...local, ...remote];
   },
   loadScouts: async (): Promise<Result<'loadScouts'>> => {
     const list = await get('/v1/scouts');
@@ -133,13 +176,19 @@ discover: async ([query, hour], _store, storage): Promise<Result<'discover'>> =>
         { sql: 'INSERT INTO fetched (at) VALUES (?)', params: [hour] },
       ]);
     }
+    const trackedJobs = new Set(await kept(storage, async (kdb) => (await kdb.query('SELECT job_id FROM applications')).rows.map((r) => String(r[0]))));
     const criteria = { ...emptyCriteria, keywords: query };
     return (await db.query('SELECT body FROM found ORDER BY id')).rows
       .map(([body]) => JSON.parse(String(body)) as SourceJob).filter((j) => matches(criteria, j))
-      .slice(0, 100).map((j) => ({ id: j.sourceJobId, title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl }));
+      .slice(0, 100).map((j) => ({ id: j.sourceJobId, title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl,
+        tracked: trackedJobs.has(j.sourceJobId) }));
   } finally { await db.close(); }
 },
-  loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
+  loadHistory: async ([id], _store, storage): Promise<Result<'loadHistory'>> => {
+    if (isLocal(id)) {
+      return kept(storage, async (db) => (await db.query('SELECT id, from_state, to_state, reason, at FROM transitions WHERE application_id = ? ORDER BY seq DESC', [id])).rows
+        .map((r) => ({ id: String(r[0]), from: label(String(r[1])), to: label(String(r[2])), reason: String(r[3]), at: day(Number(r[4])) })));
+    }
     const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
     if (!Array.isArray(list)) return [];
     return list.filter(isObject).map((s) => ({
@@ -147,5 +196,32 @@ discover: async ([query, hour], _store, storage): Promise<Result<'discover'>> =>
       reason: str(s.reason), at: str(s.created_at).slice(0, 10),
     }));
   },
+  // ADR-0037: track a found job. One application per job; a second track is a no-op, never a duplicate.
+  trackJob: async ([jobId, title, company, url, now], _store, storage): Promise<Result<'trackJob'>> => kept(storage, async (db) => {
+    if (await getTracked(db, applicationId(jobId))) return { ok: true, error: '' };
+    const created = newApplication({ id: jobId, title, company, url }, now);
+    if (!created) return { ok: false, error: 'This job has no title, so it cannot be tracked.' };
+    await db.execute(saveSql(created).sql, saveSql(created).params);
+    return { ok: true, error: '' };
+  }),
+  moveApplication: async ([id, to, reason, now], _store, storage): Promise<Result<'moveApplication'>> => kept(storage, async (db) => {
+    const app = await getTracked(db, id);
+    if (!app) return { ok: false, error: 'This application is no longer stored.' };
+    const seq = Number((await db.query('SELECT COALESCE(MAX(seq), 0) FROM transitions WHERE application_id = ?', [id])).rows[0]?.[0] ?? 0) + 1;
+    const moved = move(app, to, reason, now, seq);
+    if (!moved.ok) return moved;
+    const t = moved.step;
+    await db.transaction([saveSql(moved.application),
+      { sql: 'INSERT INTO transitions (id, application_id, seq, from_state, to_state, reason, at) VALUES (?, ?, ?, ?, ?, ?, ?)', params: [t.id, id, seq, t.from, t.to, t.reason, t.at] }]);
+    return { ok: true, error: '' };
+  }),
+  setApplyLink: async ([id, url, now], _store, storage): Promise<Result<'setApplyLink'>> => kept(storage, async (db) => {
+    const app = await getTracked(db, id);
+    if (!app) return { ok: false, error: 'This application is no longer stored.' };
+    const linked = setApplyLink(app, url, now);
+    if (!linked.ok) return linked;
+    await db.execute(saveSql(linked.application).sql, saveSql(linked.application).params);
+    return { ok: true, error: '' };
+  }),
 };
 export const answer: Answer = (source, args, store, storage, native) => sources[source](args, store, storage, native);

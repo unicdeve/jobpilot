@@ -85,6 +85,50 @@ test "discovery runs on the device, with no daemon"
   expect tree has "found-1"
   expect tree missing "found-2"
 
+test "a found job is tracked once, moved along the rule table, and its history kept"
+  clock data
+  tap "tab-discover"
+  clock data
+  tap "track-1"
+  clock data
+  expect tree has "tracked-1"
+  expect tree missing "track-1"
+  tap "tab-applications"
+  clock data
+  expect text "state-local:1" == "Discovered"
+  tap "application-local:1"
+  clock data
+  expect tree has "next-MATCHED"
+  expect tree has "next-WITHDRAWN"
+  expect tree missing "next-SUBMITTED"
+  type "reason" "Fits my skills"
+  tap "next-MATCHED"
+  clock data
+  expect text "app-state" == "Matched"
+  expect tree has "step-local:1:1"
+  expect tree has "next-SUBMITTED"
+  expect tree missing "next-MATCHED"
+
+test "an apply link must be a web address"
+  clock data
+  tap "tab-discover"
+  clock data
+  tap "track-1"
+  clock data
+  tap "tab-applications"
+  clock data
+  tap "application-local:1"
+  clock data
+  type "link" "not a link"
+  tap "save-link"
+  clock data
+  expect tree has "link-error"
+  type "link" "https://jobs.example.com/apply"
+  tap "save-link"
+  clock data
+  expect tree missing "link-error"
+  expect tree has "app-apply"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

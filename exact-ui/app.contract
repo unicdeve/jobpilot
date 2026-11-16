@@ -44,6 +44,7 @@ shape Found
   company: string
   location: string
   url: string
+  tracked: bool
 
 shape Scout
   id: string
@@ -83,7 +84,17 @@ shape Step
   reason: string
   at: string
 
+shape Choice
+  code: string
+  label: string
+
+shape Reply
+  ok: bool
+  error: string
+
 shape Application
+  local: bool
+  next: Choice[]
   id: string
   applyUrl: string
   jobId: string
@@ -103,7 +114,7 @@ component App
   resource fit = loadMatch(selected) when selected != "" as shape Match else empty()
   derive openApp = match stack(nav).filter(e => e.name == "application").at(-1) { case some(e) => e.params.id, case none => "" }
   resource steps = loadHistory(openApp) when openApp != "" as shape Step[] else empty()
-  derive app = match first(applications.filter(a => a.id == openApp)) { case some(a) => a, case none => Application(id="", applyUrl="", jobId="", title="", company="", state="", updated="") }
+  derive app = match first(applications.filter(a => a.id == openApp)) { case some(a) => a, case none => Application(local=false, next=[], id="", applyUrl="", jobId="", title="", company="", state="", updated="") }
   resource scouts = loadScouts() as shape Scout[] else empty()
   resource me = loadProfile() as shape Me else empty()
   resource resumes = loadResumes() as shape Resume[] else empty()
@@ -113,6 +124,31 @@ component App
   resource time = exactTime() as shape Time
   derive hour = floor(time.epochAtZero / 3600000)
   resource found = discover(finding, hour) when time.epochAtZero > 0 as shape Found[] else empty()
+  state reason = ""
+  state linkDraft = ""
+  mutation tracked as shape Reply refreshes found, applications
+  mutation moved as shape Reply refreshes applications, steps then afterMove
+  mutation linked as shape Reply refreshes applications then afterLink
+  derive moveError = pending(moved) ? "" : match moved { case some(r) => r.error, case none => "" }
+  derive linkError = pending(linked) ? "" : match linked { case some(r) => r.error, case none => "" }
+  action track(id: string, title: string, company: string, url: string)
+    send tracked = trackJob(id, title, company, url, time.epochAtZero + performanceNow())
+  action advance(to: string)
+    if not pending(moved)
+      send moved = moveApplication(openApp, to, reason, time.epochAtZero + performanceNow())
+  action afterMove
+    if match moved { case some(r) => r.ok, case none => false }
+      reason = ""
+  action noteReason(v: string)
+    reason = v
+  action editLink(v: string)
+    linkDraft = v
+  action saveLink
+    if not pending(linked)
+      send linked = setApplyLink(openApp, linkDraft.trim(), time.epochAtZero + performanceNow())
+  action afterLink
+    if match linked { case some(r) => r.ok, case none => false }
+      linkDraft = ""
   action find(v: string)
     finding = v
   action reloadFound
@@ -212,11 +248,17 @@ component App
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
                         for f in found key=f.id
-                          link href=f.url testId=`found-${f.id}`
-                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text f.title
-                              text `${f.company}${f.location == "" ? "" : " · " + f.location}` font="-exact-subheadline"
-                                color="-exact-secondary-label"
+                          row display="flex" flex-wrap="wrap" align-items="center" gap=8
+                            link href=f.url testId=`found-${f.id}` flex="1 1 12rem" min-width=0
+                              column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                                text f.title
+                                text `${f.company}${f.location == "" ? "" : " · " + f.location}` font="-exact-subheadline"
+                                  color="-exact-secondary-label"
+                            if f.tracked
+                              text "Tracked" font="-exact-subheadline" color="-exact-secondary-label" testId=`tracked-${f.id}`
+                            else
+                              button press=track(f.id, f.title, f.company, f.url) testId=`track-${f.id}`
+                                text "Track"
                 else if e.name == "scouts"
                   if failed(scouts)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
@@ -336,6 +378,27 @@ component App
                       section
                         link href=app.applyUrl testId="app-apply"
                           text "Open the Application Page"
+                    if app.local
+                      if app.next.length > 0
+                        section
+                          row padding-top=10 padding-bottom=10
+                            input value=reason input=noteReason placeholder="Why (optional)" aria-label="Reason for the change"
+                              testId="reason" flex=1 min-width=0
+                          for n in app.next key=n.code
+                            button press=advance(n.code) testId=`next-${n.code}`
+                              text n.label
+                          if moveError != ""
+                            row
+                              text moveError color="-exact-system-red" testId="move-error"
+                      section
+                        row padding-top=10 padding-bottom=10
+                          input type="url" value=linkDraft input=editLink submit=saveLink placeholder="Apply link" aria-label="Apply link"
+                            testId="link" flex=1 min-width=0
+                        button press=saveLink disabled=(pending(linked)) testId="save-link"
+                          text "Save Link"
+                        if linkError != ""
+                          row
+                            text linkError color="-exact-system-red" testId="link-error"
                     if steps.length > 0
                       section
                         for s in steps key=s.id
