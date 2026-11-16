@@ -1,7 +1,8 @@
 // A port of internal/core/domain/geo (ADR-0023 §2, ADR-0037): the countries, regions and cities a job's location is read against.
 // Pure TypeScript with no Exact, network or storage dependency.
 // Countries and time zones are generated into geo-data.ts. The city table (cities.tsv.gz in the Go package, about 62,000 lines)
-// is not bundled: the host loads it once with loadCities(tsv), and until it does no city is a place, which only leaves jobs "unknown".
+// is generated into cities-data.ts (scripts/gen-cities.ts) and installed by loadBundledCities() (geo-cities.ts).
+// Until it is loaded no city is a place, which only leaves jobs "unknown".
 
 import { countries as countryList, timeZones, type Country } from './geo-data.ts';
 
@@ -253,37 +254,60 @@ const tables = (): Tables => {
 };
 
 // The city table, as the lines of cities.tsv: folded name, comma-separated country codes (most populous first), display name.
+// It is read in slices (warmSteps) so a host that budgets a turn never reads 62,000 lines in one; a lookup that arrives first finishes the read itself.
 let cityTable: Map<string, CityEntry> | undefined;
 let cityTsv = '';
+let cityBuilding: Map<string, CityEntry> | undefined;
+let cityCursor = 0;
 
 // Installs the city table. A name that is also a country's or a region's is left to it.
 export function loadCities(tsv: string): void {
   cityTsv = tsv;
   cityTable = undefined;
+  cityBuilding = undefined;
+  cityCursor = 0;
 }
 
-const cities = (): Map<string, CityEntry> => {
-  if (cityTable) return cityTable;
+// The lines read in one step.
+const sliceLines = 4000;
+
+// Reads up to `limit` more lines into the table being built, and finishes it when the text ends.
+const readCities = (limit: number): void => {
+  if (cityTable) return;
   const t = tables();
-  const map = new Map<string, CityEntry>();
-  for (const line of cityTsv.split('\n')) {
-    const first = line.indexOf('\t');
-    const second = first < 0 ? -1 : line.indexOf('\t', first + 1);
-    if (second < 0) continue;
-    const name = line.slice(0, first);
-    if (t.countryNames.has(name) || t.regions.has(name)) continue;
-    map.set(name, { name: line.slice(second + 1), countries: line.slice(first + 1, second).split(',') });
+  const map = (cityBuilding ??= new Map<string, CityEntry>());
+  let pos = cityCursor;
+  for (let n = 0; n < limit && pos < cityTsv.length; n++) {
+    let end = cityTsv.indexOf('\n', pos);
+    if (end < 0) end = cityTsv.length;
+    const first = cityTsv.indexOf('\t', pos);
+    const second = first < 0 || first >= end ? -1 : cityTsv.indexOf('\t', first + 1);
+    if (second >= 0 && second < end) {
+      const name = cityTsv.slice(pos, first);
+      if (!t.countryNames.has(name) && !t.regions.has(name)) {
+        map.set(name, { name: cityTsv.slice(second + 1, end), countries: cityTsv.slice(first + 1, second).split(',') });
+      }
+    }
+    pos = end + 1;
   }
+  cityCursor = pos;
+  if (pos < cityTsv.length) return;
   for (const [abbreviation, name] of Object.entries(cityAbbreviations)) {
     const city = map.get(fold(name));
     if (city) map.set(fold(abbreviation), city);
   }
   cityTable = map;
-  return map;
+  cityBuilding = undefined;
 };
 
-// The lazy tables, one step each, so a host that budgets a turn can build them across turns before the first read.
-export const warmSteps: (() => unknown)[] = [tables, cities];
+const cities = (): Map<string, CityEntry> => {
+  if (!cityTable) readCities(Infinity);
+  return cityTable!;
+};
+
+// The steps that build the lazy tables, each small, so a host that budgets a turn can run them across turns before the first read.
+// The last city step reads whatever the slices before it left, so a table of any size is finished.
+export const warmSteps: (() => unknown)[] = [tables, ...Array.from({ length: 15 }, (_, i) => () => readCities(i === 14 ? Infinity : sliceLines))];
 
 const countryPlaceOf = (t: Tables, code: string): Place => ({ kind: 'country', name: t.byCode.get(code)!.name, countries: [code], elsewhere: [] });
 
