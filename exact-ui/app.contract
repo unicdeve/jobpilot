@@ -1,0 +1,165 @@
+// JobPilot on Exact: the candidate's jobs and applications, read from the local daemon (ADR-0012).
+// Two tabs, each its own stack: Jobs pushes a job's detail, Applications lists where each one stands.
+// The candidate writes and sends their own application (ADR-0034): the detail's one action opens the
+// posting in their own browser, and nothing here fills or submits a form.
+use EmptyState from "exact:content"
+
+routes nav
+  tab jobs "/"
+    job "/job/:id"
+  tab applications "/applications"
+
+shape Job
+  id: string
+  title: string
+  company: string
+  location: string
+  remote: string
+  salary: string
+  posted: string
+  skills: string[]
+  description: string
+  url: string
+
+shape Match
+  jobId: string
+  score: number
+  rationale: string
+  strengths: string[]
+  gaps: string[]
+
+shape Application
+  id: string
+  jobId: string
+  title: string
+  company: string
+  state: string
+  updated: string
+
+fn matches(j: Job, q: string): bool = j.title.toLowerCase().includes(q.trim().toLowerCase()) or j.company.toLowerCase().includes(q.trim().toLowerCase())
+fn blankJob(): Job = Job(id="", title="", company="", location="", remote="", salary="", posted="", skills=[], description="", url="")
+
+component App
+  state query = ""
+  resource jobs = loadJobs() as shape Job[] else empty()
+  resource applications = loadApplications() as shape Application[] else empty()
+  derive selected = match stack(nav).filter(e => e.name == "job").at(-1) { case some(e) => e.params.id, case none => "" }
+  resource fit = loadMatch(selected) when selected != "" as shape Match else empty()
+  derive shown = jobs.filter(j => matches(j, query))
+  derive opened = match first(jobs.filter(j => j.id == selected)) { case some(j) => j, case none => blankJob() }
+  derive scoreText = fit.jobId == selected and fit.score >= 0 ? `${fit.score}% match` : "No match analysis yet"
+
+  action pick(name: string)
+    nav = select(nav, name)
+  action follow(url: string)
+    nav = go(nav, url)
+  action back
+    nav = back(nav)
+  action search(v: string)
+    query = v
+  action reloadJobs
+    refresh jobs
+  action reloadApplications
+    refresh applications
+
+  view
+    main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow testId="app" width="100%" height="100%"
+      display="flex" flex-direction="column"
+      column flex=1 min-height=0 position="relative"
+        for t in nav.tabs key=t.name
+          column role="tabpanel" id=`panel-${t.name}` position="absolute" inset=0
+            for e in t.stack key=e.id
+              column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
+                display="flex" flex-direction="column"
+                header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : opened.title)
+                    role="heading" aria-level=(e.name == "job" ? 2 : 1) flex=1
+                  if e.name == "jobs"
+                    input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
+                      testId="search" width="100%"
+                if e.name == "jobs"
+                  if failed(jobs)
+                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
+                      button press=reloadJobs testId="retry-jobs"
+                        text "Try Again"
+                  else if jobs.length == 0 and not pending(jobs)
+                    EmptyState(symbol="symbol:search", title="No Jobs Yet", message="Run a search in JobPilot and what it finds appears here.")
+                  else if shown.length == 0 and not pending(jobs)
+                    EmptyState(symbol="symbol:search", title=`No Results for “${query.trim()}”`, message="Check the spelling or try a new search.")
+                  else
+                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      section
+                        for j in shown key=j.id
+                          link href=path("job", j.id) testId=`job-${j.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text j.title
+                              text `${j.company}${j.location == "" ? "" : " · " + j.location}` font="-exact-subheadline"
+                                color="-exact-secondary-label" line-clamp=1
+                            image "symbol:forward-chevron"
+                else if e.name == "applications"
+                  if failed(applications)
+                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
+                      button press=reloadApplications testId="retry-applications"
+                        text "Try Again"
+                  else if applications.length == 0 and not pending(applications)
+                    EmptyState(symbol="symbol:document", title="No Applications", message="Start one from a job you want to apply for.")
+                  else
+                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      section
+                        for a in applications key=a.id
+                          row testId=`application-${a.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text a.title
+                              text a.company font="-exact-subheadline" color="-exact-secondary-label"
+                            column align-items="flex-end" gap=2
+                              text a.state testId=`state-${a.id}`
+                              text a.updated font="-exact-footnote" color="-exact-secondary-label"
+                                font-variant-numeric="tabular-nums"
+                else
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      row
+                        text "Company"
+                        text opened.company testId="detail-company"
+                      if opened.location != ""
+                        row
+                          text "Location"
+                          text opened.location
+                      if opened.remote != ""
+                        row
+                          text "Work"
+                          text opened.remote
+                      if opened.salary != ""
+                        row
+                          text "Salary"
+                          text opened.salary testId="detail-salary"
+                      row
+                        text "Posted"
+                        text opened.posted font-variant-numeric="tabular-nums"
+                    section
+                      row
+                        text "Fit"
+                        text scoreText testId="detail-score"
+                      if fit.jobId == selected and fit.rationale != ""
+                        row padding-top=10 padding-bottom=10
+                          text fit.rationale flex=1 min-width=0 testId="detail-rationale"
+                    if opened.skills.length > 0
+                      section
+                        row
+                          text "Skills"
+                          text opened.skills.join(", ") testId="detail-skills"
+                    section
+                      row padding-top=10 padding-bottom=10
+                        text opened.description flex=1 min-width=0 testId="detail-description"
+                    section
+                      link href=opened.url testId="detail-open"
+                        text "Open the Posting"
+      row role="tablist" testId="tabs"
+        button role="tab" aria-controls="panel-jobs" aria-selected=(nav.tab == "jobs") press=pick("jobs")
+          testId="tab-jobs" flex=1
+          image "symbol:search"
+          text "Jobs"
+        button role="tab" aria-controls="panel-applications" aria-selected=(nav.tab == "applications")
+          press=pick("applications") testId="tab-applications" flex=1
+          image "symbol:document"
+          text "Applications"

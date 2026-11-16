@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../exact/scripts/app.schema.json",
+  "name": "JobPilot",
+  "short_name": "JobPilot",
+  "id": "dev.jobpilot.app",
+  "start_url": "/",
+  "display": "standalone",
+  "app": {
+    "id": "dev.jobpilot.app",
+    "name": "JobPilot"
+  },
+  "server": {
+    "database": false
+  },
+  "env": [
+    "API_BASE_URL"
+  ],
+  "host": {
+    "web": {},
+    "ios": {
+      "minimumOS": "17.0",
+      "deviceFamily": [
+        "iphone",
+        "ipad"
+      ]
+    },
+    "macos": {
+      "minimumOS": "14.0",
+      "window": {
+        "width": 900,
+        "height": 700
+      }
+    }
+  },
+  "deploy": {
+    "store": {
+      "web": "0",
+      "ios": "0",
+      "macos": "0"
+    }
+  }
+}

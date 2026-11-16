@@ -1,0 +1,40 @@
+// `test` and `verify` start server.ts, a stand-in for the daemon's read API, empty for each test.
+test "jobs list, search and a job's detail with its match"
+  clock data
+  expect tree has "job-j1"
+  expect tree has "job-j2"
+  expect tree has "job-j3"
+  type "search" "designer"
+  expect tree has "job-j2"
+  expect tree missing "job-j1"
+  type "search" ""
+  tap "job-j1"
+  clock data
+  expect text "detail-company" == "Acme"
+  expect text "detail-salary" == "EUR 90k–120k"
+  expect text "detail-score" == "86% match"
+  expect text "detail-rationale" == "Strong Go and SQLite background."
+  expect text "detail-skills" == "Go, SQLite"
+
+test "a job with no analysis says so"
+  clock data
+  tap "job-j2"
+  clock data
+  expect text "detail-score" == "No match analysis yet"
+
+test "applications show where each one stands"
+  clock data
+  tap "tab-applications"
+  clock data
+  expect text "state-a1" == "Sent"
+  expect text "state-a2" == "Interviewing"
+
+test "an unreachable daemon offers Try Again, and recovers"
+  fail fetch "http://127.0.0.1:4417"
+  reload
+  clock data
+  expect tree has "retry-jobs"
+  pass fetch "http://127.0.0.1:4417"
+  tap "retry-jobs"
+  clock data
+  expect tree has "job-j1"
