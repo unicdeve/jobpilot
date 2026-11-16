@@ -1,7 +1,7 @@
 // The job sources the app searches and the on-device cache in front of them (ADR-0037), the host half of Go's discovery wiring.
 // Each source keeps its own terms: a listing is kept for the source's *_CACHE_MS (Remotive's own window is REMOTIVE_CACHE_MS) and
 // asked for again after. A data source cannot read the clock, so `now` is passed in. Nothing here writes anything for the candidate.
-import type { SearchCriteria } from '../search/criteria.ts';
+import { noSeeker, type SearchCriteria, type Seeker } from '../search/criteria.ts';
 import type { Db } from '../shared/db.ts';
 import { DiscoveryError, dedupe, searchSources, type DiscoverySource, type FoundJob, type SourceOutcome } from './discovery.ts';
 import { warmSteps } from '../search/workable.ts';
@@ -87,11 +87,11 @@ export interface BoardSearch { jobs: FoundJob[]; sources: SourceOutcome[]; error
 
 // Searches every source, isolating each one's failure, and dedupes by URL. A search no source answered, or one with nothing to
 // look for, is an `error` for the view to say, never a throw: only a bug throws.
-export async function searchBoard(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number, criteria: SearchCriteria, turn?: () => Promise<void>): Promise<BoardSearch> {
+export async function searchBoard(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number, criteria: SearchCriteria, turn?: () => Promise<void>, seeker: Seeker = noSeeker): Promise<BoardSearch> {
   if (turn !== undefined) await warmUp(turn);
   await db.execute(cacheSchema);
   try {
-    const found = await searchSources(discoverySources(db, doFetch, urls, now), criteria, undefined, turn);
+    const found = await searchSources(discoverySources(db, doFetch, urls, now), criteria, seeker, turn);
     return { jobs: dedupe(found.jobs, new Map()).fresh, sources: found.sources, error: '' };
   } catch (e) {
     if (e instanceof DiscoveryError) return { jobs: [], sources: [], error: e.message };
