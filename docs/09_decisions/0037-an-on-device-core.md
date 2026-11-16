@@ -57,6 +57,7 @@ Its licence is EUPL-1.2, which needs a review before JobPilot ships it.
 The slice is in `exact-ui/core/`, with `bun test` coverage, and a Discover tab in the app.
 It ports the search rule (`SearchCriteria.MatchesFor`, minus work-from and fit-hours) and the Remotive source, keeps the listing in SQLite for four hours, and shows the matches, with no daemon.
 
+- The application state machine and the apply-link check are ported too (`core/application.ts`), with the Go test's transition cases.
 - It passes on the web host, including SQLite and the offline-after-fetch path.
 - It has not been built for iOS or Android: this machine has Xcode 27.0 where Exact needs 27.1, and lacks Android SDK platform 37.2 and a JDK without JDK-8335662.
 - A data source cannot read the clock, so the view passes the current hour in.
