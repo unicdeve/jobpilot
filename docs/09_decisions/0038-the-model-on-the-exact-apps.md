@@ -117,7 +117,11 @@ The user accepted this ADR before the spike ran, so the spike now confirms it an
 Answered from Exact's reference (2026-11-16): a network grant is a line in the app's `grants`, fixed at build time.
 `net.fetch https:` is the only grant that reaches a host the person types, and nothing asks for it after install.
 So §3's first branch is closed: a custom endpoint needs `net.fetch https:` in the build, and the app ships without it until a decision justifies it.
-Open still: Android's secret store, and a real key saved and read on a device.
+Android builds and passes the app's 26 tests on an emulator (2026-11-16).
+Exact's documentation says nothing about Android's secret store.
+Its source suggests a file-backed store in the app's private storage, not the Android Keystore, but that is not confirmed.
+Until Exact documents otherwise, treat a key on Android as protected only by app-private storage, and say so beside the key field.
+Open still: a real key saved and read on a device, on both platforms.
 
 On iOS and Android, store a key in the `llm-keys` secret and read it back, then send one scoring request to an OpenAI-compatible host the user names, through `core/match.ts`, and show the score.
 Record what the Android secret store is, and whether the custom-endpoint grant can be asked for at run time.
