@@ -39,6 +39,20 @@ test "an application shows its history and its apply page"
   expect tree has "app-apply"
   expect tree has "step-s2"
 
+test "scouts show whether each one is on"
+  clock data
+  tap "tab-scouts"
+  clock data
+  expect text "scout-state-sc1" == "On"
+  expect text "scout-state-sc2" == "Off"
+
+test "the profile shows who the candidate is"
+  clock data
+  tap "tab-profile"
+  clock data
+  expect text "profile-name" == "Ada Lovelace"
+  expect text "profile-email" == "ada@example.com"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

@@ -75,6 +75,20 @@ const sources: Sources = {
       };
     }));
   },
+  loadScouts: async (): Promise<Result<'loadScouts'>> => {
+    const list = await get('/v1/scouts');
+    if (!Array.isArray(list)) return [];
+    return list.filter(isObject).map((s) => ({
+      id: str(s.id), name: str(s.name), enabled: s.is_enabled === true, minScore: num(s.min_match_score),
+      ceiling: num(s.max_applications_per_run), lastRun: str(s.last_run_at).slice(0, 10),
+    }));
+  },
+  loadProfile: async (): Promise<Result<'loadProfile'>> => {
+    const p = await get('/v1/profile');
+    if (!isObject(p)) return { name: '', email: '', phone: '', location: '' };
+    const place = [str(p.location_city), str(p.location_region), str(p.location_country)].filter((s) => s !== '');
+    return { name: `${str(p.first_name)} ${str(p.last_name)}`.trim(), email: str(p.email), phone: str(p.phone), location: place.join(', ') };
+  },
   loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
     const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
     if (!Array.isArray(list)) return [];

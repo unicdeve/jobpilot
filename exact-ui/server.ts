@@ -20,6 +20,10 @@ const APPLICATIONS = [
   { id: 'a1', job_id: 'j1', candidate_id: 'c1', state: 'SUBMITTED', apply_url: 'https://acme.example/apply', updated_at: '2026-11-13T10:00:00Z' },
   { id: 'a2', job_id: 'j3', candidate_id: 'c1', state: 'INTERVIEWING', updated_at: '2026-11-14T10:00:00Z' },
 ];
+const SCOUTS = [
+  { id: 'sc1', name: 'Go roles in Europe', is_enabled: true, min_match_score: 70, max_applications_per_run: 5, last_run_at: '2026-11-14T08:00:00Z' },
+  { id: 'sc2', name: 'Design, remote', is_enabled: false, min_match_score: 80, max_applications_per_run: 3 },
+];
 const HISTORY = [
   { id: 's1', application_id: 'a1', from_state: '', to_state: 'DISCOVERED', reason: '', created_at: '2026-11-11T10:00:00Z' },
   { id: 's2', application_id: 'a1', from_state: 'DISCOVERED', to_state: 'SUBMITTED', reason: 'Sent from my own browser', created_at: '2026-11-13T10:00:00Z' },
@@ -33,11 +37,12 @@ const send = (body: unknown, status = 200) => Response.json(body, { status, head
 const { hostname, port } = new URL(API);
 Bun.serve({ hostname, port: Number(port), routes: {
   '/v1/health': () => send({ status: 'ok' }),
-  '/v1/profile': () => send({ id: 'c1', first_name: 'Ada', last_name: 'Lovelace' }),
+  '/v1/profile': () => send({ id: 'c1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.com', phone: '', location_city: 'London', location_region: '', location_country: 'UK' }),
   '/v1/jobs': () => send({ jobs: JOBS, total: JOBS.length }),
   '/v1/jobs/:id': (req) => { const j = JOBS.find((x) => x.id === req.params.id); return j ? send(j) : send({ error: 'not found' }, 404); },
   '/v1/jobs/:id/match': (req) => { const m = MATCHES[req.params.id]; return m ? send({ id: 'm1', job_id: req.params.id, ...m }) : send({ error: 'not found' }, 404); },
   '/v1/applications/:id/history': (req) => send(HISTORY.filter((h) => h.application_id === req.params.id)),
+  '/v1/scouts': () => send(SCOUTS),
   '/v1/applications': () => send(APPLICATIONS),
 } });
 console.log(`server.ts: ${API}`);
