@@ -2,20 +2,50 @@ import type { Answer, Database, Result, Sources, Storage } from './app.contract.
 
 // The JobPilot daemon's loopback address (ADR-0012). The daemon picks a free port on every start, so a real
 // run sets API_BASE_URL to the address `jobpilot-cli ui` prints; the default is the test server's (server.ts).
-import { emptyCriteria, matches } from './core/criteria.ts';
-import { fetchRemotive, type SourceJob } from './core/remotive.ts';
-import { choices, day, isLocal, move, newApplication, setApplyLink, applicationId, type Tracked } from './core/tracking.ts';
+import { emptyCriteria } from './core/search/criteria.ts';
+import type { Db } from './core/shared/db.ts';
+import { ensureAgentRunTables } from './core/activity/agent-run-store.ts';
+import { applicationColumns, ensureApplicationSchema, getTracked, saveSql, toTracked, trackedJobIds } from './core/applications/application-store.ts';
+import { foundId, searchBoard, sourceUrls } from './core/sources/discover-sources.ts';
+import type { DoFetch } from './core/sources/job-source.ts';
+import { ensureSavedSearchSchema, listSavedSearches } from './core/scouts/saved-search.ts';
+import { describeCriteria, loadScoutForm, saveScoutForm, searchChoices } from './core/scouts/scout-editor.ts';
+import { runScoutNow } from './core/scouts/scout-manual.ts';
+import { ensureScoutSchema, listRunEvents, listRuns, listScouts } from './core/scouts/scout-store.ts';
+import { choices, day, isLocal, move, newApplication, setApplyLink, applicationId } from './core/applications/tracking.ts';
 
 export const API: string = import.meta.env.API_BASE_URL ?? 'http://127.0.0.1:4417';
+// ADR-0037: discovery with no daemon. Every ported source is searched here, each kept in SQLite on the device for its own cache
+// window (core/discover-sources.ts), and the search rule runs here, as it does in the Go core. REMOTIVE_URL and SOURCES_BASE_URL
+// point the sources at the stand-ins in server.ts for `test` and `verify`; a real build leaves them unset.
 const SOURCE: string = import.meta.env.REMOTIVE_URL ?? 'https://remotive.com/api/remote-jobs';
-// ADR-0037: discovery with no daemon. The listing is kept in SQLite on the device for Remotive's own cache
-// window (its terms ask for few requests a day), and the search rule runs here, as it does in the Go core.
-// A data source cannot read the clock, so the view passes the current hour.
-const FRESH_HOURS = 4;
+// The default is RemoteOK's own origin, so the grant below is always a real address; it means "no stand-ins".
+const REAL_SOURCES = 'https://remoteok.com';
+const SOURCES_BASE: string = import.meta.env.SOURCES_BASE_URL ?? 'https://remoteok.com';
+const URLS = sourceUrls(SOURCES_BASE === REAL_SOURCES ? '' : SOURCES_BASE, SOURCE);
+// A data source cannot read the clock: the view passes the current quarter hour, the finest a source's cache window needs.
+const SLOT_MS = 15 * 60 * 1000;
 const CACHE = 'app:/data/jobs.db';
-// Applications kept on the device, with their history (ADR-0037).
+// Applications, scouts, saved searches and their runs kept on the device, with history (ADR-0037).
 const KEPT = 'app:/data/applications.db';
-export const grants = `net.fetch ${API}\nnet.fetch ${SOURCE}\nsqlite.open ${CACHE}\nsqlite.open ${KEPT}`;
+export const grants = `net.fetch ${API}
+net.fetch ${SOURCE}
+net.fetch ${SOURCES_BASE}
+net.fetch https://remoteok.com
+net.fetch https://www.arbeitnow.com
+net.fetch https://himalayas.app
+net.fetch https://jobicy.com
+net.fetch https://weworkremotely.com
+net.fetch https://hn.algolia.com
+net.fetch https://boards-api.greenhouse.io
+net.fetch https://boards-api.eu.greenhouse.io
+net.fetch https://api.lever.co
+net.fetch https://api.eu.lever.co
+net.fetch https://api.ashbyhq.com
+net.fetch https://apply.workable.com
+net.fetch https://api.smartrecruiters.com
+sqlite.open ${CACHE}
+sqlite.open ${KEPT}`;
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -79,30 +109,31 @@ async function daemonApplications(): Promise<Result<'loadApplications'>> {
 }
 
 
-// One connection at a time: a refresh and a write that overlap would find the file busy.
-let turn: Promise<unknown> = Promise.resolve();
-function kept<T>(storage: Storage, work: (db: Database) => Promise<T>): Promise<T> {
-  const run = turn.then(() => keptNow(storage, work), () => keptNow(storage, work));
-  turn = run;
+// One connection at a time per file: a refresh and a write that overlap would find the file busy.
+const turns = new Map<string, Promise<unknown>>();
+function opened<T>(storage: Storage, file: string, prepare: (db: Db) => Promise<void>, work: (db: Database) => Promise<T>): Promise<T> {
+  const go = async (): Promise<T> => {
+    const db = await storage.sqlite.open(file);
+    try { await prepare(db as unknown as Db); return await work(db); } finally { await db.close(); }
+  };
+  const run = (turns.get(file) ?? Promise.resolve()).then(go, go);
+  turns.set(file, run.catch(() => undefined));
   return run;
 }
-async function keptNow<T>(storage: Storage, work: (db: Database) => Promise<T>): Promise<T> {
-  const db = await storage.sqlite.open(KEPT);
-  try {
-    await db.execute('CREATE TABLE IF NOT EXISTS applications (id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, company TEXT NOT NULL, url TEXT NOT NULL, apply_url TEXT NOT NULL, state TEXT NOT NULL, updated_at INTEGER NOT NULL)');
-    await db.execute('CREATE TABLE IF NOT EXISTS transitions (id TEXT PRIMARY KEY, application_id TEXT NOT NULL, seq INTEGER NOT NULL, from_state TEXT NOT NULL, to_state TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL)');
-    return await work(db);
-  } finally { await db.close(); }
-}
-const COLUMNS = 'id, job_id, title, company, url, apply_url, state, updated_at';
-const toTracked = (r: unknown[]): Tracked => ({ id: String(r[0]), jobId: String(r[1]), title: String(r[2]), company: String(r[3]), url: String(r[4]),
-  applyUrl: String(r[5]), state: String(r[6]) as Tracked['state'], updatedAt: Number(r[7]) });
-const getTracked = async (db: Database, id: string): Promise<Tracked | undefined> => {
-  const row = (await db.query(`SELECT ${COLUMNS} FROM applications WHERE id = ?`, [id])).rows[0];
-  return row ? toTracked(row) : undefined;
+const prepareKept = async (db: Db): Promise<void> => {
+  await ensureApplicationSchema(db);
+  await ensureSavedSearchSchema(db);
+  await ensureScoutSchema(db);
+  await ensureAgentRunTables(db);
 };
-const saveSql = (a: Tracked) => ({ sql: `INSERT OR REPLACE INTO applications (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  params: [a.id, a.jobId, a.title, a.company, a.url, a.applyUrl, a.state, a.updatedAt] });
+const kept = <T>(storage: Storage, work: (db: Db) => Promise<T>): Promise<T> => opened(storage, KEPT, prepareKept, (db) => work(db as unknown as Db));
+// Each answer has a budget for one turn: ending it between jobs keeps a long search inside it.
+declare const scheduler: { yield(): Promise<void> } | undefined;
+const turn = async (): Promise<void> => { if (typeof scheduler !== 'undefined') await scheduler.yield(); };
+const doFetch: DoFetch = (url, init) => fetch(url, { exactTimeout: 15000, headers: init?.headers });
+const SOURCE_NAMES: Record<string, string> = { remotive: 'Remotive', remoteok: 'RemoteOK', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', jobicy: 'Jobicy',
+  weworkremotely: 'We Work Remotely', hackernews: 'Hacker News' };
+const sourceName = (id: string): string => SOURCE_NAMES[id] ?? id;
 const label = (code: string) => STATES[code] ?? code;
 
 const sources: Sources = {
@@ -117,7 +148,7 @@ const sources: Sources = {
     return { jobId, score: Math.round(num(m.score)), rationale: str(m.rationale), strengths: strings(m.strengths), gaps: strings(m.gaps) };
   },
   loadApplications: async (_args, _store, storage): Promise<Result<'loadApplications'>> => {
-    const local = await kept(storage, async (db) => (await db.query(`SELECT ${COLUMNS} FROM applications ORDER BY updated_at DESC, id`)).rows.map((r) => {
+    const local = await kept(storage, async (db) => (await db.query(`SELECT ${applicationColumns} FROM applications ORDER BY updated_at DESC, id`)).rows.map((r) => {
       const a = toTracked(r);
       return { id: a.id, applyUrl: a.applyUrl, jobId: a.jobId, title: a.title, company: a.company, state: label(a.state), updated: day(a.updatedAt),
         local: true, next: choices(a.state).map((code) => ({ code, label: label(code) })) };
@@ -127,14 +158,47 @@ const sources: Sources = {
     try { remote = await daemonApplications(); } catch { remote = []; }
     return [...local, ...remote];
   },
-  loadScouts: async (): Promise<Result<'loadScouts'>> => {
-    const list = await get('/v1/scouts');
-    if (!Array.isArray(list)) return [];
-    return list.filter(isObject).map((s) => ({
-      id: str(s.id), name: str(s.name), enabled: s.is_enabled === true, minScore: num(s.min_match_score),
-      ceiling: num(s.max_applications_per_run), lastRun: str(s.last_run_at).slice(0, 10),
-    }));
+  // Scouts on the device, then the daemon's when it answers (the daemon is optional, as with applications).
+  loadScouts: async (_args, _store, storage): Promise<Result<'loadScouts'>> => {
+    const local = await kept(storage, async (db) => {
+      const searches = new Map((await listSavedSearches(db)).map((x) => [x.id, x]));
+      return (await listScouts(db)).map((x) => ({
+        id: x.id, name: x.name, enabled: x.isEnabled, minScore: x.minMatchScore, ceiling: x.maxApplicationsPerRun,
+        lastRun: x.lastRunAt === null ? '' : day(x.lastRunAt), local: true,
+        search: describeCriteria(searches.get(x.savedSearchId)?.criteria ?? emptyCriteria),
+      }));
+    });
+    let remote: Result<'loadScouts'> = [];
+    try {
+      const list = await get('/v1/scouts');
+      if (Array.isArray(list)) remote = list.filter(isObject).map((x) => ({
+        id: str(x.id), name: str(x.name), enabled: x.is_enabled === true, minScore: num(x.min_match_score), ceiling: num(x.max_applications_per_run),
+        lastRun: str(x.last_run_at).slice(0, 10), local: false, search: '',
+      }));
+    } catch { remote = []; }
+    return [...local, ...remote];
   },
+  loadSavedSearches: async (_args, _store, storage): Promise<Result<'loadSavedSearches'>> =>
+    kept(storage, async (db) => (await listSavedSearches(db)).map((x) => ({ id: x.id, name: x.name, summary: describeCriteria(x.criteria) }))),
+  loadSearchChoices: async (_args, _store, storage): Promise<Result<'loadSearchChoices'>> =>
+    kept(storage, async (db) => (await searchChoices(db)).map((c) => ({ code: c.value, label: c.label }))),
+  loadScoutForm: async ([id], _store, storage): Promise<Result<'loadScoutForm'>> => {
+    const form = await kept(storage, (db) => loadScoutForm(db, id));
+    return form ?? { name: '', choice: '', keywords: '', minScore: '70', ceiling: '10', enabled: true };
+  },
+  loadScoutRuns: async ([scoutId], _store, storage): Promise<Result<'loadScoutRuns'>> => kept(storage, async (db) => {
+    const runs = (await listRuns(db, 100)).filter((r) => r.scoutId === scoutId).slice(0, 20);
+    return Promise.all(runs.map(async (r) => {
+      const finished = (await listRunEvents(db, r.id)).find((e) => e.action === 'scout_finished');
+      return { id: r.id, status: r.status, started: day(r.startedAt), error: r.error,
+        summary: finished === undefined ? '' : `${finished.inputSummary}, ${finished.outputSummary}` };
+    }));
+  }),
+  loadRunTrail: async ([runId], _store, storage): Promise<Result<'loadRunTrail'>> =>
+    kept(storage, async (db) => (await listRunEvents(db, runId)).map((e) => ({
+      id: e.id, action: e.action.replaceAll('_', ' '), status: e.status, policy: e.policyResult,
+      detail: [e.inputSummary, e.outputSummary].filter((x) => x !== '').join(' — '),
+    }))),
   loadProfile: async (): Promise<Result<'loadProfile'>> => {
     const p = await get('/v1/profile');
     if (!isObject(p)) return { name: '', email: '', phone: '', location: '' };
@@ -161,29 +225,18 @@ const sources: Sources = {
     if (!isObject(s)) return { provider: '', model: '', address: '' };
     return { provider: str(s.provider), model: str(s.model), address: str(s.base_url) };
   },
-discover: async ([query, hour], _store, storage): Promise<Result<'discover'>> => {
-  const db = await storage.sqlite.open(CACHE);
-  try {
-    await db.execute('CREATE TABLE IF NOT EXISTS found (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
-    await db.execute('CREATE TABLE IF NOT EXISTS fetched (at INTEGER NOT NULL)');
-    const at = Number((await db.query('SELECT MAX(at) FROM fetched')).rows[0]?.[0] ?? 0);
-    if (hour - at >= FRESH_HOURS) {
-      const listing = await fetchRemotive((url) => fetch(url, { exactTimeout: 15000 }), SOURCE);
-      await db.transaction([
-        { sql: 'DELETE FROM found' },
-        ...listing.map((j) => ({ sql: 'INSERT OR REPLACE INTO found (id, body) VALUES (?, ?)', params: [j.sourceJobId, JSON.stringify(j)] })),
-        { sql: 'DELETE FROM fetched' },
-        { sql: 'INSERT INTO fetched (at) VALUES (?)', params: [hour] },
-      ]);
-    }
-    const trackedJobs = new Set(await kept(storage, async (kdb) => (await kdb.query('SELECT job_id FROM applications')).rows.map((r) => String(r[0]))));
-    const criteria = { ...emptyCriteria, keywords: query };
-    return (await db.query('SELECT body FROM found ORDER BY id')).rows
-      .map(([body]) => JSON.parse(String(body)) as SourceJob).filter((j) => matches(criteria, j))
-      .slice(0, 100).map((j) => ({ id: j.sourceJobId, title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl,
-        tracked: trackedJobs.has(j.sourceJobId) }));
-  } finally { await db.close(); }
-},
+  // Search every ported source at once (core/discover-sources.ts): one that fails is named, never fatal; the rest dedupe by URL.
+  discover: async ([query, slot], _store, storage): Promise<Result<'discover'>> => {
+    if (query.trim() === '') return { jobs: [], failed: [], error: '' };
+    const trackedJobs = await kept(storage, (db) => trackedJobIds(db));
+    const board = await opened(storage, CACHE, async () => undefined, (db) =>
+      searchBoard(db as unknown as Db, doFetch, URLS, slot * SLOT_MS, { ...emptyCriteria, keywords: query }, turn));
+    return {
+      error: board.error, failed: board.sources.filter((x) => x.status !== 'ok').map((x) => x.sourceName),
+      jobs: board.jobs.slice(0, 100).map((j) => ({ id: foundId(j), title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl,
+        tracked: trackedJobs.has(foundId(j)), source: sourceName(j.sourceId) })),
+    };
+  },
   loadHistory: async ([id], _store, storage): Promise<Result<'loadHistory'>> => {
     if (isLocal(id)) {
       return kept(storage, async (db) => (await db.query('SELECT id, from_state, to_state, reason, at FROM transitions WHERE application_id = ? ORDER BY seq DESC', [id])).rows
@@ -223,5 +276,16 @@ discover: async ([query, hour], _store, storage): Promise<Result<'discover'>> =>
     await db.execute(saveSql(linked.application).sql, saveSql(linked.application).params);
     return { ok: true, error: '' };
   }),
+  saveScout: async ([id, name, choice, keywords, minScore, ceiling, enabled, now], _store, storage): Promise<Result<'saveScout'>> =>
+    kept(storage, async (db) => {
+      const saved = await saveScoutForm(db, id, { name, choice, keywords, minScore, ceiling, enabled }, now);
+      return { ok: saved.ok, error: saved.ok ? '' : saved.error };
+    }),
+  // A manual run (ADR-0037 section 3). No model is chosen yet (section 4), so no score is given and no application is created.
+  runScout: async ([id, now], _store, storage): Promise<Result<'runScout'>> =>
+    runScoutNow({
+      withDb: (work) => kept(storage, work), now,
+      search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn)),
+    }, id),
 };
 export const answer: Answer = (source, args, store, storage, native) => sources[source](args, store, storage, native);

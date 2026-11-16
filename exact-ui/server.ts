@@ -26,6 +26,12 @@ const REMOTIVE = { jobs: [
   { id: 2, url: 'https://remotive.com/j/2', title: 'Product Designer', company_name: 'Globex', tags: [], job_type: 'full_time',
     publication_date: '2026-11-11T09:00:00', candidate_required_location: 'Worldwide', description: '<p>Design calm tools.</p>' },
 ] };
+// The other sources, under /sources (SOURCES_BASE_URL): two answer, Jobicy answers with nothing, and the rest fail, so a test sees one
+// source fail without stopping the search.
+const REMOTEOK = [{ legal: 'RemoteOK terms' }, { id: '77', position: 'Go Platform Engineer', company: 'Initech ', url: 'https://remoteok.com/remote-jobs/77',
+  description: '<p>Go services.</p>', location: 'Worldwide', tags: ['go'], date: '2026-11-12T09:00:00+00:00' }];
+const ARBEITNOW = { data: [{ slug: 'go-dev-berlin', url: 'https://www.arbeitnow.com/jobs/go-dev-berlin', title: 'Go Backend Developer', company_name: 'Hooli',
+  description: '<p>Go in Berlin.</p>', location: 'Berlin', remote: false, job_types: ['full time'], tags: ['go'], created_at: 1731400000 }] };
 const SCOUTS = [
   { id: 'sc1', name: 'Go roles in Europe', is_enabled: true, min_match_score: 70, max_applications_per_run: 5, last_run_at: '2026-11-14T08:00:00Z' },
   { id: 'sc2', name: 'Design, remote', is_enabled: false, min_match_score: 80, max_applications_per_run: 3 },
@@ -45,6 +51,13 @@ const send = (body: unknown, status = 200) => Response.json(body, { status, head
 const { hostname, port } = new URL(API);
 Bun.serve({ hostname, port: Number(port), routes: {
   '/remotive': () => send(REMOTIVE),
+  '/sources/remoteok': () => send(REMOTEOK),
+  '/sources/arbeitnow': () => send(ARBEITNOW),
+  '/sources/jobicy': () => send({ jobs: [] }),
+  '/sources/himalayas': () => send({ error: 'down' }, 500),
+  '/sources/himalayas/*': () => send({ error: 'down' }, 500),
+  '/sources/wwr/*': () => send({ error: 'down' }, 500),
+  '/sources/hn/*': () => send({ hits: [] }),
   '/v1/health': () => send({ status: 'ok' }),
   '/v1/profile': () => send({ id: 'c1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.com', phone: '', location_city: 'London', location_region: '', location_country: 'UK' }),
   '/v1/jobs': () => send({ jobs: JOBS, total: JOBS.length }),

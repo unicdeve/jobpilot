@@ -14,7 +14,8 @@
   },
   "env": [
     "API_BASE_URL",
-    "REMOTIVE_URL"
+    "REMOTIVE_URL",
+    "SOURCES_BASE_URL"
   ],
   "host": {
     "web": {},

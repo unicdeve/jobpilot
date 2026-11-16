@@ -11,6 +11,8 @@ routes nav
     application "/application/:id"
   tab discover "/discover"
   tab scouts "/scouts"
+    scout "/scout/:id"
+    scoutrun "/scout-run/:id"
   tab profile "/profile"
     resumes "/resumes"
     activity "/activity"
@@ -45,6 +47,12 @@ shape Found
   location: string
   url: string
   tracked: bool
+  source: string
+
+shape Discovery
+  jobs: Found[]
+  failed: string[]
+  error: string
 
 shape Scout
   id: string
@@ -53,6 +61,40 @@ shape Scout
   minScore: number
   ceiling: number
   lastRun: string
+  local: bool
+  search: string
+
+shape SavedSearch
+  id: string
+  name: string
+  summary: string
+
+shape ScoutForm
+  name: string
+  choice: string
+  keywords: string
+  minScore: string
+  ceiling: string
+  enabled: bool
+
+shape ScoutRunRow
+  id: string
+  status: string
+  started: string
+  error: string
+  summary: string
+
+shape Trail
+  id: string
+  action: string
+  status: string
+  policy: string
+  detail: string
+
+shape RunReply
+  ok: bool
+  error: string
+  message: string
 
 shape Me
   name: string
@@ -116,14 +158,80 @@ component App
   resource steps = loadHistory(openApp) when openApp != "" as shape Step[] else empty()
   derive app = match first(applications.filter(a => a.id == openApp)) { case some(a) => a, case none => Application(local=false, next=[], id="", applyUrl="", jobId="", title="", company="", state="", updated="") }
   resource scouts = loadScouts() as shape Scout[] else empty()
+  resource savedSearches = loadSavedSearches() as shape SavedSearch[] else empty()
+  resource scoutChoices = loadSearchChoices() as shape Choice[] else empty()
+  derive openScout = match stack(nav).filter(e => e.name == "scout").at(-1) { case some(e) => e.params.id, case none => "" }
+  derive openRun = match stack(nav).filter(e => e.name == "scoutrun").at(-1) { case some(e) => e.params.id, case none => "" }
+  resource scoutForm = loadScoutForm(openScout) when openScout != "" as shape ScoutForm else empty()
+  resource scoutRuns = loadScoutRuns(openScout) when openScout != "" and openScout != "new" as shape ScoutRunRow[] else empty()
+  resource trail = loadRunTrail(openRun) when openRun != "" as shape Trail[] else empty()
+  state draftFor = ""
+  state dName = ""
+  state dChoice = ""
+  state dKeywords = ""
+  state dMin = ""
+  state dCeiling = ""
+  state dEnabled = true
+  state ranFor = ""
+  derive fresh = draftFor != openScout
+  derive fName = fresh ? scoutForm.name : dName
+  derive fChoice = fresh ? scoutForm.choice : dChoice
+  derive fKeywords = fresh ? scoutForm.keywords : dKeywords
+  derive fMin = fresh ? scoutForm.minScore : dMin
+  derive fCeiling = fresh ? scoutForm.ceiling : dCeiling
+  derive fEnabled = fresh ? scoutForm.enabled : dEnabled
+  mutation savedScout as shape Reply refreshes scouts, savedSearches, scoutChoices, scoutForm, scoutRuns then afterSave
+  mutation ranScout as shape RunReply refreshes scouts, scoutRuns, applications
+  derive saveError = pending(savedScout) ? "" : match savedScout { case some(r) => r.error, case none => "" }
+  derive ranHere = ranFor == openScout and not pending(ranScout)
+  derive runOk = ranHere and match ranScout { case some(r) => r.ok, case none => false }
+  derive runText = ranHere ? match ranScout { case some(r) => r.ok ? r.message : r.error, case none => "" } : ""
+  action beginDraft
+    if fresh
+      dName = scoutForm.name
+      dChoice = scoutForm.choice
+      dKeywords = scoutForm.keywords
+      dMin = scoutForm.minScore
+      dCeiling = scoutForm.ceiling
+      dEnabled = scoutForm.enabled
+      draftFor = openScout
+  action editName(v: string)
+    beginDraft()
+    dName = v
+  action editChoice(v: string)
+    beginDraft()
+    dChoice = v
+  action editKeywords(v: string)
+    beginDraft()
+    dKeywords = v
+  action editMin(v: string)
+    beginDraft()
+    dMin = v
+  action editCeiling(v: string)
+    beginDraft()
+    dCeiling = v
+  action editEnabled(on: bool)
+    beginDraft()
+    dEnabled = on
+  action submitScout
+    if not pending(savedScout)
+      send savedScout = saveScout(openScout, fName, fChoice, fKeywords, fMin, fCeiling, fEnabled, time.epochAtZero + performanceNow())
+  action afterSave
+    if match savedScout { case some(r) => r.ok, case none => false }
+      draftFor = ""
+      nav = back(nav)
+  action runNow
+    if not pending(ranScout)
+      ranFor = openScout
+      send ranScout = runScout(openScout, time.epochAtZero + performanceNow())
   resource me = loadProfile() as shape Me else empty()
   resource resumes = loadResumes() as shape Resume[] else empty()
   resource runs = loadRuns() as shape Run[] else empty()
   resource model = loadModel() as shape Model else empty()
   state finding = ""
   resource time = exactTime() as shape Time
-  derive hour = floor(time.epochAtZero / 3600000)
-  resource found = discover(finding, hour) when time.epochAtZero > 0 as shape Found[] else empty()
+  derive slot = floor(time.epochAtZero / 900000)
+  resource found = discover(finding, slot) when time.epochAtZero > 0 as shape Discovery else empty()
   state reason = ""
   state linkDraft = ""
   mutation tracked as shape Reply refreshes found, applications
@@ -172,6 +280,7 @@ component App
   action follow(url: string)
     nav = go(nav, url)
   action back
+    draftFor = ""
     nav = back(nav)
   action search(v: string)
     query = v
@@ -190,11 +299,14 @@ component App
               column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
                 display="flex" flex-direction="column"
                 header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
-                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
-                    role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "resumes" or e.name == "activity" or e.name == "settings" ? 2 : 1) flex=1
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "scout" ? (openScout == "new" ? "New Scout" : "Scout") : e.name == "scoutrun" ? "Run" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
+                    role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "scout" or e.name == "scoutrun" or e.name == "resumes" or e.name == "activity" or e.name == "settings" ? 2 : 1) flex=1
                   if e.name == "jobs"
                     input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
                       testId="search" width="100%"
+                  if e.name == "scouts"
+                    button press=follow(path("scout", "new")) testId="new-scout"
+                      text "New"
                   if e.name == "discover"
                     input type="search" value=finding input=find placeholder="Search keywords" aria-label="Search the Job Board"
                       testId="find" width="100%"
@@ -242,18 +354,30 @@ component App
                     EmptyState(symbol="symbol:alert", title="Can’t Reach the Job Board", message="Check your connection.")
                       button press=reloadFound testId="retry-found"
                         text "Try Again"
-                  else if found.length == 0 and not pending(found)
-                    EmptyState(symbol="symbol:search", title="No Jobs Found", message="Try other keywords.")
+                  else if finding.trim() == ""
+                    EmptyState(symbol="symbol:search", title="Search the Job Board", message="Type a role or a keyword to search every job source at once.")
+                  else if found.error != ""
+                    EmptyState(symbol="symbol:alert", title="Nothing to Show", message=found.error)
+                      button press=reloadFound testId="retry-found"
+                        text "Try Again"
+                  else if found.jobs.length == 0 and not pending(found)
+                    EmptyState(symbol="symbol:search", title="No Jobs Found", message=found.failed.length > 0 ? `${found.failed.join(", ")} did not answer.` : "Try other keywords.")
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      if found.failed.length > 0
+                        section
+                          row padding-top=10 padding-bottom=10
+                            text `${found.failed.join(", ")} did not answer, so their jobs are missing.` flex=1 min-width=0
+                              font="-exact-subheadline" color="-exact-secondary-label" testId="source-notice"
                       section
-                        for f in found key=f.id
+                        for f in found.jobs key=f.id
                           row display="flex" flex-wrap="wrap" align-items="center" gap=8
                             link href=f.url testId=`found-${f.id}` flex="1 1 12rem" min-width=0
                               column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
                                 text f.title
                                 text `${f.company}${f.location == "" ? "" : " · " + f.location}` font="-exact-subheadline"
                                   color="-exact-secondary-label"
+                                text `via ${f.source}` font="-exact-footnote" color="-exact-secondary-label" testId=`found-source-${f.id}`
                             if f.tracked
                               text "Tracked" font="-exact-subheadline" color="-exact-secondary-label" testId=`tracked-${f.id}`
                             else
@@ -261,22 +385,105 @@ component App
                                 text "Track"
                 else if e.name == "scouts"
                   if failed(scouts)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
+                    EmptyState(symbol="symbol:alert", title="Can’t Load Scouts", message="Something went wrong reading them.")
                       button press=reloadScouts testId="retry-scouts"
                         text "Try Again"
-                  else if scouts.length == 0 and not pending(scouts)
-                    EmptyState(symbol="symbol:search", title="No Scouts", message="A Scout runs a saved search and creates applications for you to review.")
+                  else if scouts.length == 0 and savedSearches.length == 0 and not pending(scouts)
+                    EmptyState(symbol="symbol:radio", title="No Scouts", message="A Scout runs a saved search and creates applications for you to review. Tap New to make one.")
+                  else
+                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      if scouts.length > 0
+                        section
+                          for s in scouts key=s.id
+                            if s.local
+                              link href=path("scout", s.id) testId=`scout-${s.id}`
+                                column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                                  text s.name
+                                  text s.search font="-exact-subheadline" color="-exact-secondary-label" line-clamp=1
+                                  text `Minimum match ${s.minScore}% · up to ${s.ceiling} per run` font="-exact-subheadline" color="-exact-secondary-label"
+                                  if s.lastRun != ""
+                                    text `Last run ${s.lastRun}` font="-exact-footnote" color="-exact-secondary-label"
+                                text (s.enabled ? "On" : "Off") testId=`scout-state-${s.id}`
+                                image "symbol:forward-chevron"
+                            else
+                              row testId=`scout-${s.id}`
+                                column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                                  text s.name
+                                  text `Minimum match ${s.minScore}% · up to ${s.ceiling} per run` font="-exact-subheadline" color="-exact-secondary-label"
+                                  if s.lastRun != ""
+                                    text `Last run ${s.lastRun}` font="-exact-footnote" color="-exact-secondary-label"
+                                text (s.enabled ? "On" : "Off") testId=`scout-state-${s.id}`
+                      if savedSearches.length > 0
+                        section
+                          header
+                            text "Saved Searches"
+                          for q in savedSearches key=q.id
+                            row testId=`search-${q.id}`
+                              column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                                text q.name
+                                text q.summary font="-exact-subheadline" color="-exact-secondary-label"
+                else if e.name == "scout"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      row padding-top=10 padding-bottom=10
+                        input value=fName input=editName submit=submitScout placeholder="Name" aria-label="Scout name"
+                          autocapitalize="words" testId="scout-name" flex=1 min-width=0
+                      row
+                        text "Search" flex=1
+                        select value=fChoice change=editChoice aria-label="Search" testId="scout-choice"
+                          for c in scoutChoices key=c.code
+                            option c.label value=c.code
+                      if fChoice == ""
+                        row padding-top=10 padding-bottom=10
+                          input value=fKeywords input=editKeywords submit=submitScout placeholder="Keywords, such as golang" aria-label="Keywords"
+                            testId="scout-keywords" flex=1 min-width=0
+                      row
+                        text "Minimum match" flex=1
+                        input type="number" value=fMin input=editMin min=0 max=100 step=5 aria-label="Minimum match" testId="scout-min"
+                      row
+                        text "Most per run" flex=1
+                        input type="number" value=fCeiling input=editCeiling min=1 max=50 step=1 aria-label="Most applications per run" testId="scout-ceiling"
+                      row
+                        text "On" flex=1
+                        input type="checkbox" switch checked=fEnabled change=editEnabled aria-label="Scout on" testId="scout-enabled"
+                      button press=submitScout disabled=(pending(savedScout)) testId="scout-save"
+                        text "Save"
+                      if saveError != ""
+                        row padding-top=10 padding-bottom=10
+                          text saveError color="-exact-system-red" flex=1 min-width=0 testId="scout-error"
+                    if openScout != "new"
+                      section
+                        button press=runNow disabled=(pending(ranScout)) testId="scout-run"
+                          text (pending(ranScout) ? "Running…" : "Run Now")
+                        if runText != ""
+                          row padding-top=10 padding-bottom=10
+                            text runText color=(runOk ? "-exact-label" : "-exact-system-red") flex=1 min-width=0 testId="scout-run-result"
+                      if scoutRuns.length > 0
+                        section
+                          header
+                            text "Runs"
+                          for r in scoutRuns key=r.id
+                            link href=path("scoutrun", r.id) testId=`scout-run-${r.id}`
+                              column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                                text r.status testId=`scout-run-status-${r.id}`
+                                text r.summary font="-exact-subheadline" color="-exact-secondary-label"
+                                if r.error != ""
+                                  text r.error font="-exact-footnote" color="-exact-system-red"
+                              text r.started font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                              image "symbol:forward-chevron"
+                else if e.name == "scoutrun"
+                  if trail.length == 0 and not pending(trail)
+                    EmptyState(symbol="symbol:search", title="No Steps", message="This run left no steps.")
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
-                        for s in scouts key=s.id
-                          row testId=`scout-${s.id}`
+                        for t in trail key=t.id
+                          row testId=`trail-${t.id}`
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text s.name
-                              text `Minimum match ${s.minScore}% · up to ${s.ceiling} per run` font="-exact-subheadline" color="-exact-secondary-label"
-                              if s.lastRun != ""
-                                text `Last run ${s.lastRun}` font="-exact-footnote" color="-exact-secondary-label"
-                            text (s.enabled ? "On" : "Off") testId=`scout-state-${s.id}`
+                              text `${t.action}${t.policy == "" ? "" : " · " + t.policy}`
+                              if t.detail != ""
+                                text t.detail font="-exact-subheadline" color="-exact-secondary-label"
+                            text t.status font="-exact-footnote" color="-exact-secondary-label"
                 else if e.name == "profile"
                   if failed(me)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
@@ -450,7 +657,7 @@ component App
       row role="tablist" testId="tabs"
         button role="tab" aria-controls="panel-jobs" aria-selected=(nav.tab == "jobs") press=pick("jobs")
           testId="tab-jobs" flex=1
-          image "symbol:search"
+          image "symbol:bag"
           text "Jobs"
         button role="tab" aria-controls="panel-applications" aria-selected=(nav.tab == "applications")
           press=pick("applications") testId="tab-applications" flex=1
@@ -462,9 +669,9 @@ component App
           text "Discover"
         button role="tab" aria-controls="panel-scouts" aria-selected=(nav.tab == "scouts") press=pick("scouts")
           testId="tab-scouts" flex=1
-          image "symbol:search"
+          image "symbol:radio"
           text "Scouts"
         button role="tab" aria-controls="panel-profile" aria-selected=(nav.tab == "profile") press=pick("profile")
           testId="tab-profile" flex=1
-          image "symbol:document"
+          image "symbol:person"
           text "Profile"

@@ -74,29 +74,33 @@ test "settings show the model JobPilot uses"
   expect text "setting-provider" == "ollama"
   expect text "setting-model" == "llama3.2"
 
-test "discovery runs on the device, with no daemon"
+test "discovery asks every source at once, names the one that failed, and shows where each job came from"
   clock data
   tap "tab-discover"
   clock data
-  expect tree has "found-1"
-  expect tree has "found-2"
   type "find" "go"
   clock data
-  expect tree has "found-1"
-  expect tree missing "found-2"
+  expect tree has "found-remotive:1"
+  expect tree missing "found-remotive:2"
+  expect tree has "found-remoteok:77"
+  expect tree has "found-arbeitnow:go-dev-berlin"
+  expect text "found-source-remotive:1" == "via Remotive"
+  expect text "found-source-remoteok:77" == "via RemoteOK"
+  expect text "source-notice" == "Himalayas, We Work Remotely, Hacker News did not answer, so their jobs are missing."
 
 test "a found job is tracked once, moved along the rule table, and its history kept"
   clock data
   tap "tab-discover"
+  type "find" "go"
   clock data
-  tap "track-1"
+  tap "track-remotive:1"
   clock data
-  expect tree has "tracked-1"
-  expect tree missing "track-1"
+  expect tree has "tracked-remotive:1"
+  expect tree missing "track-remotive:1"
   tap "tab-applications"
   clock data
-  expect text "state-local:1" == "Discovered"
-  tap "application-local:1"
+  expect text "state-local:remotive:1" == "Discovered"
+  tap "application-local:remotive:1"
   clock data
   expect tree has "next-MATCHED"
   expect tree has "next-WITHDRAWN"
@@ -105,19 +109,20 @@ test "a found job is tracked once, moved along the rule table, and its history k
   tap "next-MATCHED"
   clock data
   expect text "app-state" == "Matched"
-  expect tree has "step-local:1:1"
+  expect tree has "step-local:remotive:1:1"
   expect tree has "next-SUBMITTED"
   expect tree missing "next-MATCHED"
 
 test "an apply link must be a web address"
   clock data
   tap "tab-discover"
+  type "find" "go"
   clock data
-  tap "track-1"
+  tap "track-remotive:1"
   clock data
   tap "tab-applications"
   clock data
-  tap "application-local:1"
+  tap "application-local:remotive:1"
   clock data
   type "link" "not a link"
   tap "save-link"
@@ -128,6 +133,45 @@ test "an apply link must be a web address"
   clock data
   expect tree missing "link-error"
   expect tree has "app-apply"
+
+test "a scout is created with typed keywords, and checked"
+  clock data
+  tap "tab-scouts"
+  clock data
+  tap "new-scout"
+  clock data
+  tap "scout-save"
+  clock data
+  expect text "scout-error" == "A scout needs a name."
+  type "scout-name" "Go roles"
+  tap "scout-save"
+  clock data
+  expect text "scout-error" == "Type the keywords to look for, or choose a template or a saved search."
+  type "scout-keywords" "go"
+  tap "scout-save"
+  clock data
+  expect text "scout-state-sc1" == "On"
+  expect text "scout-state-scout-1" == "On"
+
+test "running a scout with no model records that jobs could not be scored and creates no application"
+  clock data
+  tap "tab-scouts"
+  clock data
+  tap "new-scout"
+  clock data
+  type "scout-name" "Go roles"
+  type "scout-keywords" "go"
+  tap "scout-save"
+  clock data
+  tap "tab-scouts"
+  tap "scout-scout-1"
+  clock data
+  tap "scout-run"
+  clock data
+  expect text "scout-run-result" == "3 jobs considered, 0 applications created. 3 jobs could not be scored because no model is set up to score them, so none of those became an application."
+  tap "tab-applications"
+  clock data
+  expect tree missing "application-local:remotive:1"
 
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
