@@ -32,6 +32,10 @@ const REMOTEOK = [{ legal: 'RemoteOK terms' }, { id: '77', position: 'Go Platfor
   description: '<p>Go services.</p>', location: 'Worldwide', tags: ['go'], date: '2026-11-12T09:00:00+00:00' }];
 const ARBEITNOW = { data: [{ slug: 'go-dev-berlin', url: 'https://www.arbeitnow.com/jobs/go-dev-berlin', title: 'Go Backend Developer', company_name: 'Hooli',
   description: '<p>Go in Berlin.</p>', location: 'Berlin', remote: false, job_types: ['full time'], tags: ['go'], created_at: 1731400000 }] };
+// A Greenhouse board, "acme", for watching a company: its name and one opening.
+const GREENHOUSE = { name: 'Acme Robotics' };
+const ACME_JOBS = { jobs: [{ id: 5, title: 'Go Systems Engineer', absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/5', location: { name: 'Remote, Worldwide' },
+  content: '<p>Go services.</p>', updated_at: '2026-11-10T09:00:00Z' }] };
 const SCOUTS = [
   { id: 'sc1', name: 'Go roles in Europe', is_enabled: true, min_match_score: 70, max_applications_per_run: 5, last_run_at: '2026-11-14T08:00:00Z' },
   { id: 'sc2', name: 'Design, remote', is_enabled: false, min_match_score: 80, max_applications_per_run: 3 },
@@ -57,6 +61,10 @@ Bun.serve({ hostname, port: Number(port), routes: {
   '/sources/himalayas': () => send({ error: 'down' }, 500),
   '/sources/himalayas/*': () => send({ error: 'down' }, 500),
   '/sources/wwr/*': () => send({ error: 'down' }, 500),
+  '/sources/greenhouse/v1/boards/acme': () => send(GREENHOUSE),
+  '/sources/greenhouse/v1/boards/acme/jobs': () => send(ACME_JOBS),
+  '/sources/greenhouse/v1/boards/:name': () => send({ status: 404, error: 'Job not found' }, 404),
+  '/sources/greenhouse/v1/boards/:name/jobs': () => send({ status: 404, error: 'Job not found' }, 404),
   '/sources/hn/*': () => send({ hits: [] }),
   '/v1/health': () => send({ status: 'ok' }),
   '/v1/profile': () => send({ id: 'c1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.com', phone: '', location_city: 'London', location_region: '', location_country: 'UK' }),

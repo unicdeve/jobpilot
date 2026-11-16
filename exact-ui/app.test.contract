@@ -250,6 +250,35 @@ test "a kept answer is added by the candidate and deleted"
   clock data
   expect tree missing "kept-q-a-1767225600000-1"
 
+test "a company is watched, shown with its open roles, and unwatched"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-companies"
+  clock data
+  type "company-address" "https://job-boards.greenhouse.io/acme"
+  tap "company-add"
+  clock data
+  expect text "company-name-company-1767225600000-1" == "Acme Robotics"
+  tap "company-company-1767225600000-1-delete"
+  clock data
+  expect tree missing "company-name-company-1767225600000-1"
+
+test "an address that is not a hiring page, or whose page is gone, is refused and nothing is watched"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-companies"
+  clock data
+  type "company-address" "https://example.com/careers"
+  tap "company-add"
+  clock data
+  expect tree has "company-error"
+  type "company-address" "https://job-boards.greenhouse.io/nowhere"
+  tap "company-add"
+  clock data
+  expect tree has "company-error"
+
 test "a scout run appears in Activity"
   clock data
   tap "tab-scouts"

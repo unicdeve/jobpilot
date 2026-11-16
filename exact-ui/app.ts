@@ -15,6 +15,10 @@ import { deleteResume, ensureResumeSchema, resumesOf, saveResume } from './core/
 import { ensureSettingsTable, loadDiscoverySettings, loadLLMSettings, loadNotificationSettings, saveDiscoverySettings, saveLLMSettings, saveNotificationSettings } from './core/llm/llm-settings-store.ts';
 import { checkModelForm, dataNotice, hasKey, llmKeysSecret, withKey } from './core/llm/model-settings.ts';
 import { applicationColumns, ensureApplicationSchema, getTracked, saveSql, toTracked, trackedJobIds } from './core/applications/application-store.ts';
+import { ensureWatchSchema, deleteCompany, listCompanies } from './core/companies/watch-store.ts';
+import { companyPagesSource, suggestions, starterBoard, watch, type Watcher } from './core/companies/watch.ts';
+import { providerName } from './core/companies/company.ts';
+import { boardUrl, defaultBoardEndpoints, type BoardEndpoints, type BoardFetch } from './core/sources/company-boards.ts';
 import { foundId, searchBoard, sourceUrls } from './core/sources/discover-sources.ts';
 import type { DoFetch } from './core/sources/job-source.ts';
 import { ensureSavedSearchSchema, listSavedSearches } from './core/scouts/saved-search.ts';
@@ -139,6 +143,7 @@ const prepareKept = async (db: Db): Promise<void> => {
   await ensurePersonalAnswerSchema(db);
   await ensureResumeSchema(db);
   await ensureSettingsTable(db);
+  await ensureWatchSchema(db);
 };
 // The one candidate on this device (ADR-0037): JobPilot is local and has one.
 const ME = 'me';
@@ -149,6 +154,21 @@ const kept = <T>(storage: Storage, work: (db: Db) => Promise<T>): Promise<T> => 
 declare const scheduler: { yield(): Promise<void> } | undefined;
 const turn = async (): Promise<void> => { if (typeof scheduler !== 'undefined') await scheduler.yield(); };
 const doFetch: DoFetch = (url, init) => fetch(url, { exactTimeout: 15000, headers: init?.headers });
+// The watched companies are the candidate's own and live in KEPT; each statement opens it for a turn, so a search that runs
+// beside other writes never holds the file.
+const keptDb = (storage: Storage): Db => ({
+  execute: (sql, params) => kept(storage, (db) => db.execute(sql, params)),
+  query: (sql, params) => kept(storage, (db) => db.query(sql, params)),
+  transaction: (statements) => kept(storage, (db) => db.transaction(statements)),
+});
+const boardFetch: BoardFetch = (url, init) => fetch(url, { exactTimeout: 15000, ...init }) as ReturnType<BoardFetch>;
+// The providers' own addresses, or stand-ins under SOURCES_BASE_URL for `test` and `verify`.
+const BOARDS: BoardEndpoints = SOURCES_BASE === REAL_SOURCES ? defaultBoardEndpoints : {
+  ...defaultBoardEndpoints, greenhouseApi: `${SOURCES_BASE}/greenhouse`, greenhouseEuApi: `${SOURCES_BASE}/greenhouse-eu`, leverApi: `${SOURCES_BASE}/lever`,
+  leverEuApi: `${SOURCES_BASE}/lever-eu`, ashbyApi: `${SOURCES_BASE}/ashby`, workableApi: `${SOURCES_BASE}/workable`, smartRecruitersApi: `${SOURCES_BASE}/smartrecruiters`,
+};
+const watcher = (storage: Storage, now: number): Watcher => ({ db: keptDb(storage), fetch: boardFetch, endpoints: BOARDS, newId: idMaker('company', now) });
+const checked = (at: number | undefined): string => (at === undefined ? 'Not read yet' : `Read ${day(at)}`);
 const SOURCE_NAMES: Record<string, string> = { remotive: 'Remotive', remoteok: 'RemoteOK', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', jobicy: 'Jobicy',
   weworkremotely: 'We Work Remotely', hackernews: 'Hacker News' };
 const sourceName = (id: string): string => SOURCE_NAMES[id] ?? id;
@@ -334,13 +354,29 @@ const sources: Sources = {
     const trackedJobs = await kept(storage, (db) => trackedJobIds(db));
     const seeker = seekerOf(await kept(storage, (db) => firstCandidate(db)));
     const board = await opened(storage, CACHE, async () => undefined, (db) =>
-      searchBoard(db as unknown as Db, doFetch, URLS, slot * SLOT_MS, { ...emptyCriteria, keywords: query }, turn, seeker));
+      searchBoard(db as unknown as Db, doFetch, URLS, slot * SLOT_MS, { ...emptyCriteria, keywords: query }, turn, seeker, [companyPagesSource(watcher(storage, slot * SLOT_MS), slot * SLOT_MS)]));
     return {
       error: board.error, failed: board.sources.filter((x) => x.status !== 'ok').map((x) => x.sourceName),
       jobs: board.jobs.slice(0, 100).map((j) => ({ id: foundId(j), title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl,
         tracked: trackedJobs.has(foundId(j)), source: sourceName(j.sourceId) })),
     };
   },
+  // Watched companies (ADR-0024): the hiring pages the candidate named, read as one more source.
+  loadCompanies: async (_args, _store, storage): Promise<Result<'loadCompanies'>> => kept(storage, async (db) =>
+    (await listCompanies(db)).map((c) => ({
+      id: c.id, name: c.name, provider: providerName(c.board.provider), url: c.url,
+      status: c.check === 'gone' ? 'This page is gone' : c.check === 'unreachable' ? 'Could not be reached' : c.check === 'failed' ? 'Could not be read' : checked(c.checkedAt),
+      roles: c.check === 'gone' ? '' : c.check === '' ? '' : `${c.openRoles} open ${c.openRoles === 1 ? 'role' : 'roles'}`, problem: c.check === 'gone' || c.check === 'unreachable' || c.check === 'failed',
+    }))),
+  loadSuggestions: async (_args, _store, storage): Promise<Result<'loadSuggestions'>> => kept(storage, async (db) =>
+    (await suggestions(db)).slice(0, 12).map((s) => ({ id: `${s.provider}/${s.board}`, name: s.name, address: boardUrl(starterBoard(s)),
+      detail: `${providerName(s.provider)}, ${s.openRoles} open roles` }))),
+  watchCompany: async ([address, now], _store, storage): Promise<Result<'watchCompany'>> => {
+    if (address.trim() === '') return { ok: false, error: 'Paste the address of a company\'s hiring page.' };
+    try { await watch(watcher(storage, now), address, now); return { ok: true, error: '' }; }
+    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  },
+  unwatchCompany: async ([id], _store, storage): Promise<Result<'unwatchCompany'>> => kept(storage, async (db) => { await deleteCompany(db, id); return { ok: true, error: '' }; }),
   loadHistory: async ([id], _store, storage): Promise<Result<'loadHistory'>> => {
     if (isLocal(id)) {
       return kept(storage, async (db) => (await db.query('SELECT id, from_state, to_state, reason, at FROM transitions WHERE application_id = ? ORDER BY seq DESC', [id])).rows
@@ -391,7 +427,8 @@ const sources: Sources = {
     const seeker = seekerOf(await kept(storage, (db) => firstCandidate(db)));
     return runScoutNow({
       withDb: (work) => kept(storage, work), now,
-      search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn, seeker)),
+      search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn, seeker,
+        [companyPagesSource(watcher(storage, Math.floor(now / SLOT_MS) * SLOT_MS), Math.floor(now / SLOT_MS) * SLOT_MS)])),
     }, id);
   },
 };

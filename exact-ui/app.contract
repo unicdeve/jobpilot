@@ -17,6 +17,7 @@ routes nav
     profileedit "/profile-edit"
     resumes "/resumes"
     answers "/answers"
+    companies "/companies"
     activity "/activity"
     settings "/settings"
 
@@ -130,6 +131,21 @@ shape Resume
   updated: string
   detail: string
   local: bool
+
+shape Watched
+  id: string
+  name: string
+  provider: string
+  url: string
+  status: string
+  roles: string
+  problem: bool
+
+shape Suggested
+  id: string
+  name: string
+  address: string
+  detail: string
 
 shape KeptAnswer
   id: string
@@ -272,6 +288,8 @@ component App
   resource profileForm = loadProfileForm() as shape ProfileFields else empty()
   resource resumes = loadResumes() as shape Resume[] else empty()
   resource keptList = loadKept() as shape KeptAnswer[] else empty()
+  resource watchedList = loadCompanies() as shape Watched[] else empty()
+  resource suggestedList = loadSuggestions() as shape Suggested[] else empty()
   resource runs = loadRuns() as shape Run[] else empty()
   resource model = loadModel() as shape Model else empty()
   resource settings = loadSettings() as shape ModelSettings else empty()
@@ -379,6 +397,23 @@ component App
       rText = ""
   action dropResume(id: string)
     send removedResume = removeResume(id)
+  state cAddress = ""
+  mutation addedCompany as shape Reply refreshes watchedList, suggestedList then afterCompany
+  mutation removedCompany as shape Reply refreshes watchedList, suggestedList
+  derive companyError = pending(addedCompany) ? "" : match addedCompany { case some(r) => r.error, case none => "" }
+  action editCAddress(v: string)
+    cAddress = v
+  action submitCompany
+    if not pending(addedCompany)
+      send addedCompany = watchCompany(cAddress, time.epochAtZero + performanceNow())
+  action watchSuggested(address: string)
+    if not pending(addedCompany)
+      send addedCompany = watchCompany(address, time.epochAtZero + performanceNow())
+  action afterCompany
+    if match addedCompany { case some(r) => r.ok, case none => false }
+      cAddress = ""
+  action dropCompany(id: string)
+    send removedCompany = unwatchCompany(id)
   state kQuestion = ""
   state kAnswer = ""
   mutation addedKept as shape Reply refreshes keptList then afterKept
@@ -539,7 +574,7 @@ component App
               column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
                 display="flex" flex-direction="column"
                 header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
-                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "scout" ? (openScout == "new" ? "New Scout" : "Scout") : e.name == "scoutrun" ? "Run" : e.name == "profile" ? "Profile" : e.name == "profileedit" ? "Edit Profile" : e.name == "resumes" ? "Resumes" : e.name == "answers" ? "Kept Answers" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "scout" ? (openScout == "new" ? "New Scout" : "Scout") : e.name == "scoutrun" ? "Run" : e.name == "profile" ? "Profile" : e.name == "profileedit" ? "Edit Profile" : e.name == "resumes" ? "Resumes" : e.name == "answers" ? "Kept Answers" : e.name == "companies" ? "Watched Companies" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
                     role="heading" aria-level=(e.name == "jobs" or e.name == "applications" or e.name == "discover" or e.name == "scouts" or e.name == "profile" ? 1 : 2) flex=1
                   if e.name == "profile"
                     button press=follow(path("profileedit")) testId="edit-profile"
@@ -791,6 +826,9 @@ component App
                       link href=path("answers") testId="open-answers"
                         text "Kept Answers" flex=1
                         image "symbol:forward-chevron"
+                      link href=path("companies") testId="open-companies"
+                        text "Watched Companies" flex=1
+                        image "symbol:forward-chevron"
                       link href=path("activity") testId="open-activity"
                         text "Activity" flex=1
                         image "symbol:forward-chevron"
@@ -882,6 +920,43 @@ component App
                               if r.detail != ""
                                 text r.detail font="-exact-footnote" color="-exact-secondary-label"
                             text r.updated font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                else if e.name == "companies"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      header
+                        text "Watch a Company"
+                      row padding-top=10 padding-bottom=10
+                        input type="url" value=cAddress input=editCAddress placeholder="Hiring page address" aria-label="Hiring page address" autocapitalize="none" testId="company-address" flex=1 min-width=0
+                      button press=submitCompany disabled=(pending(addedCompany)) testId="company-add"
+                        text "Watch Company"
+                      if companyError != ""
+                        row padding-top=10 padding-bottom=10
+                          text companyError color="-exact-system-red" flex=1 min-width=0 testId="company-error"
+                      footer
+                        text "Paste a Greenhouse, Lever, Ashby, Workable or SmartRecruiters hiring page, or any posting on it. Its openings join Discover and your scouts as Company pages."
+                    if watchedList.length > 0
+                      section
+                        header
+                          text "Watching"
+                        for c in watchedList key=c.id
+                          row delete=dropCompany(c.id) testId=`company-${c.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text c.name testId=`company-name-${c.id}`
+                              text c.provider font="-exact-footnote" color="-exact-secondary-label"
+                              text c.status font="-exact-footnote" color=(c.problem ? "-exact-system-red" : "-exact-secondary-label")
+                            if c.roles != ""
+                              text c.roles font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                    if suggestedList.length > 0
+                      section
+                        header
+                          text "Suggestions"
+                        for s in suggestedList key=s.id
+                          row testId=`suggested-${s.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text s.name
+                              text s.detail font="-exact-footnote" color="-exact-secondary-label"
+                            button press=watchSuggested(s.address) disabled=(pending(addedCompany)) aria-label=`Watch ${s.name}`
+                              text "Watch"
                 else if e.name == "answers"
                   list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                     section
