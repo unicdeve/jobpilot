@@ -5,7 +5,13 @@ const job = { id: '7', title: ' Backend ', company: 'Acme ', url: 'https://acme.
 
 test('a new application starts DISCOVERED, one per job', () => {
   const a = newApplication(job, 1000)!;
-  expect(a).toMatchObject({ id: applicationId('7'), state: 'DISCOVERED', title: 'Backend', company: 'Acme', applyUrl: 'https://acme.test/7' });
+  expect(a).toMatchObject({
+    id: applicationId('7'),
+    state: 'DISCOVERED',
+    title: 'Backend',
+    company: 'Acme',
+    applyUrl: 'https://acme.test/7',
+  });
   expect(newApplication(job, 2000)!.id).toBe(a.id);
   expect(newApplication({ ...job, title: ' ' }, 1)).toBeUndefined();
 });
@@ -16,7 +22,12 @@ test('a move follows the rule table and records its reason', () => {
   const a = newApplication(job, 1)!;
   const m = move(a, 'MATCHED', ' fits ', 5, 1);
   expect(m.ok && m.application.state).toBe('MATCHED');
-  expect(m.ok && m.step).toMatchObject({ from: 'DISCOVERED', to: 'MATCHED', reason: 'fits', at: 5 });
+  expect(m.ok && m.step).toMatchObject({
+    from: 'DISCOVERED',
+    to: 'MATCHED',
+    reason: 'fits',
+    at: 5,
+  });
   const bad = move(a, 'SUBMITTED', '', 5, 1);
   expect(bad.ok).toBe(false);
 });

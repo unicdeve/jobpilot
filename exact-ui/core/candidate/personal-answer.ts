@@ -2,7 +2,8 @@
 // Only the candidate writes an answer (ADR-0034 section 5): nothing here writes one.
 // Pure: no Exact, network or storage dependency, no clock.
 
-export type PersonalAnswerKey = 'looking_for' | 'values' | 'proudest_work' | 'known_for' | 'career_story' | 'kept';
+export type PersonalAnswerKey =
+  'looking_for' | 'values' | 'proudest_work' | 'known_for' | 'career_story' | 'kept';
 
 export interface PersonalAnswer {
   id: string;
@@ -23,24 +24,89 @@ export interface StandingQuestion {
 
 // The About you questions, in the order they are asked.
 export const standingQuestions: readonly StandingQuestion[] = [
-  { key: 'looking_for', question: 'What are you looking for in your next role?', hint: 'The work you want to do, the problems you want to be near, what would make you glad you moved.' },
-  { key: 'values', question: 'What do you care about in your work, and in the people you do it with?', hint: 'What you hold yourself to, and what makes a team one you want to be part of.' },
-  { key: 'proudest_work', question: 'Tell us about the work you are proudest of.', hint: 'What the problem was, what you did yourself, and what changed because of it.' },
-  { key: 'known_for', question: 'What do colleagues come to you for?', hint: 'The things people bring to you, in your own words.' },
-  { key: 'career_story', question: 'How did you get into this work, and where are you taking it?', hint: 'Include any change of direction or gap you would like explained your way.' },
+  {
+    key: 'looking_for',
+    question: 'What are you looking for in your next role?',
+    hint: 'The work you want to do, the problems you want to be near, what would make you glad you moved.',
+  },
+  {
+    key: 'values',
+    question: 'What do you care about in your work, and in the people you do it with?',
+    hint: 'What you hold yourself to, and what makes a team one you want to be part of.',
+  },
+  {
+    key: 'proudest_work',
+    question: 'Tell us about the work you are proudest of.',
+    hint: 'What the problem was, what you did yourself, and what changed because of it.',
+  },
+  {
+    key: 'known_for',
+    question: 'What do colleagues come to you for?',
+    hint: 'The things people bring to you, in your own words.',
+  },
+  {
+    key: 'career_story',
+    question: 'How did you get into this work, and where are you taking it?',
+    hint: 'Include any change of direction or gap you would like explained your way.',
+  },
 ];
 
 export const isStandingKey = (key: string): boolean => standingQuestions.some((q) => q.key === key);
 
-export const standingQuestionFor = (key: string): StandingQuestion | undefined => standingQuestions.find((q) => q.key === key);
+export const standingQuestionFor = (key: string): StandingQuestion | undefined =>
+  standingQuestions.find((q) => q.key === key);
 
 const maxKeptAnswersUsed = 3;
 
 const stopWords = new Set([
-  'a', 'an', 'and', 'are', 'about', 'as', 'at', 'be', 'by', 'can', 'describe', 'do', 'does',
-  'for', 'from', 'have', 'how', 'i', 'if', 'in', 'is', 'it', 'me', 'of', 'on', 'or', 'our',
-  'please', 'share', 'tell', 'that', 'the', 'this', 'to', 'us', 'was', 'we', 'were', 'what', 'when',
-  'where', 'which', 'who', 'why', 'with', 'would', 'you', 'your',
+  'a',
+  'an',
+  'and',
+  'are',
+  'about',
+  'as',
+  'at',
+  'be',
+  'by',
+  'can',
+  'describe',
+  'do',
+  'does',
+  'for',
+  'from',
+  'have',
+  'how',
+  'i',
+  'if',
+  'in',
+  'is',
+  'it',
+  'me',
+  'of',
+  'on',
+  'or',
+  'our',
+  'please',
+  'share',
+  'tell',
+  'that',
+  'the',
+  'this',
+  'to',
+  'us',
+  'was',
+  'we',
+  'were',
+  'what',
+  'when',
+  'where',
+  'which',
+  'who',
+  'why',
+  'with',
+  'would',
+  'you',
+  'your',
 ]);
 
 // Go's len(word): UTF-8 bytes, not UTF-16 units.
@@ -73,6 +139,8 @@ export function relevantKeptAnswers(kept: PersonalAnswer[], label: string): Pers
     if (shared > 0 && answer.answer.trim() !== '') candidates.push({ answer, shared, index });
   });
   // The index keeps the sort stable on every engine.
-  candidates.sort((a, b) => b.shared - a.shared || b.answer.updatedAt - a.answer.updatedAt || a.index - b.index);
+  candidates.sort(
+    (a, b) => b.shared - a.shared || b.answer.updatedAt - a.answer.updatedAt || a.index - b.index,
+  );
   return candidates.slice(0, maxKeptAnswersUsed).map((c) => c.answer);
 }

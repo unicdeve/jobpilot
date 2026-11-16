@@ -4,12 +4,25 @@
 // output is capped and every read is bounds-checked.
 import { fail } from './document-error.ts';
 
-interface Huffman { count: Uint16Array; symbol: Uint16Array }
+interface Huffman {
+  count: Uint16Array;
+  symbol: Uint16Array;
+}
 
-const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
-const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-const DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
-const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+const LEN_BASE = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+  163, 195, 227, 258,
+];
+const LEN_EXTRA = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const DIST_BASE = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049,
+  3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const DIST_EXTRA = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+];
 const CL_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
 function build(lengths: ArrayLike<number>, n: number): Huffman {
@@ -55,7 +68,9 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
     return val & ((1 << need) - 1);
   };
   const decode = (h: Huffman): number => {
-    let code = 0, first = 0, index = 0;
+    let code = 0,
+      first = 0,
+      index = 0;
     for (let len = 1; len <= 15; len++) {
       code |= bits(1);
       const count = h.count[len]!;
@@ -69,7 +84,8 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
   };
   const put = (b: number): void => {
     if (outLen >= out.length) {
-      if (out.length >= maxOut) fail('too-large', 'The file expands to more than the device will read.');
+      if (out.length >= maxOut)
+        fail('too-large', 'The file expands to more than the device will read.');
       const bigger = new Uint8Array(Math.min(out.length * 2, maxOut));
       bigger.set(out);
       out = bigger;
@@ -82,7 +98,8 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
     last = bits(1);
     const type = bits(2);
     if (type === 0) {
-      bitBuf = 0; bitCnt = 0;
+      bitBuf = 0;
+      bitCnt = 0;
       if (pos + 4 > data.length) fail('corrupt', 'The compressed data ends too soon.');
       const len = data[pos]! | (data[pos + 1]! << 8);
       const nlen = data[pos + 2]! | (data[pos + 3]! << 8);
@@ -95,7 +112,9 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
       let lit: Huffman, dist: Huffman;
       if (type === 1) ({ lit, dist } = fixed());
       else {
-        const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
+        const nlen = bits(5) + 257,
+          ndist = bits(5) + 1,
+          ncode = bits(4) + 4;
         if (nlen > 286 || ndist > 30) fail('corrupt', 'The compressed data has a bad table.');
         const cl = new Uint8Array(19);
         for (let i = 0; i < ncode; i++) cl[CL_ORDER[i]!] = bits(3);
@@ -106,7 +125,8 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
           const sym = decode(clh);
           if (sym < 16) lengths[i++] = sym;
           else {
-            let prev = 0, rep: number;
+            let prev = 0,
+              rep: number;
             if (sym === 16) {
               if (i === 0) fail('corrupt', 'The compressed data has a bad table.');
               prev = lengths[i - 1]!;
@@ -143,7 +163,12 @@ export function inflateRaw(data: Uint8Array, start: number, maxOut: number): Uin
 // A zlib stream (PDF FlateDecode): a two-byte header, then DEFLATE. The Adler-32 trailer is not checked, as
 // readers tolerate a truncated one and the text is checked downstream.
 export function inflateZlib(data: Uint8Array, maxOut: number): Uint8Array {
-  if (data.length < 2 || (data[0]! & 0x0f) !== 8 || ((data[0]! << 8) | data[1]!) % 31 !== 0 || (data[1]! & 0x20) !== 0) {
+  if (
+    data.length < 2 ||
+    (data[0]! & 0x0f) !== 8 ||
+    ((data[0]! << 8) | data[1]!) % 31 !== 0 ||
+    (data[1]! & 0x20) !== 0
+  ) {
     fail('corrupt', 'The compressed data has no valid header.');
   }
   return inflateRaw(data, 2, maxOut);

@@ -6,8 +6,8 @@ import { validateSchedule, type ScoutSchedule } from './scout-schedule.ts';
 
 export type ScoutSource = 'local' | 'sources';
 export const scoutSources: ScoutSource[] = ['local', 'sources'];
-export const isValidSource = (s: string): s is ScoutSource => (scoutSources as string[]).includes(s);
-
+export const isValidSource = (s: string): s is ScoutSource =>
+  (scoutSources as string[]).includes(s);
 
 export interface Scout {
   name: string;
@@ -39,7 +39,8 @@ export function validateScout(s: Scout): string {
   if (s.name.trim() === '') return 'a scout needs a name';
   if (s.savedSearchId.trim() === '') return 'a scout needs a saved search to run';
   if (!isValidSource(s.source)) return `unknown scout source "${s.source}"`;
-  if (s.minMatchScore < 0 || s.minMatchScore > 100) return `the minimum match score must be between 0 and 100, got ${s.minMatchScore}`;
+  if (s.minMatchScore < 0 || s.minMatchScore > 100)
+    return `the minimum match score must be between 0 and 100, got ${s.minMatchScore}`;
   if (s.maxApplicationsPerRun < 1 || s.maxApplicationsPerRun > maxApplicationsPerRunCeiling) {
     return `a run must be allowed to create between 1 and ${maxApplicationsPerRunCeiling} applications, got ${s.maxApplicationsPerRun}`;
   }
@@ -63,6 +64,7 @@ export function eligible(s: Scout, input: EligibilityInput): [boolean, string] {
   const [ok, reason] = preScreen(s, input);
   if (!ok) return [false, reason];
   if (!input.hasScore) return [false, 'could not be scored against the candidate'];
-  if (input.score < s.minMatchScore) return [false, `match score ${input.score} is below the scout's floor of ${s.minMatchScore}`];
+  if (input.score < s.minMatchScore)
+    return [false, `match score ${input.score} is below the scout's floor of ${s.minMatchScore}`];
   return [true, `match score ${input.score} clears the scout's floor of ${s.minMatchScore}`];
 }

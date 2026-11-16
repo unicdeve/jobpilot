@@ -20,18 +20,34 @@ describe('convertDocument', () => {
 
   test('the PDF result is the Go golden, trimmed and with LF line ends', () => {
     const r = convertDocument('resume.pdf', goFixture('resume.pdf'));
-    expect(r).toEqual({ ok: true, markdown: goFixtureText('resume.golden.md').replace(/\r\n/g, '\n').trim() });
+    expect(r).toEqual({
+      ok: true,
+      markdown: goFixtureText('resume.golden.md').replace(/\r\n/g, '\n').trim(),
+    });
   });
 
   test('plain text and Markdown pass through, with UTF-8 and UTF-16 handled', () => {
-    expect(convertDocument('notes.txt', bytes('Ada Lovelace\r\nEngineer\r\n'))).toEqual({ ok: true, markdown: 'Ada Lovelace\nEngineer' });
-    expect(convertDocument('cv.md', bytes('\ufeff# Ada\n\n- Go\n'))).toEqual({ ok: true, markdown: '# Ada\n\n- Go' });
-    const utf16 = Uint8Array.from([0xff, 0xfe, ...Array.from('Ada \u00e9', (c) => [c.charCodeAt(0) & 255, c.charCodeAt(0) >> 8]).flat()]);
+    expect(convertDocument('notes.txt', bytes('Ada Lovelace\r\nEngineer\r\n'))).toEqual({
+      ok: true,
+      markdown: 'Ada Lovelace\nEngineer',
+    });
+    expect(convertDocument('cv.md', bytes('\ufeff# Ada\n\n- Go\n'))).toEqual({
+      ok: true,
+      markdown: '# Ada\n\n- Go',
+    });
+    const utf16 = Uint8Array.from([
+      0xff,
+      0xfe,
+      ...Array.from('Ada \u00e9', (c) => [c.charCodeAt(0) & 255, c.charCodeAt(0) >> 8]).flat(),
+    ]);
     expect(convertDocument('cv.TXT', utf16)).toEqual({ ok: true, markdown: 'Ada \u00e9' });
   });
 
   test('a file that is not a PDF is not treated as one', () => {
-    expect(convertDocument('notes.txt', bytes('I have attached my PDF resume'))).toEqual({ ok: true, markdown: 'I have attached my PDF resume' });
+    expect(convertDocument('notes.txt', bytes('I have attached my PDF resume'))).toEqual({
+      ok: true,
+      markdown: 'I have attached my PDF resume',
+    });
     expect(isPdf(bytes('%PDF-1.7\n'))).toBe(true);
     expect(isPdf(Uint8Array.from([...new Array(200).fill(0), ...bytes('%PDF-1.4')]))).toBe(true);
     expect(isPdf(bytes('Ada Lovelace, engineer'))).toBe(false);
@@ -40,13 +56,22 @@ describe('convertDocument', () => {
   });
 
   test('anything else needs an extension to say what it is', () => {
-    for (const name of ['resume', 'resume.', 'resume.with spaces', 'resume.t/xt', 'resume.waytoolongextension']) {
+    for (const name of [
+      'resume',
+      'resume.',
+      'resume.with spaces',
+      'resume.t/xt',
+      'resume.waytoolongextension',
+    ]) {
       expect(failure(name, bytes('Ada Lovelace')).code).toBe('no-extension');
     }
   });
 
   test('a Windows path names the file by its last part', () => {
-    expect(convertDocument('C:\\Users\\ada\\cv.txt', bytes('hi'))).toEqual({ ok: true, markdown: 'hi' });
+    expect(convertDocument('C:\\Users\\ada\\cv.txt', bytes('hi'))).toEqual({
+      ok: true,
+      markdown: 'hi',
+    });
   });
 
   test('HTML converts to Markdown without markup (Go: resume.html)', () => {
@@ -60,7 +85,12 @@ describe('convertDocument', () => {
   });
 
   test('HTML scripts, styles and unsafe links do not reach the text', () => {
-    const r = convertDocument('a.html', bytes('<style>p{}</style><script>alert(1)</script><p>Hi <a href="javascript:alert(1)">there</a> &amp; <b>you</b></p>'));
+    const r = convertDocument(
+      'a.html',
+      bytes(
+        '<style>p{}</style><script>alert(1)</script><p>Hi <a href="javascript:alert(1)">there</a> &amp; <b>you</b></p>',
+      ),
+    );
     expect(r).toEqual({ ok: true, markdown: 'Hi there & **you**' });
   });
 
@@ -78,7 +108,9 @@ describe('convertDocument', () => {
     expect(failure('a.png', bytes('x')).code).toBe('unsupported');
     expect(failure('a.docx', bytes('not a zip')).code).toBe('corrupt');
     expect(failure('a.docx', makeZip([{ name: 'x', data: 'y' }])).code).toBe('corrupt');
-    expect(failure('a.pdf', makePdf({ content: 'BT ET', trailerExtra: '/Encrypt 9 0 R' })).code).toBe('pdf-encrypted');
+    expect(
+      failure('a.pdf', makePdf({ content: 'BT ET', trailerExtra: '/Encrypt 9 0 R' })).code,
+    ).toBe('pdf-encrypted');
     expect(failure('a.pdf', makePdf({ content: 'q Q' })).code).toBe('pdf-no-text');
     expect(failure('a.pdf', bytes('%PDF-1.4 junk')).code).toBe('corrupt');
   });
@@ -89,7 +121,10 @@ describe('convertDocument', () => {
 
   test('hostile bytes never throw', () => {
     let seed = 7;
-    const rnd = (): number => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed; };
+    const rnd = (): number => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed;
+    };
     const base = goFixture('resume.pdf');
     for (let i = 0; i < 40; i++) {
       const mutated = base.slice(0, 20000 + (rnd() % 40000));
@@ -106,7 +141,14 @@ describe('convertDocument', () => {
 
   test('the picker list names only what the converter reads', () => {
     for (const ext of RESUME_ACCEPT) {
-      const r = convertDocument(`a${ext}`, ext === '.docx' ? makeDocx('<w:p><w:r><w:t>x</w:t></w:r></w:p>') : ext === '.pdf' ? makePdf({ content: 'BT /F1 9 Tf (x) Tj ET' }) : bytes('x'));
+      const r = convertDocument(
+        `a${ext}`,
+        ext === '.docx'
+          ? makeDocx('<w:p><w:r><w:t>x</w:t></w:r></w:p>')
+          : ext === '.pdf'
+            ? makePdf({ content: 'BT /F1 9 Tf (x) Tj ET' })
+            : bytes('x'),
+      );
       expect(r.ok).toBe(true);
     }
   });

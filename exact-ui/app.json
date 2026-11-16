@@ -12,19 +12,12 @@
   "server": {
     "database": false
   },
-  "env": [
-    "API_BASE_URL",
-    "REMOTIVE_URL",
-    "SOURCES_BASE_URL"
-  ],
+  "env": ["API_BASE_URL", "REMOTIVE_URL", "SOURCES_BASE_URL"],
   "host": {
     "web": {},
     "ios": {
       "minimumOS": "17.0",
-      "deviceFamily": [
-        "iphone",
-        "ipad"
-      ]
+      "deviceFamily": ["iphone", "ipad"]
     },
     "macos": {
       "minimumOS": "14.0",

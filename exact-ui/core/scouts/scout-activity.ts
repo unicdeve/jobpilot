@@ -8,18 +8,41 @@ import type { RunEvent, ScoutRun } from './scout-store.ts';
 
 // Mirrors a finished scout run into the agent-run tables, step for step, so Activity lists it beside every other run.
 export async function recordAgentRun(db: Db, run: ScoutRun, events: RunEvent[]): Promise<void> {
-  await startRun(db, { id: run.id, scoutId: run.scoutId, trigger: run.trigger === 'schedule' ? 'schedule' : 'manual', taskType: agentTaskScoutRun }, run.startedAt);
+  await startRun(
+    db,
+    {
+      id: run.id,
+      scoutId: run.scoutId,
+      trigger: run.trigger === 'schedule' ? 'schedule' : 'manual',
+      taskType: agentTaskScoutRun,
+    },
+    run.startedAt,
+  );
   for (const e of events) {
-    await appendEvent(db, run.id, { action: e.action, tool: 'scout', status: e.status, inputSummary: e.inputSummary, outputSummary: e.outputSummary,
-      policyResult: e.policyResult, durationMs: 0 }, e.createdAt);
+    await appendEvent(
+      db,
+      run.id,
+      {
+        action: e.action,
+        tool: 'scout',
+        status: e.status,
+        inputSummary: e.inputSummary,
+        outputSummary: e.outputSummary,
+        policyResult: e.policyResult,
+        durationMs: 0,
+      },
+      e.createdAt,
+    );
   }
-  if (run.status !== 'running') await finishRun(db, run.id, run.status, run.error, run.completedAt ?? run.startedAt);
+  if (run.status !== 'running')
+    await finishRun(db, run.id, run.status, run.error, run.completedAt ?? run.startedAt);
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 // A job that was never scored never becomes an application (the Go rule): say how many, and why.
-export const unscoredCount = (report: RunReport): number => report.verdicts.filter((v) => !v.hasScore && v.reason.includes('could not be scored')).length;
+export const unscoredCount = (report: RunReport): number =>
+  report.verdicts.filter((v) => !v.hasScore && v.reason.includes('could not be scored')).length;
 
 export function runSummary(report: RunReport, modelAvailable: boolean): string {
   if (report.error !== '') return `The run stopped: ${report.error}`;

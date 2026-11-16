@@ -14,16 +14,25 @@ export interface Schema {
   items?: Schema;
 }
 
-export const objectSchema = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties });
+export const objectSchema = (properties: Record<string, Schema>): Schema => ({
+  type: 'object',
+  properties,
+});
 export const stringSchema = (description = ''): Schema => ({ type: 'string', description });
 export const integerSchema = (description = ''): Schema => ({ type: 'integer', description });
 export const numberSchema = (description = ''): Schema => ({ type: 'number', description });
 export const booleanSchema = (description = ''): Schema => ({ type: 'boolean', description });
-export const arraySchema = (description: string, items: Schema): Schema => ({ type: 'array', description, items });
+export const arraySchema = (description: string, items: Schema): Schema => ({
+  type: 'array',
+  description,
+  items,
+});
 
 // The schema as a JSON Schema document, with every property required and no extra ones, as Schema.MarshalJSON does.
 export function toJsonSchema(schema: Schema): Record<string, unknown> {
-  const doc: Record<string, unknown> = { type: schema.nullable ? [schema.type, 'null'] : schema.type };
+  const doc: Record<string, unknown> = {
+    type: schema.nullable ? [schema.type, 'null'] : schema.type,
+  };
   if (schema.description) doc.description = schema.description;
   if (schema.type === 'object') {
     const names = Object.keys(schema.properties ?? {}).sort();
@@ -74,5 +83,6 @@ export interface FetchResponse {
 }
 export type LLMFetch = (url: string, init?: FetchInit) => Promise<FetchResponse>;
 
-export const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));

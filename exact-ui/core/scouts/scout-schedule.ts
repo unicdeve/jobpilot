@@ -48,9 +48,13 @@ export const isScheduled = (s: ScoutSchedule): boolean => s.kind === 'every' || 
 // An empty kind reads as off, and fields the kind does not use are cleared.
 export const normalizedSchedule = (s: ScoutSchedule): ScoutSchedule => {
   switch (s.kind) {
-    case 'every': return { kind: 'every', everyHours: s.everyHours, dailyAt: 0 };
-    case 'daily': return { kind: 'daily', everyHours: 0, dailyAt: s.dailyAt };
-    case '': case 'off': return { kind: 'off', everyHours: 0, dailyAt: 0 };
+    case 'every':
+      return { kind: 'every', everyHours: s.everyHours, dailyAt: 0 };
+    case 'daily':
+      return { kind: 'daily', everyHours: 0, dailyAt: s.dailyAt };
+    case '':
+    case 'off':
+      return { kind: 'off', everyHours: 0, dailyAt: 0 };
   }
   return s;
 };
@@ -58,21 +62,34 @@ export const normalizedSchedule = (s: ScoutSchedule): ScoutSchedule => {
 // Says what is wrong, or returns null when the schedule can be kept.
 export const validateSchedule = (s: ScoutSchedule): string | null => {
   switch (s.kind) {
-    case '': case 'off': return null;
+    case '':
+    case 'off':
+      return null;
     case 'every':
-      return s.everyHours < 1 || s.everyHours > 24 ? `a scout can run every 1 to 24 hours, got ${s.everyHours}` : null;
+      return s.everyHours < 1 || s.everyHours > 24
+        ? `a scout can run every 1 to 24 hours, got ${s.everyHours}`
+        : null;
     case 'daily':
-      return s.dailyAt < 0 || s.dailyAt >= 24 * 60 ? `a daily time must be between 00:00 and 23:59, got minute ${s.dailyAt}` : null;
+      return s.dailyAt < 0 || s.dailyAt >= 24 * 60
+        ? `a daily time must be between 00:00 and 23:59, got minute ${s.dailyAt}`
+        : null;
   }
   return `unknown schedule "${s.kind}"`;
 };
 
 // minutes after midnight on the date of `day`, built from the date so a 23 or 25 hour day still gives the wall-clock time asked for.
-const dailyMoment = (zone: Zone, day: { year: number; month: number; day: number }, minutes: number): number =>
-  zone.at(day.year, day.month, day.day, Math.floor(minutes / 60), minutes % 60);
+const dailyMoment = (
+  zone: Zone,
+  day: { year: number; month: number; day: number },
+  minutes: number,
+): number => zone.at(day.year, day.month, day.day, Math.floor(minutes / 60), minutes % 60);
 
 // Go's AddDate(0, 0, 1) on a calendar day.
-const nextDay = (d: { year: number; month: number; day: number }): { year: number; month: number; day: number } => {
+const nextDay = (d: {
+  year: number;
+  month: number;
+  day: number;
+}): { year: number; month: number; day: number } => {
   const u = new Date(0);
   u.setUTCFullYear(d.year, d.month - 1, d.day + 1);
   return { year: u.getUTCFullYear(), month: u.getUTCMonth() + 1, day: u.getUTCDate() };
@@ -81,7 +98,11 @@ const nextDay = (d: { year: number; month: number; day: number }): { year: numbe
 // The moment the Scout becomes due, given since: the later of its last run's start and when its schedule was set.
 // A null since (never run, no record) is due at once (0).
 // Returns null for an unscheduled kind.
-export const dueAt = (s: ScoutSchedule, since: number | null, zone: Zone = localZone): number | null => {
+export const dueAt = (
+  s: ScoutSchedule,
+  since: number | null,
+  zone: Zone = localZone,
+): number | null => {
   if (since === null) return 0;
   switch (s.kind) {
     case 'every':
@@ -98,7 +119,12 @@ export const dueAt = (s: ScoutSchedule, since: number | null, zone: Zone = local
 };
 
 // Whether the Scout should run now.
-export const isDue = (s: ScoutSchedule, now: number, since: number | null, zone: Zone = localZone): boolean => {
+export const isDue = (
+  s: ScoutSchedule,
+  now: number,
+  since: number | null,
+  zone: Zone = localZone,
+): boolean => {
   if (!isScheduled(s)) return false;
   const due = dueAt(s, since, zone);
   return due !== null && now >= due;
@@ -107,7 +133,12 @@ export const isDue = (s: ScoutSchedule, now: number, since: number | null, zone:
 // When the hourly alarm will next find the Scout due, for showing the user.
 // A Scout already due runs at its next alarm.
 // Returns null for an unscheduled kind.
-export const nextRun = (s: ScoutSchedule, now: number, since: number | null, zone: Zone = localZone): number | null => {
+export const nextRun = (
+  s: ScoutSchedule,
+  now: number,
+  since: number | null,
+  zone: Zone = localZone,
+): number | null => {
   let due = dueAt(s, since, zone);
   if (due === null) return null;
   if (due < now) due = now;

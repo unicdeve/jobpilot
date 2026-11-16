@@ -3,7 +3,17 @@
   "private": true,
   "scripts": {
     "build": "bun exact.mjs web-build --out dist",
-    "start": "bun exact.mjs serve dist"
+    "start": "bun exact.mjs serve dist",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "bun run typecheck && bun run format:check && bun run test"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "prettier": "^3.10.1",
+    "typescript": "^7.0.2"
+  }
 }

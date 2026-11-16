@@ -56,12 +56,27 @@ export interface SearchCriteria {
 export const maxHoursShift = 12;
 
 export const emptyCriteria: SearchCriteria = {
-  keywords: '', title: '', location: '', remotePreference: '', employmentType: '', salaryMin: 0, salaryMax: 0, excludedCompanies: [],
-  workFrom: '', includeRelocation: false, fitHours: false, hoursShift: 0,
+  keywords: '',
+  title: '',
+  location: '',
+  remotePreference: '',
+  employmentType: '',
+  salaryMin: 0,
+  salaryMax: 0,
+  excludedCompanies: [],
+  workFrom: '',
+  includeRelocation: false,
+  fitHours: false,
+  hoursShift: 0,
 };
 
 // strings.Fields(strings.ToLower(strings.TrimSpace(field)))
-export const searchTerms = (field: string): string[] => field.trim().toLowerCase().split(/\s+/).filter((t) => t !== '');
+export const searchTerms = (field: string): string[] =>
+  field
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t !== '');
 
 const matchesAllTerms = (field: string, text: string): boolean => {
   const haystack = text.toLowerCase();
@@ -107,29 +122,37 @@ const hoursFor = (c: SearchCriteria, job: Job, seeker: Seeker): boolean => {
 
 // Whether the criteria would match every job in existence. fitHours does not count.
 export const isEmpty = (c: SearchCriteria): boolean =>
-  c.keywords.trim() === '' && c.title.trim() === '' && c.location.trim() === '' && c.remotePreference.trim() === ''
-  && c.employmentType.trim() === '' && c.salaryMin === 0 && c.salaryMax === 0 && c.excludedCompanies.length === 0
-  && (c.workFrom ?? '').trim() === '';
+  c.keywords.trim() === '' &&
+  c.title.trim() === '' &&
+  c.location.trim() === '' &&
+  c.remotePreference.trim() === '' &&
+  c.employmentType.trim() === '' &&
+  c.salaryMin === 0 &&
+  c.salaryMax === 0 &&
+  c.excludedCompanies.length === 0 &&
+  (c.workFrom ?? '').trim() === '';
 
 // Whether the job could match once its description is read: every criterion a description cannot change.
 export const mayMatch = (c: SearchCriteria, job: Job): boolean =>
-  matchesAllTerms(c.title, job.title)
-  && matchesAllTerms(c.location, job.locations.join(' '))
-  && equalsFold(c.remotePreference, job.remoteType)
-  && equalsFold(c.employmentType, job.employmentType)
-  && withinSalary(c, job)
-  && !excludes(c, job);
+  matchesAllTerms(c.title, job.title) &&
+  matchesAllTerms(c.location, job.locations.join(' ')) &&
+  equalsFold(c.remotePreference, job.remoteType) &&
+  equalsFold(c.employmentType, job.employmentType) &&
+  withinSalary(c, job) &&
+  !excludes(c, job);
 
 export function matchesFor(c: SearchCriteria, job: Job, seeker: Seeker): boolean {
-  return matchesAllTerms(c.keywords, `${job.title} ${job.descriptionMarkdown}`)
-    && matchesAllTerms(c.title, job.title)
-    && matchesAllTerms(c.location, job.locations.join(' '))
-    && equalsFold(c.remotePreference, job.remoteType)
-    && equalsFold(c.employmentType, job.employmentType)
-    && withinSalary(c, job)
-    && workableFor(c, job, seeker.authorizedCountries)
-    && hoursFor(c, job, seeker)
-    && !excludes(c, job);
+  return (
+    matchesAllTerms(c.keywords, `${job.title} ${job.descriptionMarkdown}`) &&
+    matchesAllTerms(c.title, job.title) &&
+    matchesAllTerms(c.location, job.locations.join(' ')) &&
+    equalsFold(c.remotePreference, job.remoteType) &&
+    equalsFold(c.employmentType, job.employmentType) &&
+    withinSalary(c, job) &&
+    workableFor(c, job, seeker.authorizedCountries) &&
+    hoursFor(c, job, seeker) &&
+    !excludes(c, job)
+  );
 }
 
 // For a candidate with no work authorization or time zone recorded.

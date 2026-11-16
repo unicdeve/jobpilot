@@ -16,16 +16,31 @@ export const resumeSchema = `CREATE TABLE IF NOT EXISTS resumes (
 
 export const ensureResumeSchema = (db: Db): Promise<unknown> => db.execute(resumeSchema);
 
-const columns = 'id, candidate_id, name, original_file_path, markdown_content, parsed_metadata, created_at, updated_at';
+const columns =
+  'id, candidate_id, name, original_file_path, markdown_content, parsed_metadata, created_at, updated_at';
 
 const fromRow = (r: SqlValue[]): Resume => ({
-  id: String(r[0]), candidateId: String(r[1]), name: String(r[2]), originalFilePath: String(r[3] ?? ''),
-  markdownContent: String(r[4] ?? ''), parsedMetadata: String(r[5] ?? ''), createdAt: Number(r[6]), updatedAt: Number(r[7]),
+  id: String(r[0]),
+  candidateId: String(r[1]),
+  name: String(r[2]),
+  originalFilePath: String(r[3] ?? ''),
+  markdownContent: String(r[4] ?? ''),
+  parsedMetadata: String(r[5] ?? ''),
+  createdAt: Number(r[6]),
+  updatedAt: Number(r[7]),
 });
 
 export async function saveResume(db: Db, r: Resume): Promise<void> {
-  await db.execute(`INSERT INTO resumes (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [r.id, r.candidateId, r.name, r.originalFilePath, r.markdownContent, r.parsedMetadata, r.createdAt, r.updatedAt]);
+  await db.execute(`INSERT INTO resumes (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+    r.id,
+    r.candidateId,
+    r.name,
+    r.originalFilePath,
+    r.markdownContent,
+    r.parsedMetadata,
+    r.createdAt,
+    r.updatedAt,
+  ]);
 }
 
 export async function getResume(db: Db, id: string): Promise<Resume | undefined> {
@@ -35,8 +50,12 @@ export async function getResume(db: Db, id: string): Promise<Resume | undefined>
 
 // Oldest first.
 export async function resumesOf(db: Db, candidateId: string): Promise<Resume[]> {
-  const { rows } = await db.query(`SELECT ${columns} FROM resumes WHERE candidate_id = ? ORDER BY created_at, rowid`, [candidateId]);
+  const { rows } = await db.query(
+    `SELECT ${columns} FROM resumes WHERE candidate_id = ? ORDER BY created_at, rowid`,
+    [candidateId],
+  );
   return rows.map(fromRow);
 }
 
-export const deleteResume = (db: Db, id: string): Promise<unknown> => db.execute('DELETE FROM resumes WHERE id = ?', [id]);
+export const deleteResume = (db: Db, id: string): Promise<unknown> =>
+  db.execute('DELETE FROM resumes WHERE id = ?', [id]);

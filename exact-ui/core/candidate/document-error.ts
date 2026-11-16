@@ -10,9 +10,12 @@ export type ConvertErrorCode =
   | 'pdf-unsupported' // a PDF feature the pure-TypeScript reader does not handle (named in the message)
   | 'pdf-no-text'; // a scan or an image: no text layer
 
-export type ConvertResult = { ok: true; markdown: string } | { ok: false; code: ConvertErrorCode; error: string };
+export type ConvertResult =
+  { ok: true; markdown: string } | { ok: false; code: ConvertErrorCode; error: string };
 
-export interface Failure extends Error { code: ConvertErrorCode }
+export interface Failure extends Error {
+  code: ConvertErrorCode;
+}
 
 export function fail(code: ConvertErrorCode, message: string): never {
   const e = new Error(message) as Failure;

@@ -2,8 +2,19 @@ import { beforeEach, expect, test } from 'bun:test';
 import type { Db } from '../shared/db.ts';
 import { emptyCriteria } from '../search/criteria.ts';
 import {
-  availableName, createSavedSearch, defaultSavedSearch, deleteSavedSearch, ensureSavedSearchSchema, getSavedSearch, importTemplates,
-  listSavedSearches, markSavedSearchRun, searchRefreshInterval, setDefaultSavedSearch, staleSavedSearches, updateSavedSearch,
+  availableName,
+  createSavedSearch,
+  defaultSavedSearch,
+  deleteSavedSearch,
+  ensureSavedSearchSchema,
+  getSavedSearch,
+  importTemplates,
+  listSavedSearches,
+  markSavedSearchRun,
+  searchRefreshInterval,
+  setDefaultSavedSearch,
+  staleSavedSearches,
+  updateSavedSearch,
 } from './saved-search.ts';
 import { ensureScoutSchema } from './scout-store.ts';
 import { memoryDb } from '../shared/test-db.ts';
@@ -18,11 +29,18 @@ const create = async (name: string, c = go, now = 1) => {
   if (!r.ok) throw new Error(r.error);
   return r.value;
 };
-beforeEach(async () => { db = memoryDb(); n = 0; await ensureSavedSearchSchema(db); await ensureScoutSchema(db); });
+beforeEach(async () => {
+  db = memoryDb();
+  n = 0;
+  await ensureSavedSearchSchema(db);
+  await ensureScoutSchema(db);
+});
 
 test('the first search becomes the default, the second does not', async () => {
   expect((await create('Go roles')).isDefault).toBe(true);
-  expect((await create('Design roles', { ...emptyCriteria, keywords: 'design' })).isDefault).toBe(false);
+  expect((await create('Design roles', { ...emptyCriteria, keywords: 'design' })).isDefault).toBe(
+    false,
+  );
 });
 test('criteria that narrow nothing are rejected', async () => {
   const r = await createSavedSearch(db, id(), 'Everything', emptyCriteria, 1);
@@ -37,7 +55,9 @@ test('names are unique regardless of case', async () => {
   const r = await createSavedSearch(db, id(), 'go ROLES', go, 1);
   expect(!r.ok && r.error).toContain('already exists');
 });
-test('the name is trimmed', async () => { expect((await create('  Go roles  ')).name).toBe('Go roles'); });
+test('the name is trimmed', async () => {
+  expect((await create('  Go roles  ')).name).toBe('Go roles');
+});
 test('work-from is upper-cased and must be a country', async () => {
   expect((await create('Mine', { ...go, workFrom: ' de ' })).criteria.workFrom).toBe('DE');
   const bad = await createSavedSearch(db, id(), 'Bad', { ...go, workFrom: 'ZZZ' }, 1);
@@ -53,7 +73,13 @@ test('criteria round-trip through storage', async () => {
 
 test('update: keeping its own name is not a clash, and default survives', async () => {
   const made = await create('Go roles');
-  const a = await updateSavedSearch(db, made.id, 'Go roles', { ...emptyCriteria, keywords: 'rust' }, 5);
+  const a = await updateSavedSearch(
+    db,
+    made.id,
+    'Go roles',
+    { ...emptyCriteria, keywords: 'rust' },
+    5,
+  );
   expect(a.ok && a.value.criteria.keywords).toBe('rust');
   const b = await updateSavedSearch(db, made.id, 'Renamed', go, 6);
   expect(b.ok && b.value.isDefault).toBe(true);
@@ -83,7 +109,10 @@ test('deleting the default promotes another; deleting the last leaves none', asy
 
 test('deleting a search deletes its scouts and says how many', async () => {
   const s = await create('Go roles');
-  await db.execute(`INSERT INTO scouts (id, name, saved_search_id, min_match_score, max_applications_per_run, source, created_at, updated_at) VALUES ('c1','C',?,70,5,'local',1,1)`, [s.id]);
+  await db.execute(
+    `INSERT INTO scouts (id, name, saved_search_id, min_match_score, max_applications_per_run, source, created_at, updated_at) VALUES ('c1','C',?,70,5,'local',1,1)`,
+    [s.id],
+  );
   const r = await deleteSavedSearch(db, s.id, 2);
   expect(r.ok && r.value.scoutsDeleted).toBe(1);
   expect((await db.query('SELECT id FROM scouts')).rows).toHaveLength(0);

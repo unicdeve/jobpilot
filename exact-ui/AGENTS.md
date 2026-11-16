@@ -1,4 +1,5 @@
 <!-- exact:begin (exact new writes this block; bun exact.mjs update rewrites it) -->
+
 # exact-ui: an Exact app
 
 `app.contract` is the view, `app.ts` the data module, `app.test.contract` the tests, `app.json`

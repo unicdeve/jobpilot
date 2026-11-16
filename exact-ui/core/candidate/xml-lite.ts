@@ -4,7 +4,12 @@
 // ("w:p"), because Word always writes the same ones.
 import { fail } from './document-error.ts';
 
-export interface XmlNode { name: string; attrs: Record<string, string>; children: XmlNode[]; text: string }
+export interface XmlNode {
+  name: string;
+  attrs: Record<string, string>;
+  children: XmlNode[];
+  text: string;
+}
 
 const MAX_DEPTH = 200;
 const MAX_NODES = 2_000_000;
@@ -35,22 +40,41 @@ export function parseXml(src: string): XmlNode {
     const textEnd = lt < 0 ? n : lt;
     if (textEnd > i) {
       const top = stack[stack.length - 1]!;
-      top.children.push({ name: '#text', attrs: {}, children: [], text: decodeEntities(src.slice(i, textEnd)) });
+      top.children.push({
+        name: '#text',
+        attrs: {},
+        children: [],
+        text: decodeEntities(src.slice(i, textEnd)),
+      });
       if (++nodes > MAX_NODES) fail('too-large', 'The document has too many parts.');
     }
     if (lt < 0) break;
-    if (src.startsWith('<!--', lt)) { const e = src.indexOf('-->', lt + 4); i = e < 0 ? n : e + 3; continue; }
-    if (src.startsWith('<![CDATA[', lt)) {
-      const e = src.indexOf(']]>', lt + 9);
-      const end = e < 0 ? n : e;
-      stack[stack.length - 1]!.children.push({ name: '#text', attrs: {}, children: [], text: src.slice(lt + 9, end) });
+    if (src.startsWith('<!--', lt)) {
+      const e = src.indexOf('-->', lt + 4);
       i = e < 0 ? n : e + 3;
       continue;
     }
-    if (src[lt + 1] === '?') { const e = src.indexOf('?>', lt + 2); i = e < 0 ? n : e + 2; continue; }
+    if (src.startsWith('<![CDATA[', lt)) {
+      const e = src.indexOf(']]>', lt + 9);
+      const end = e < 0 ? n : e;
+      stack[stack.length - 1]!.children.push({
+        name: '#text',
+        attrs: {},
+        children: [],
+        text: src.slice(lt + 9, end),
+      });
+      i = e < 0 ? n : e + 3;
+      continue;
+    }
+    if (src[lt + 1] === '?') {
+      const e = src.indexOf('?>', lt + 2);
+      i = e < 0 ? n : e + 2;
+      continue;
+    }
     if (src[lt + 1] === '!') {
       // A DOCTYPE, possibly with an internal subset in brackets. Skipped whole; nothing in it is expanded.
-      let depth = 0, j = lt + 2;
+      let depth = 0,
+        j = lt + 2;
       for (; j < n; j++) {
         const c = src[j];
         if (c === '[') depth++;
@@ -61,10 +85,14 @@ export function parseXml(src: string): XmlNode {
       continue;
     }
     // A tag. Find its end, honouring quotes in attribute values.
-    let j = lt + 1, quote = '';
+    let j = lt + 1,
+      quote = '';
     for (; j < n; j++) {
       const c = src[j]!;
-      if (quote) { if (c === quote) quote = ''; } else if (c === '"' || c === "'") quote = c; else if (c === '>') break;
+      if (quote) {
+        if (c === quote) quote = '';
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === '>') break;
     }
     if (j >= n) fail('corrupt', 'The document XML is cut off.');
     const body = src.slice(lt + 1, j);
@@ -80,7 +108,8 @@ export function parseXml(src: string): XmlNode {
     const node: XmlNode = { name: nameMatch[0], attrs: {}, children: [], text: '' };
     const attrRe = /([^\s=]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
     const rest = inner.slice(nameMatch[0].length);
-    for (let m = attrRe.exec(rest); m; m = attrRe.exec(rest)) node.attrs[m[1]!] = decodeEntities(m[3] ?? m[4] ?? '');
+    for (let m = attrRe.exec(rest); m; m = attrRe.exec(rest))
+      node.attrs[m[1]!] = decodeEntities(m[3] ?? m[4] ?? '');
     if (++nodes > MAX_NODES) fail('too-large', 'The document has too many parts.');
     stack[stack.length - 1]!.children.push(node);
     if (!selfClose) {

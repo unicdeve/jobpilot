@@ -28,7 +28,10 @@ export interface NotificationSettings {
   strongMatchScore: number;
 }
 
-export const defaultNotificationSettings = (): NotificationSettings => ({ enabled: true, strongMatchScore: 80 });
+export const defaultNotificationSettings = (): NotificationSettings => ({
+  enabled: true,
+  strongMatchScore: 80,
+});
 
 // Go returns an error; here, the message or null when the settings can be kept.
 export const validateNotificationSettings = (s: NotificationSettings): string | null =>
@@ -63,9 +66,11 @@ export interface ScoutRunNotice {
   runId: string;
 }
 
-const count = (n: number, one: string, many: string): string => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+const count = (n: number, one: string, many: string): string =>
+  n === 1 ? `1 ${one}` : `${n} ${many}`;
 
-const readyForReview = (created: number): string => (created === 1 ? 'It’s ready for review.' : 'They’re ready for review.');
+const readyForReview = (created: number): string =>
+  created === 1 ? 'It’s ready for review.' : 'They’re ready for review.';
 
 const foundBody = (created: number, strong: number): string => {
   if (strong === 0) return readyForReview(created);
@@ -77,7 +82,10 @@ const foundBody = (created: number, strong: number): string => {
 
 // Whether a finished scout run tells the user, and what it says; null when it says nothing.
 // A scheduled run tells when it created applications or failed; any run tells when it created one for a strong match.
-export function scoutRunNotification(run: ScoutRunOutcome, strongScore: number): ScoutRunNotice | null {
+export function scoutRunNotification(
+  run: ScoutRunOutcome,
+  strongScore: number,
+): ScoutRunNotice | null {
   let created = 0;
   let strong = 0;
   for (const v of run.report?.verdicts ?? []) {
@@ -88,10 +96,20 @@ export function scoutRunNotification(run: ScoutRunOutcome, strongScore: number):
   const scheduled = run.trigger === 'schedule';
   const base = { scoutId: run.scoutId, runId: run.runId };
   if (created > 0 && (scheduled || strong > 0)) {
-    return { ...base, kind: 'scout_found', title: `${run.scoutName} found ${count(created, 'job', 'jobs')} for you`, body: foundBody(created, strong) };
+    return {
+      ...base,
+      kind: 'scout_found',
+      title: `${run.scoutName} found ${count(created, 'job', 'jobs')} for you`,
+      body: foundBody(created, strong),
+    };
   }
   if (scheduled && run.failed) {
-    return { ...base, kind: 'scout_failed', title: `${run.scoutName} couldn’t run`, body: 'Open JobPilot to see why.' };
+    return {
+      ...base,
+      kind: 'scout_failed',
+      title: `${run.scoutName} couldn’t run`,
+      body: 'Open JobPilot to see why.',
+    };
   }
   return null;
 }

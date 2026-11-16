@@ -7,27 +7,59 @@ import { resolveCountry, timeZoneByID } from '../search/geo.ts';
 export type LinkKind = 'linkedin' | 'github' | 'portfolio' | 'website' | 'twitter' | 'other';
 
 // Forms ask for links one at a time, so each kind is stored on its own.
-export const linkKinds: readonly LinkKind[] = ['linkedin', 'github', 'portfolio', 'website', 'twitter', 'other'];
-export const isLinkKind = (kind: string): kind is LinkKind => (linkKinds as readonly string[]).includes(kind);
+export const linkKinds: readonly LinkKind[] = [
+  'linkedin',
+  'github',
+  'portfolio',
+  'website',
+  'twitter',
+  'other',
+];
+export const isLinkKind = (kind: string): kind is LinkKind =>
+  (linkKinds as readonly string[]).includes(kind);
 
 export type RemotePreference = '' | 'remote' | 'hybrid' | 'onsite';
 export const remotePreferences: readonly RemotePreference[] = ['remote', 'hybrid', 'onsite'];
 // The empty value is valid: not having said is a normal state.
-export const isRemotePreference = (p: string): p is RemotePreference => p === '' || (remotePreferences as readonly string[]).includes(p);
+export const isRemotePreference = (p: string): p is RemotePreference =>
+  p === '' || (remotePreferences as readonly string[]).includes(p);
 
-export interface CandidateLink { id: string; kind: LinkKind; url: string }
-// Per country, because the question always is.
-export interface WorkAuthorization { id: string; country: string; isAuthorized: boolean; requiresSponsorship: boolean }
-export interface CandidateExperience {
-  id: string; company: string; title: string;
-  startDate: DateValue | null; endDate: DateValue | null; isCurrent: boolean; description: string;
+export interface CandidateLink {
+  id: string;
+  kind: LinkKind;
+  url: string;
 }
-export interface CandidateSkill { id: string; name: string; yearsExperience: number | null }
+// Per country, because the question always is.
+export interface WorkAuthorization {
+  id: string;
+  country: string;
+  isAuthorized: boolean;
+  requiresSponsorship: boolean;
+}
+export interface CandidateExperience {
+  id: string;
+  company: string;
+  title: string;
+  startDate: DateValue | null;
+  endDate: DateValue | null;
+  isCurrent: boolean;
+  description: string;
+}
+export interface CandidateSkill {
+  id: string;
+  name: string;
+  yearsExperience: number | null;
+}
 
 export interface Candidate {
   id: string;
-  firstName: string; lastName: string; email: string; phone: string;
-  locationCity: string; locationRegion: string; locationCountry: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  locationCity: string;
+  locationRegion: string;
+  locationCountry: string;
   // The IANA zone, such as Africa/Lagos, or empty.
   timeZone: string;
   // Null is unsaid; zero is an answer ("immediately").
@@ -40,10 +72,12 @@ export interface Candidate {
   skills: CandidateSkill[];
   experiences: CandidateExperience[];
   // Epoch milliseconds.
-  createdAt: number; updatedAt: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
-export const linkOf = (c: Candidate, kind: LinkKind): CandidateLink | undefined => c.links.find((l) => l.kind === kind);
+export const linkOf = (c: Candidate, kind: LinkKind): CandidateLink | undefined =>
+  c.links.find((l) => l.kind === kind);
 
 // The ISO codes of the countries the candidate may work in without sponsorship; a country that cannot be placed is left out.
 export function authorizedCountries(c: Candidate): string[] {
@@ -63,7 +97,10 @@ export function utcOffset(c: Candidate): { offset: number; ok: boolean } {
 }
 
 export const locationDisplay = (c: Candidate): string =>
-  [c.locationCity, c.locationRegion, c.locationCountry].map((p) => p.trim()).filter((p) => p !== '').join(', ');
+  [c.locationCity, c.locationRegion, c.locationCountry]
+    .map((p) => p.trim())
+    .filter((p) => p !== '')
+    .join(', ');
 
 export const fullName = (c: Candidate): string => `${c.firstName} ${c.lastName}`.trim();
 
@@ -100,7 +137,8 @@ export function totalYearsOfExperience(c: Candidate, now: number): number | unde
 export const skillNamed = (c: Candidate, name: string): CandidateSkill | undefined =>
   c.skills.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase());
 
-export const skillNames = (c: Candidate): string[] => c.skills.map((s) => s.name.trim()).filter((n) => n !== '');
+export const skillNames = (c: Candidate): string[] =>
+  c.skills.map((s) => s.name.trim()).filter((n) => n !== '');
 
 export const renderSkills = (c: Candidate): string => skillNames(c).join(', ');
 
@@ -129,16 +167,38 @@ export function renderExperiences(c: Candidate): string {
 }
 
 // A zone as GeoNames writes it, or an error for one JobPilot does not list; empty stays empty.
-export function normalizeTimeZone(name: string): { ok: true; zone: string } | { ok: false; error: string } {
+export function normalizeTimeZone(
+  name: string,
+): { ok: true; zone: string } | { ok: false; error: string } {
   const trimmed = name.trim();
   if (trimmed === '') return { ok: true, zone: '' };
   const zone = timeZoneByID(trimmed);
-  if (!zone) return { ok: false, error: `"${trimmed}" is not a time zone JobPilot knows; use its IANA name, such as Africa/Lagos` };
+  if (!zone)
+    return {
+      ok: false,
+      error: `"${trimmed}" is not a time zone JobPilot knows; use its IANA name, such as Africa/Lagos`,
+    };
   return { ok: true, zone: zone.id };
 }
 
 export const emptyCandidate = (id: string, now: number): Candidate => ({
-  id, firstName: '', lastName: '', email: '', phone: '', locationCity: '', locationRegion: '', locationCountry: '',
-  timeZone: '', noticePeriodDays: null, earliestStartDate: null, summary: '', remotePreference: '',
-  links: [], workAuthorizations: [], skills: [], experiences: [], createdAt: now, updatedAt: now,
+  id,
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  locationCity: '',
+  locationRegion: '',
+  locationCountry: '',
+  timeZone: '',
+  noticePeriodDays: null,
+  earliestStartDate: null,
+  summary: '',
+  remotePreference: '',
+  links: [],
+  workAuthorizations: [],
+  skills: [],
+  experiences: [],
+  createdAt: now,
+  updatedAt: now,
 });

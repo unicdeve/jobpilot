@@ -27,28 +27,68 @@ export function openTo(w: Workable, country: string): boolean {
   return false;
 }
 
-export const workableKnown = (w: Workable): boolean => w.scope === 'anywhere' || w.scope === 'listed';
+export const workableKnown = (w: Workable): boolean =>
+  w.scope === 'anywhere' || w.scope === 'listed';
 
 // The fields of a job that reading where it can be done from needs.
-export interface WorkableJob { title: string; remoteType: string; locations: string[] }
+export interface WorkableJob {
+  title: string;
+  remoteType: string;
+  locations: string[];
+}
 
 // Splits a location into the alternatives it lists: "London, UK or NYC", "Berlin | München".
 const alternativeSeparators = goRe('[;|/+&·]|\\s[-–—]\\s|\\s(?:or|and|oder|ou)\\s', 'i');
 // Splits one alternative into its parts: "Cambridge, MA", "Zürich (Switzerland)".
 const itemSeparators = /[,()[\]]/;
-const anywhereWords = /\b(worldwide|world wide|anywhere|global|globally|everywhere|international|internationally|all countries|any country|any location)\b/;
+const anywhereWords =
+  /\b(worldwide|world wide|anywhere|global|globally|everywhere|international|internationally|all countries|any country|any location)\b/;
 // A location that lists where the job is not is unknown: exclusions are not read.
 const negationWords = /\b(not in|not from|excluding|exclude|except|outside)\b/;
 // A time-zone requirement, which is not a place.
-const timeZoneWords = /\b(time ?zones?|timezones?|hours|utc|gmt|cet|cest|est|edt|pst|pdt|pt|et|ct|overlap)\b/;
+const timeZoneWords =
+  /\b(time ?zones?|timezones?|hours|utc|gmt|cet|cest|est|edt|pst|pdt|pt|et|ct|overlap)\b/;
 // How or on what terms a job is done, not where.
 const noiseWords = new Set([
-  'remote', 'remotely', 'fully', 'full', '100', 'only', 'hybrid', 'onsite', 'on', 'site', 'office', 'in',
-  'based', 'candidates', 'applicants', 'residents', 'citizens', 'persons', 'preferred', 'required', 'work', 'from',
-  'home', 'wfh', 'flexible', 'location', 'locations', 'the', 'within', 'remoto', 'distance', 'a', 'poste',
+  'remote',
+  'remotely',
+  'fully',
+  'full',
+  '100',
+  'only',
+  'hybrid',
+  'onsite',
+  'on',
+  'site',
+  'office',
+  'in',
+  'based',
+  'candidates',
+  'applicants',
+  'residents',
+  'citizens',
+  'persons',
+  'preferred',
+  'required',
+  'work',
+  'from',
+  'home',
+  'wfh',
+  'flexible',
+  'location',
+  'locations',
+  'the',
+  'within',
+  'remoto',
+  'distance',
+  'a',
+  'poste',
 ]);
 
-interface LocationReading { anywhere: boolean; places: geo.Place[] }
+interface LocationReading {
+  anywhere: boolean;
+  places: geo.Place[];
+}
 
 // Reads one location as a source wrote it. A location that lists where a job is not is unread as a whole.
 function readLocation(location: string): LocationReading {
@@ -68,7 +108,12 @@ let compoundCache: RegExp | undefined;
 const compoundName = (): RegExp => {
   if (compoundCache) return compoundCache;
   const patterns = geo.compounds().map((name) =>
-    name.split(/[ ,()&/']+/).filter((w) => w !== '').map(escapeRe).join("[\\t\\n\\f\\r ,()&/']+"));
+    name
+      .split(/[ ,()&/']+/)
+      .filter((w) => w !== '')
+      .map(escapeRe)
+      .join("[\\t\\n\\f\\r ,()&/']+"),
+  );
   compoundCache = new RegExp(`\\b(${patterns.join('|')})\\b\\)?`, 'gi');
   return compoundCache;
 };
@@ -85,7 +130,9 @@ function readAlternative(alternative: string): geo.Place[] {
   let read: geo.Place[] = [];
   const states = new Set<string>();
   for (const item of alternative.split(itemSeparators)) {
-    const country = Object.hasOwn(subdivisionCodes, item.trim()) ? subdivisionCodes[item.trim()] : undefined;
+    const country = Object.hasOwn(subdivisionCodes, item.trim())
+      ? subdivisionCodes[item.trim()]
+      : undefined;
     if (country) {
       states.add(country);
       continue;
@@ -141,7 +188,11 @@ function elsewhereIn(read: geo.Place[], skip: number, country: string, other: st
 }
 
 // Picks the city a name means from what the rest of its alternative names.
-function placeCity(city: geo.Place, named: Set<string>, states: Set<string>): geo.Place | undefined {
+function placeCity(
+  city: geo.Place,
+  named: Set<string>,
+  states: Set<string>,
+): geo.Place | undefined {
   if (named.size > 0) return cityAmong(city, named);
   return cityAmong(city, states) ?? city;
 }
@@ -158,7 +209,10 @@ function cityAmong(city: geo.Place, countries: Set<string>): geo.Place | undefin
 const subdivisionCodes: Record<string, string> = (() => {
   const codes: Record<string, string> = {};
   for (const code of `AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD
-    MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY`.split(/\s+/)) codes[code] = 'US';
+    MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY`.split(
+    /\s+/,
+  ))
+    codes[code] = 'US';
   for (const code of 'AB BC MB NB NL NS ON PE QC SK'.split(' ')) codes[code] = 'CA';
   return codes;
 })();
@@ -176,7 +230,11 @@ function readSegment(segment: string): geo.Place[] {
 
 // Finds places in a run of words, longest first, each word used once; cities only when `cities` is set.
 // `original` is the words as they were written, so that "us" the pronoun is not read as "US" the country.
-function placesInWords(words: string[], original: string[] | undefined, cities: boolean): geo.Place[] {
+function placesInWords(
+  words: string[],
+  original: string[] | undefined,
+  cities: boolean,
+): geo.Place[] {
   const places: geo.Place[] = [];
   for (let start = 0; start < words.length;) {
     let matched = 0;
@@ -240,21 +298,25 @@ function placeNames(places: geo.Place[]): [string[], string[]] {
 }
 
 // Phrases that require the candidate to be somewhere. They contradict a job labelled anywhere whether or not a place is named.
-const residencePhrases = goRe([
-  '\\b(must|need to|needs to|required to|have to|has to|should)( currently)?( be)? (located|based|residing|reside|living|live|resident)( in| within| out of)\\b',
-  '\\b(based|located|residing) in (the )?[a-z ]{2,30} only\\b',
-  '\\bbased (candidates |applicants |residents |talent )?only\\b',
-  '\\bonly (open to|accepting|considering|hiring|available to)\\b.{0,40}\\b(in|from|based|located|residing|living)\\b',
-  '\\bopen to (candidates|applicants|residents) (residing|located|based|living) in\\b',
-  '\\b(citizens?|persons|nationals) only\\b',
-  '\\btax residen(cy|t)\\b',
-].join('|'));
+const residencePhrases = goRe(
+  [
+    '\\b(must|need to|needs to|required to|have to|has to|should)( currently)?( be)? (located|based|residing|reside|living|live|resident)( in| within| out of)\\b',
+    '\\b(based|located|residing) in (the )?[a-z ]{2,30} only\\b',
+    '\\bbased (candidates |applicants |residents |talent )?only\\b',
+    '\\bonly (open to|accepting|considering|hiring|available to)\\b.{0,40}\\b(in|from|based|located|residing|living)\\b',
+    '\\bopen to (candidates|applicants|residents) (residing|located|based|living) in\\b',
+    '\\b(citizens?|persons|nationals) only\\b',
+    '\\btax residen(cy|t)\\b',
+  ].join('|'),
+);
 // Phrases that restrict where a candidate may work only when they name a place.
-const authorizationPhrases = goRe([
-  '\\b(authori[sz]ed|eligible|legally (able|allowed|permitted)|permitted|entitled|able) to work (in|within|for)\\b',
-  '\\bright to work in\\b',
-  '\\bremote(ly)? (within|in|from) (the )?[a-z]',
-].join('|'));
+const authorizationPhrases = goRe(
+  [
+    '\\b(authori[sz]ed|eligible|legally (able|allowed|permitted)|permitted|entitled|able) to work (in|within|for)\\b',
+    '\\bright to work in\\b',
+    '\\bremote(ly)? (within|in|from) (the )?[a-z]',
+  ].join('|'),
+);
 
 // The first description sentence that restricts where a job labelled anywhere or listed can be done from, beyond what its label says.
 // Returns its evidence, or undefined when none does.
@@ -268,7 +330,8 @@ function contradiction(workable: Workable, sentences: string[]): string | undefi
     if (timeZoneWords.test(folded)) continue;
     const named = countriesIn(sentence);
     if (named.length === 0 && !residence) continue;
-    if (workable.scope === 'listed' && named.length > 0 && overlaps(named, workable.countries)) continue;
+    if (workable.scope === 'listed' && named.length > 0 && overlaps(named, workable.countries))
+      continue;
     return evidence(sentence);
   }
   return undefined;
@@ -287,4 +350,5 @@ function countriesIn(sentence: string): string[] {
   return placeNames(placesInWords(folded, original, false))[1];
 }
 
-const overlaps = (countries: string[], of: string[]): boolean => countries.some((c) => of.includes(c));
+const overlaps = (countries: string[], of: string[]): boolean =>
+  countries.some((c) => of.includes(c));

@@ -1,10 +1,23 @@
 import { describe, expect, test } from 'bun:test';
 import { memoryDb } from '../shared/test-db.ts';
-import { appendEvent, clearActivity, ensureAgentRunTables, failInterruptedRuns, finishRun, getRun, listRuns, startRun } from './agent-run-store.ts';
+import {
+  appendEvent,
+  clearActivity,
+  ensureAgentRunTables,
+  failInterruptedRuns,
+  finishRun,
+  getRun,
+  listRuns,
+  startRun,
+} from './agent-run-store.ts';
 import { validAgentRunStatus, inProgress } from './agent-run.ts';
 import { deletionRules, rulesReferencing, targetTakesId, validDeletionTarget } from './deletion.ts';
 
-const setup = async () => { const db = memoryDb(); await ensureAgentRunTables(db); return db; };
+const setup = async () => {
+  const db = memoryDb();
+  await ensureAgentRunTables(db);
+  return db;
+};
 const ev = { action: 'match', tool: 'scorer', status: 'ok', durationMs: 5 };
 
 describe('agent runs', () => {
@@ -13,7 +26,12 @@ describe('agent runs', () => {
     await startRun(db, { id: 'a', scoutId: 's1', trigger: 'manual' }, 100);
     await startRun(db, { id: 'b', trigger: 'schedule' }, 200);
     expect((await appendEvent(db, 'a', ev, 110)).id).toBe('a:1');
-    await appendEvent(db, 'a', { ...ev, policyResult: 'denied', outputSummary: 'below floor' }, 120);
+    await appendEvent(
+      db,
+      'a',
+      { ...ev, policyResult: 'denied', outputSummary: 'below floor' },
+      120,
+    );
     expect(await finishRun(db, 'a', 'completed', '', 130)).toBe(true);
     expect(await finishRun(db, 'a', 'failed', 'x', 140)).toBe(false);
     expect(await finishRun(db, 'nope', 'failed', 'x', 140)).toBe(false);
@@ -55,7 +73,10 @@ describe('agent runs', () => {
   test('statuses and deletion rules', () => {
     expect(validAgentRunStatus('done')).toBe(false);
     expect(inProgress('running')).toBe(true);
-    expect(rulesReferencing('agent_run').map((r) => r.referencing)).toEqual(['agent_step', 'notification']);
+    expect(rulesReferencing('agent_run').map((r) => r.referencing)).toEqual([
+      'agent_step',
+      'notification',
+    ]);
     expect(deletionRules.find((r) => r.referencing === 'agent_run')!.effect).toBe('detach');
     expect(validDeletionTarget('activity')).toBe(true);
     expect(targetTakesId('job') && !targetTakesId('everything')).toBe(true);

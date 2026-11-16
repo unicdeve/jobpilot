@@ -51,7 +51,10 @@ const parseDate = (s: string): number | null => {
 };
 
 // Candidate.TotalYearsOfExperience: the span from the earliest start to the latest end (or now), never a sum.
-export function totalYearsOfExperience(candidate: Candidate, now: Date): { years: number; ok: boolean } {
+export function totalYearsOfExperience(
+  candidate: Candidate,
+  now: Date,
+): { years: number; ok: boolean } {
   let earliest: number | null = null;
   let latest: number | null = null;
   for (const e of candidate.experiences) {
@@ -106,7 +109,13 @@ const stockSources = [
   'aligns? perfectly with',
   `${iAm} passionate about`,
 ];
-const stockPhrases = stockSources.map((s) => new RegExp(`\\b${s.replace(/ /g, `${WS}+`).replace('§AM§', `i(?:${WS}+am|['’]m)`).replace('§WOULD§', `i(?:${WS}+would|['’]d)`)}\\b`, 'gi'));
+const stockPhrases = stockSources.map(
+  (s) =>
+    new RegExp(
+      `\\b${s.replace(/ /g, `${WS}+`).replace('§AM§', `i(?:${WS}+am|['’]m)`).replace('§WOULD§', `i(?:${WS}+would|['’]d)`)}\\b`,
+      'gi',
+    ),
+);
 
 interface Claim {
   years: number;
@@ -115,14 +124,35 @@ interface Claim {
 }
 
 const yearWords: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
-  fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
 };
 
 // "8 years", "8+ years", "over eight years", "five-plus years", "a 3-year stint". Group 3 makes it an age or a time ago.
-const yearsSource = '\\b((?:over|more than|nearly|almost|about|around)' + WS + '+)?'
-  + '(\\d{1,2}(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)'
-  + `(?:${WS}*\\+|-plus|${WS}+plus)?[${'\\t\\n\\f\\r '}-]+years?\\b(-old|${WS}+old|${WS}+ago)?`;
+const yearsSource =
+  '\\b((?:over|more than|nearly|almost|about|around)' +
+  WS +
+  '+)?' +
+  '(\\d{1,2}(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)' +
+  `(?:${WS}*\\+|-plus|${WS}+plus)?[${'\\t\\n\\f\\r '}-]+years?\\b(-old|${WS}+old|${WS}+ago)?`;
 
 // A sentence that speaks for the candidate or of experience.
 const claimSentence = /\b(?:i|i['’](?:m|ve|d)|my|me|experience[sd]?)\b/i;
@@ -131,7 +161,8 @@ const futureWords = new Set(['next', 'coming', 'within']);
 
 const claimsIn = (texts: string[], skills: SkillMatcher[]): Claim[] => {
   const claims: Claim[] = [];
-  for (const text of texts) for (const sentence of sentences(text)) claims.push(...yearsIn(sentence, skills));
+  for (const text of texts)
+    for (const sentence of sentences(text)) claims.push(...yearsIn(sentence, skills));
   return claims;
 };
 
@@ -195,7 +226,8 @@ function unsupported(c: Claim, basis: DraftBasis, own: Claim[]): string | null {
     }
     return null;
   }
-  if (!basis.hasCareer) return `Claims ${yearsText(c.years)}, and your work history has no dates to check it against.`;
+  if (!basis.hasCareer)
+    return `Claims ${yearsText(c.years)}, and your work history has no dates to check it against.`;
   if (c.years > goRound(basis.careerYears)) {
     return `Claims ${yearsText(c.years)}; your work history covers about ${yearsText(goRound(basis.careerYears))}.`;
   }
@@ -204,7 +236,11 @@ function unsupported(c: Claim, basis: DraftBasis, own: Claim[]): string | null {
 
 // The candidate's own words claim at least as many years about every skill the claim names.
 const saidThemselves = (c: Claim, own: Claim[]): boolean =>
-  own.some((theirs) => theirs.years >= c.years && c.skills.every((s) => theirs.skills.some((t) => t.name === s.name)));
+  own.some(
+    (theirs) =>
+      theirs.years >= c.years &&
+      c.skills.every((s) => theirs.skills.some((t) => t.name === s.name)),
+  );
 
 // What the candidate may want to look at in a letter or written answer; the same text and basis always give the same flags.
 export function checkDraft(text: string, basis: DraftBasis): DraftFlag[] {
@@ -212,7 +248,11 @@ export function checkDraft(text: string, basis: DraftBasis): DraftFlag[] {
   if (basis.wordLimit > 0) {
     const words = fields(text).length;
     if (words > basis.wordLimit) {
-      flags.push({ kind: 'length', excerpt: '', reason: `${words} words, over the ${basis.wordLimit} a letter reads best within.` });
+      flags.push({
+        kind: 'length',
+        excerpt: '',
+        reason: `${words} words, over the ${basis.wordLimit} a letter reads best within.`,
+      });
     }
   }
 
@@ -230,7 +270,11 @@ export function checkDraft(text: string, basis: DraftBasis): DraftFlag[] {
   for (const sentence of sentences(text)) {
     for (const phrase of stockPhrases) {
       for (const excerpt of sentence.match(phrase) ?? []) {
-        add({ kind: 'stock_phrase', excerpt, reason: 'A stock phrase: any applicant could have written it.' });
+        add({
+          kind: 'stock_phrase',
+          excerpt,
+          reason: 'A stock phrase: any applicant could have written it.',
+        });
       }
     }
     for (const claim of sentenceClaims(sentence, skills)) {

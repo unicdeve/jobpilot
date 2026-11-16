@@ -1,17 +1,38 @@
 import { expect, test } from 'bun:test';
-import { checkModelForm, dataNotice, hasKey, parseKeys, withKey, withoutKey } from './model-settings.ts';
+import {
+  checkModelForm,
+  dataNotice,
+  hasKey,
+  parseKeys,
+  withKey,
+  withoutKey,
+} from './model-settings.ts';
 
-const ok = { provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt', keyLabel: 'work', apiKey: 'sk-1' };
+const ok = {
+  provider: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt',
+  keyLabel: 'work',
+  apiKey: 'sk-1',
+};
 
 test('a key is refused over plain http unless the host is this device', () => {
-  expect(checkModelForm({ ...ok, baseUrl: 'http://models.example.com/v1' })).toMatchObject({ ok: false });
-  expect(checkModelForm({ ...ok, baseUrl: 'http://192.168.1.5:11434' })).toMatchObject({ ok: false });
-  expect(checkModelForm({ ...ok, baseUrl: 'http://127.0.0.1:8080/v1' })).toMatchObject({ ok: true });
+  expect(checkModelForm({ ...ok, baseUrl: 'http://models.example.com/v1' })).toMatchObject({
+    ok: false,
+  });
+  expect(checkModelForm({ ...ok, baseUrl: 'http://192.168.1.5:11434' })).toMatchObject({
+    ok: false,
+  });
+  expect(checkModelForm({ ...ok, baseUrl: 'http://127.0.0.1:8080/v1' })).toMatchObject({
+    ok: true,
+  });
   expect(checkModelForm(ok)).toMatchObject({ ok: true, newKey: 'sk-1' });
 });
 test('a typed key needs a label, Ollama takes none, and the basics are required', () => {
   expect(checkModelForm({ ...ok, keyLabel: '' })).toMatchObject({ ok: false });
-  expect(checkModelForm({ ...ok, provider: 'ollama', baseUrl: 'http://127.0.0.1:11434' })).toMatchObject({ ok: false });
+  expect(
+    checkModelForm({ ...ok, provider: 'ollama', baseUrl: 'http://127.0.0.1:11434' }),
+  ).toMatchObject({ ok: false });
   expect(checkModelForm({ ...ok, model: '' })).toMatchObject({ ok: false });
   expect(checkModelForm({ ...ok, keyLabel: '', apiKey: '' })).toMatchObject({ ok: true });
 });

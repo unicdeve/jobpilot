@@ -3,7 +3,13 @@
 // Pure: sources are injected and storage is the host's, so what Go does against repositories is returned as data.
 // Rate and ToS rules live with each source (their *_CACHE_MS constants, the User-Agent, attribution via canonicalUrl); a data source
 // cannot read the clock (ADR-0037), so the host keeps an answer in SQLite for that long and asks again after.
-import { isEmpty, matchesFor, noSeeker, type SearchCriteria, type Seeker } from '../search/criteria.ts';
+import {
+  isEmpty,
+  matchesFor,
+  noSeeker,
+  type SearchCriteria,
+  type Seeker,
+} from '../search/criteria.ts';
 import * as geo from '../search/geo.ts';
 import { isUnreachable, PartialAnswerError, type FullSourceJob } from './job-source.ts';
 import { readSignals, type Signals } from '../search/signals.ts';
@@ -30,62 +36,103 @@ export interface SourceOutcome {
 }
 
 export type FoundJob = FullSourceJob & Signals;
-export interface DiscoveryResult { jobs: FoundJob[]; sources: SourceOutcome[] }
+export interface DiscoveryResult {
+  jobs: FoundJob[];
+  sources: SourceOutcome[];
+}
 
 export class DiscoveryError extends Error {
-  constructor(public code: 'empty-criteria' | 'invalid-work-from' | 'no-searchable-source' | 'sources-unreachable' | 'all-sources-failed', message: string) {
+  constructor(
+    public code:
+      | 'empty-criteria'
+      | 'invalid-work-from'
+      | 'no-searchable-source'
+      | 'sources-unreachable'
+      | 'all-sources-failed',
+    message: string,
+  ) {
     super(message);
     this.name = 'DiscoveryError';
   }
 }
-export const errEmptyCriteria = 'a job search needs at least one criterion: neither public source filters server-side, so an unrestricted search imports every posting on the board rather than the jobs you want';
-export const errSourcesUnreachable = 'could not reach any job source: finding new jobs needs internet access, and the jobs already found are still available';
+export const errEmptyCriteria =
+  'a job search needs at least one criterion: neither public source filters server-side, so an unrestricted search imports every posting on the board rather than the jobs you want';
+export const errSourcesUnreachable =
+  'could not reach any job source: finding new jobs needs internet access, and the jobs already found are still available';
 
 // A country in upper case, '' for none; refuses what is not a two-letter ISO code JobPilot knows.
 export function normalizeWorkFrom(workFrom: string): string {
   const code = workFrom.trim().toUpperCase();
   if (code === '') return '';
   if (geo.countryByCode(code) === undefined) {
-    throw new DiscoveryError('invalid-work-from', `"${code}" is not a country JobPilot knows; use its two-letter ISO code, such as NG or DE`);
+    throw new DiscoveryError(
+      'invalid-work-from',
+      `"${code}" is not a country JobPilot knows; use its two-letter ISO code, such as NG or DE`,
+    );
   }
   return code;
 }
 
 // The error for a search no source answered: unreachable when none could be reached, else naming how each failed.
 export function noAnswerError(outcomes: SourceOutcome[]): DiscoveryError {
-  if (outcomes.every((o) => o.status === 'unreachable')) return new DiscoveryError('sources-unreachable', errSourcesUnreachable);
-  const reasons = outcomes.map((o) => (o.status === 'unreachable' ? `${o.sourceName} could not be reached` : `${o.sourceName} answered with an error`));
+  if (outcomes.every((o) => o.status === 'unreachable'))
+    return new DiscoveryError('sources-unreachable', errSourcesUnreachable);
+  const reasons = outcomes.map((o) =>
+    o.status === 'unreachable'
+      ? `${o.sourceName} could not be reached`
+      : `${o.sourceName} answered with an error`,
+  );
   return new DiscoveryError('all-sources-failed', `no job source answered: ${reasons.join('; ')}`);
 }
 
 // The sources a search asks, in order: only one that can search is one.
-export const searchable = (sources: DiscoverySource[]): DiscoverySource[] => sources.filter((s) => s.canSearch);
+export const searchable = (sources: DiscoverySource[]): DiscoverySource[] =>
+  sources.filter((s) => s.canSearch);
 
 // Searches every source at once. A source that throws is one failed source, never a failed search (AC-008).
 // Only when no source answers is the search an error, and then nothing should be written.
 // `seeker` is the candidate, read only when the criteria use them (work-from with relocation, or fit-hours).
 // `turn` lets a host that budgets each turn (Exact's data sources) end one between jobs; it never changes the answer.
 export async function searchSources(
-  sources: DiscoverySource[], criteria: SearchCriteria, seeker: Seeker = noSeeker, turn: () => Promise<void> = async () => {},
+  sources: DiscoverySource[],
+  criteria: SearchCriteria,
+  seeker: Seeker = noSeeker,
+  turn: () => Promise<void> = async () => {},
 ): Promise<DiscoveryResult> {
   if (isEmpty(criteria)) throw new DiscoveryError('empty-criteria', errEmptyCriteria);
   const asked = { ...criteria, workFrom: normalizeWorkFrom(criteria.workFrom ?? '') };
   const targets = searchable(sources);
-  if (targets.length === 0) throw new DiscoveryError('no-searchable-source', 'no job source that can search is configured');
+  if (targets.length === 0)
+    throw new DiscoveryError('no-searchable-source', 'no job source that can search is configured');
 
-  const answers = await Promise.all(targets.map(async (source): Promise<{ jobs: FullSourceJob[]; error?: unknown }> => {
-    try { return { jobs: await source.search(asked) }; } catch (error) { return { jobs: error instanceof PartialAnswerError ? error.jobs : [], error }; }
-  }));
+  const answers = await Promise.all(
+    targets.map(async (source): Promise<{ jobs: FullSourceJob[]; error?: unknown }> => {
+      try {
+        return { jobs: await source.search(asked) };
+      } catch (error) {
+        return { jobs: error instanceof PartialAnswerError ? error.jobs : [], error };
+      }
+    }),
+  );
 
   const outcomes: SourceOutcome[] = [];
   const matched: FoundJob[] = [];
   let answered = false;
   for (const [i, source] of targets.entries()) {
     const answer = answers[i]!;
-    const outcome: SourceOutcome = { sourceId: source.id, sourceName: source.name, status: 'ok', found: 0, failing: [] };
+    const outcome: SourceOutcome = {
+      sourceId: source.id,
+      sourceName: source.name,
+      status: 'ok',
+      found: 0,
+      failing: [],
+    };
     let error = answer.error;
     // A source made of parts answers for the parts that answered, and names the others (ADR-0024 section 5).
-    if (error instanceof PartialAnswerError) { outcome.failing = error.failing; error = error.error; }
+    if (error instanceof PartialAnswerError) {
+      outcome.failing = error.failing;
+      error = error.error;
+    }
     if (error !== undefined) {
       outcome.status = isUnreachable(error) ? 'unreachable' : 'failed';
       outcome.error = error instanceof Error ? error.message : String(error);
@@ -115,8 +162,13 @@ export async function searchSources(
 
 // What the host stores of a search, in the order the sources are registered, so a posting two sources both list is stored once and
 // by the same source on every run. `known` is the stored jobs by canonical URL: a job the user ruled out is left out of the result.
-export interface Known { notInterested: boolean }
-export function dedupe(matched: FoundJob[], known: ReadonlyMap<string, Known>): { fresh: FoundJob[]; existingUrls: string[] } {
+export interface Known {
+  notInterested: boolean;
+}
+export function dedupe(
+  matched: FoundJob[],
+  known: ReadonlyMap<string, Known>,
+): { fresh: FoundJob[]; existingUrls: string[] } {
   const fresh: FoundJob[] = [];
   const existingUrls: string[] = [];
   const seen = new Set<string>();

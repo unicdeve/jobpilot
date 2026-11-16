@@ -3,8 +3,15 @@
 export const llmCredentialSource = 'llm';
 export const llmProviderOllama = 'ollama';
 
-export interface LLMSettings { provider: string; baseUrl: string; model: string; apiKeyLabel?: string }
-export interface DiscoverySettings { refreshOnLaunch: boolean }
+export interface LLMSettings {
+  provider: string;
+  baseUrl: string;
+  model: string;
+  apiKeyLabel?: string;
+}
+export interface DiscoverySettings {
+  refreshOnLaunch: boolean;
+}
 export const defaultDiscoverySettings = (): DiscoverySettings => ({ refreshOnLaunch: true });
 
 // Hermes' URL is incomplete, so the address is split by hand.
@@ -12,7 +19,9 @@ const parse = (raw: string): { scheme: string; host: string; hostname: string } 
   const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#\s]*)/.exec(raw);
   if (!m || m[2] === '' || /\s/.test(raw)) return null;
   const authority = m[2].slice(m[2].lastIndexOf('@') + 1);
-  const hostname = authority.startsWith('[') ? authority.slice(0, authority.indexOf(']') + 1) : authority.replace(/:\d*$/, '');
+  const hostname = authority.startsWith('[')
+    ? authority.slice(0, authority.indexOf(']') + 1)
+    : authority.replace(/:\d*$/, '');
   if (hostname === '') return null;
   return { scheme: m[1].toLowerCase(), host: authority, hostname };
 };
@@ -35,10 +44,12 @@ export function validateLLMSettings(s: LLMSettings): string | null {
   if (s.model === '') return 'model is required';
   const u = parse(s.baseUrl);
   if (!u) return `base URL must be a valid absolute http(s) URL, got "${s.baseUrl}"`;
-  if (u.scheme !== 'http' && u.scheme !== 'https') return `base URL must use http or https, got "${s.baseUrl}"`;
+  if (u.scheme !== 'http' && u.scheme !== 'https')
+    return `base URL must use http or https, got "${s.baseUrl}"`;
   if (!s.apiKeyLabel) return null;
   if (s.apiKeyLabel.trim() === '') return 'API key: label is required';
-  if (s.provider === llmProviderOllama) return 'an API key is for an OpenAI-compatible endpoint; Ollama keeps its own sign-in and takes none';
+  if (s.provider === llmProviderOllama)
+    return 'an API key is for an OpenAI-compatible endpoint; Ollama keeps its own sign-in and takes none';
   if (u.scheme === 'http' && !isLoopbackHost(u.hostname))
     return `an API key is sent only over https, or to this computer; ${u.host} would send it unencrypted`;
   return null;

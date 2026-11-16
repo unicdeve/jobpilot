@@ -1,9 +1,29 @@
 // What a deletion reaches (ADR-0037), ported from internal/core/domain/deletion.go (the rules and targets, not the preview).
-export type RecordKind = 'candidate' | 'candidate_detail' | 'resume' | 'job' | 'match' | 'application' | 'question' | 'cover_letter'
-  | 'state_transition' | 'agent_run' | 'agent_step' | 'scout' | 'saved_search' | 'credential_name' | 'settings' | 'personal_answer'
-  | 'watched_company' | 'notification';
+export type RecordKind =
+  | 'candidate'
+  | 'candidate_detail'
+  | 'resume'
+  | 'job'
+  | 'match'
+  | 'application'
+  | 'question'
+  | 'cover_letter'
+  | 'state_transition'
+  | 'agent_run'
+  | 'agent_step'
+  | 'scout'
+  | 'saved_search'
+  | 'credential_name'
+  | 'settings'
+  | 'personal_answer'
+  | 'watched_company'
+  | 'notification';
 export type DeletionEffect = 'delete' | 'detach';
-export interface DeletionRule { referencing: RecordKind; referenced: RecordKind; effect: DeletionEffect }
+export interface DeletionRule {
+  referencing: RecordKind;
+  referenced: RecordKind;
+  effect: DeletionEffect;
+}
 
 export const deletionRules: DeletionRule[] = [
   { referencing: 'candidate_detail', referenced: 'candidate', effect: 'delete' },
@@ -25,9 +45,29 @@ export const deletionRules: DeletionRule[] = [
   { referencing: 'notification', referenced: 'agent_run', effect: 'detach' },
 ];
 
-export const rulesReferencing = (kind: RecordKind): DeletionRule[] => deletionRules.filter((r) => r.referenced === kind);
+export const rulesReferencing = (kind: RecordKind): DeletionRule[] =>
+  deletionRules.filter((r) => r.referenced === kind);
 
-export type DeletionTarget = 'job' | 'application' | 'cover_letter' | 'resume' | 'profile' | 'activity' | 'jobs' | 'everything';
-const targets: DeletionTarget[] = ['job', 'application', 'cover_letter', 'resume', 'profile', 'activity', 'jobs', 'everything'];
-export const validDeletionTarget = (t: string): t is DeletionTarget => (targets as string[]).includes(t);
-export const targetTakesId = (t: DeletionTarget): boolean => t === 'job' || t === 'application' || t === 'cover_letter' || t === 'resume';
+export type DeletionTarget =
+  | 'job'
+  | 'application'
+  | 'cover_letter'
+  | 'resume'
+  | 'profile'
+  | 'activity'
+  | 'jobs'
+  | 'everything';
+const targets: DeletionTarget[] = [
+  'job',
+  'application',
+  'cover_letter',
+  'resume',
+  'profile',
+  'activity',
+  'jobs',
+  'everything',
+];
+export const validDeletionTarget = (t: string): t is DeletionTarget =>
+  (targets as string[]).includes(t);
+export const targetTakesId = (t: DeletionTarget): boolean =>
+  t === 'job' || t === 'application' || t === 'cover_letter' || t === 'resume';

@@ -1,16 +1,42 @@
 // The pure half of the Go core's ProfileDraft (internal/core/domain/profile_draft.go), ADR-0037.
 // A draft is a proposal read off a resume for the user to review: it is never written to the profile directly (ADR-0011).
 // It never proposes work authorization. What reads a resume into a draft needs an LLM and a converter and is not here.
-import { isLinkKind, type CandidateExperience, type CandidateLink, type CandidateSkill } from './candidate.ts';
+import {
+  isLinkKind,
+  type CandidateExperience,
+  type CandidateLink,
+  type CandidateSkill,
+} from './candidate.ts';
 import { parseDraftDate } from '../shared/date.ts';
 
-export interface DraftSkill { name: string; yearsExperience: number | null }
-export interface DraftExperience { company: string; title: string; startDate: string; endDate: string; isCurrent: boolean; description: string }
-export interface DraftLink { kind: string; url: string }
+export interface DraftSkill {
+  name: string;
+  yearsExperience: number | null;
+}
+export interface DraftExperience {
+  company: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  description: string;
+}
+export interface DraftLink {
+  kind: string;
+  url: string;
+}
 export interface ProfileDraft {
-  firstName: string; lastName: string; email: string; phone: string;
-  locationCity: string; locationRegion: string; locationCountry: string;
-  summary: string; skills: DraftSkill[]; experiences: DraftExperience[]; links: DraftLink[];
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  locationCity: string;
+  locationRegion: string;
+  locationCountry: string;
+  summary: string;
+  skills: DraftSkill[];
+  experiences: DraftExperience[];
+  links: DraftLink[];
 }
 
 const PRESENT = new Set(['present', 'current', 'now', 'ongoing', 'to date', 'presently']);
@@ -42,7 +68,14 @@ export function proposedExperiences(d: ProfileDraft): Omit<CandidateExperience, 
     let endDate = parseDraftDate(p.endDate);
     if (endDate === null && isPresent(p.endDate)) isCurrent = true;
     if (isCurrent) endDate = null;
-    out.push({ company, title, startDate: parseDraftDate(p.startDate), endDate, isCurrent, description: p.description.trim() });
+    out.push({
+      company,
+      title,
+      startDate: parseDraftDate(p.startDate),
+      endDate,
+      isCurrent,
+      description: p.description.trim(),
+    });
   }
   return out;
 }
@@ -53,7 +86,10 @@ const hasScheme = (raw: string): boolean => {
     if (c === ':') return i > 0;
     if (c === '.' || c === '/') return false;
     if (/[A-Za-z]/.test(c)) continue;
-    if (/[0-9+-]/.test(c)) { if (i === 0) return false; continue; }
+    if (/[0-9+-]/.test(c)) {
+      if (i === 0) return false;
+      continue;
+    }
     return false;
   }
   return false;
@@ -67,7 +103,11 @@ export function normalizeDraftUrl(input: string): string | undefined {
   let rest = raw;
   let hadScheme = false;
   for (const scheme of ['https://', 'http://']) {
-    if (rest.length >= scheme.length && rest.slice(0, scheme.length).toLowerCase() === scheme) { rest = rest.slice(scheme.length); hadScheme = true; break; }
+    if (rest.length >= scheme.length && rest.slice(0, scheme.length).toLowerCase() === scheme) {
+      rest = rest.slice(scheme.length);
+      hadScheme = true;
+      break;
+    }
   }
   if (!hadScheme && hasScheme(raw)) return undefined;
   let host = rest;
@@ -79,7 +119,8 @@ export function normalizeDraftUrl(input: string): string | undefined {
   return hadScheme ? raw : `https://${raw}`;
 }
 
-const identifiesAProfile = (kind: string): boolean => kind === 'linkedin' || kind === 'github' || kind === 'twitter';
+const identifiesAProfile = (kind: string): boolean =>
+  kind === 'linkedin' || kind === 'github' || kind === 'twitter';
 
 const hasPath = (url: string): boolean => {
   let rest = url;

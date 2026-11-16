@@ -12,7 +12,11 @@ export interface DateValue {
 
 export const zeroDate: DateValue = { year: 0, month: 0, day: 0 };
 
-export const newDate = (year: number, month: number, day: number): DateValue => ({ year, month, day });
+export const newDate = (year: number, month: number, day: number): DateValue => ({
+  year,
+  month,
+  day,
+});
 
 export const isZeroDate = (d: DateValue): boolean => d.year === 0 && d.month === 0 && d.day === 0;
 
@@ -20,7 +24,8 @@ const pad = (n: number, width: number): string => String(n).padStart(width, '0')
 
 const isLeap = (y: number): boolean => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
 
-const daysIn = (y: number, m: number): number => [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1] ?? 0;
+const daysIn = (y: number, m: number): number =>
+  [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1] ?? 0;
 
 // Go's time.Parse rejects a day or month outside the calendar.
 const build = (y: number, m: number, d: number): DateValue | null =>
@@ -31,7 +36,8 @@ const clockOk = (h: string, mi: string, s: string): boolean => +h < 24 && +mi < 
 
 const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/;
-const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+const RFC3339 =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 const ISO_MONTH = /^(\d{4})-(\d{2})$/;
 const ISO_YEAR = /^(\d{4})$/;
 
@@ -43,7 +49,8 @@ export const parseDate = (value: string): DateValue | null => {
   let m = ISO_DAY.exec(v);
   if (m) return build(+m[1]!, +m[2]!, +m[3]!);
   m = RFC3339.exec(v);
-  if (m && clockOk(m[4]!, m[5]!, m[6]!) && (m[7] === undefined || (+m[7] < 24 && +m[8]! < 60))) return build(+m[1]!, +m[2]!, +m[3]!);
+  if (m && clockOk(m[4]!, m[5]!, m[6]!) && (m[7] === undefined || (+m[7] < 24 && +m[8]! < 60)))
+    return build(+m[1]!, +m[2]!, +m[3]!);
   m = ISO_LOCAL.exec(v);
   if (m && clockOk(m[4]!, m[5]!, m[6]!)) return build(+m[1]!, +m[2]!, +m[3]!);
   m = ISO_MONTH.exec(v);
@@ -54,14 +61,16 @@ export const parseDate = (value: string): DateValue | null => {
 };
 
 // Compare as a tuple, which is the order of midnight UTC on each date without Date's two-digit-year quirk.
-const compare = (a: DateValue, b: DateValue): number => a.year - b.year || a.month - b.month || a.day - b.day;
+const compare = (a: DateValue, b: DateValue): number =>
+  a.year - b.year || a.month - b.month || a.day - b.day;
 
 export const dateBefore = (a: DateValue, b: DateValue): boolean => compare(a, b) < 0;
 
 export const dateAfter = (a: DateValue, b: DateValue): boolean => compare(a, b) > 0;
 
 // The only spelling a date is written in: YYYY-MM-DD, or '' for no date.
-export const dateString = (d: DateValue): string => (isZeroDate(d) ? '' : `${pad(d.year, 4)}-${pad(d.month, 2)}-${pad(d.day, 2)}`);
+export const dateString = (d: DateValue): string =>
+  isZeroDate(d) ? '' : `${pad(d.year, 4)}-${pad(d.month, 2)}-${pad(d.day, 2)}`;
 
 // Reads a JSON value: '' is no date, null is no date (null), a non-string or unreadable string throws with Go's messages.
 export const dateFromJSON = (value: unknown): DateValue | null => {
@@ -85,7 +94,20 @@ export const dateFromSql = (stored: string | null | undefined): DateValue => {
   return parsed;
 };
 
-const MONTHS_LONG = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const MONTHS_LONG = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+];
 const MONTHS_SHORT = MONTHS_LONG.map((n) => n.slice(0, 3));
 
 const PRESENT = new Set(['present', 'current', 'now', 'ongoing', 'to date', 'presently']);

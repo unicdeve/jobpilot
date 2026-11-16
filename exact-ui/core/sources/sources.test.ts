@@ -1,13 +1,43 @@
 // The Go sources' tests (internal/adapters/secondary/discovery/*_test.go), run against the same fixtures with an injected fetch.
 import { expect, test } from 'bun:test';
-import { BoardBusyError, BoardGoneError, SourceUnreachableError, isUnreachable, normalizeEmploymentType, parseTime, encodeQuery, type DoFetch } from './job-source.ts';
+import {
+  BoardBusyError,
+  BoardGoneError,
+  SourceUnreachableError,
+  isUnreachable,
+  normalizeEmploymentType,
+  parseTime,
+  encodeQuery,
+  type DoFetch,
+} from './job-source.ts';
 import { fetchArbeitnow } from './arbeitnow.ts';
 import { fetchRemoteOK } from './remoteok.ts';
-import { fetchHimalayas, himalayasQuery, HIMALAYAS_MAX_PAGES, HIMALAYAS_MAX_SEARCH_PAGES } from './himalayas.ts';
+import {
+  fetchHimalayas,
+  himalayasQuery,
+  HIMALAYAS_MAX_PAGES,
+  HIMALAYAS_MAX_SEARCH_PAGES,
+} from './himalayas.ts';
 import { fetchJobicy, jobicyFeeds } from './jobicy.ts';
-import { fetchWeWorkRemotely, noFeedAnswered, WWR_CATEGORIES, parseRfc1123z } from './we-work-remotely.ts';
-import { fetchHackerNews, isHiringThreadTitle, locationsFromFields, plainHeaderField } from './hacker-news.ts';
-import { describeJobs, readBoard, boardUrl, type Board, type BoardEndpoints } from './company-boards.ts';
+import {
+  fetchWeWorkRemotely,
+  noFeedAnswered,
+  WWR_CATEGORIES,
+  parseRfc1123z,
+} from './we-work-remotely.ts';
+import {
+  fetchHackerNews,
+  isHiringThreadTitle,
+  locationsFromFields,
+  plainHeaderField,
+} from './hacker-news.ts';
+import {
+  describeJobs,
+  readBoard,
+  boardUrl,
+  type Board,
+  type BoardEndpoints,
+} from './company-boards.ts';
 
 type Reply = { status?: number; body: string };
 // A fake network: `route` answers a URL, and every URL asked is recorded. A throw is a network that did not answer.
@@ -18,7 +48,12 @@ function network(route: (url: string, headers: Record<string, string>) => Reply 
     const reply = route(url, init?.headers ?? {});
     if (reply === undefined) throw new Error('connection refused');
     const status = reply.status ?? 200;
-    return { ok: status >= 200 && status < 300, status, json: async () => JSON.parse(reply.body), text: async () => reply.body };
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => JSON.parse(reply.body),
+      text: async () => reply.body,
+    };
   };
   return { doFetch, asked };
 }
@@ -37,9 +72,18 @@ test('Arbeitnow maps fields and returns the listing whole', async () => {
   const n = network(() => ok(arbeitnowFixture));
   const jobs = await fetchArbeitnow(n.doFetch);
   expect(jobs).toHaveLength(2);
-  expect(jobs[0]).toMatchObject({ sourceId: 'arbeitnow', sourceJobId: 'senior-go-engineer-berlin-1', title: 'Senior Go Engineer', companyName: 'Acme GmbH',
-    canonicalUrl: 'https://www.arbeitnow.com/jobs/companies/acme/senior-go-engineer-berlin-1', remoteType: 'remote', locations: ['Berlin', 'Remote'],
-    skills: ['Go', 'SQLite'], employmentType: 'Full-time', postedAt: '2023-11-14T22:13:20.000Z' });
+  expect(jobs[0]).toMatchObject({
+    sourceId: 'arbeitnow',
+    sourceJobId: 'senior-go-engineer-berlin-1',
+    title: 'Senior Go Engineer',
+    companyName: 'Acme GmbH',
+    canonicalUrl: 'https://www.arbeitnow.com/jobs/companies/acme/senior-go-engineer-berlin-1',
+    remoteType: 'remote',
+    locations: ['Berlin', 'Remote'],
+    skills: ['Go', 'SQLite'],
+    employmentType: 'Full-time',
+    postedAt: '2023-11-14T22:13:20.000Z',
+  });
   expect(jobs[0]!.descriptionMarkdown).toContain('Go');
   expect(jobs[0]!.descriptionMarkdown).not.toContain('<strong>');
   expect(jobs[1]).toMatchObject({ remoteType: 'onsite', locations: ['Lagos'], employmentType: '' });
@@ -49,7 +93,9 @@ test('Arbeitnow maps fields and returns the listing whole', async () => {
 test('Arbeitnow errors', async () => {
   await expect(fetchArbeitnow(network(() => status(500)).doFetch)).rejects.toThrow('non-OK status');
   await expect(fetchArbeitnow(network(() => ok('{}')).doFetch)).rejects.toThrow('decode');
-  expect(isUnreachable(await fetchArbeitnow(network(() => undefined).doFetch).catch((e) => e))).toBe(true);
+  expect(
+    isUnreachable(await fetchArbeitnow(network(() => undefined).doFetch).catch((e) => e)),
+  ).toBe(true);
 });
 
 // ---- RemoteOK
@@ -62,11 +108,26 @@ const remoteOKFixture = `[
   {"id":"9","position":"","url":"https://remoteOK.com/x"}]`;
 
 test('RemoteOK skips the notice, trims, and keeps an unstated salary unstated', async () => {
-  const n = network((_, h) => { expect(h['User-Agent']).not.toBe(''); return ok(remoteOKFixture); });
+  const n = network((_, h) => {
+    expect(h['User-Agent']).not.toBe('');
+    return ok(remoteOKFixture);
+  });
   const jobs = await fetchRemoteOK(n.doFetch);
   expect(jobs).toHaveLength(2);
-  expect(jobs[0]).toMatchObject({ title: 'Senior Go Engineer', companyName: 'Acme', sourceId: 'remoteok', sourceJobId: '1137421', locations: ['Germany'], remoteType: 'remote',
-    skills: ['golang', 'backend'], postedAt: '2026-09-23T00:00:10.000Z', salaryMin: 120000, salaryMax: 160000, salaryCurrency: 'USD', salaryPeriod: 'yearly' });
+  expect(jobs[0]).toMatchObject({
+    title: 'Senior Go Engineer',
+    companyName: 'Acme',
+    sourceId: 'remoteok',
+    sourceJobId: '1137421',
+    locations: ['Germany'],
+    remoteType: 'remote',
+    skills: ['golang', 'backend'],
+    postedAt: '2026-09-23T00:00:10.000Z',
+    salaryMin: 120000,
+    salaryMax: 160000,
+    salaryCurrency: 'USD',
+    salaryPeriod: 'yearly',
+  });
   expect(jobs[0]!.descriptionMarkdown).not.toContain('<strong>');
   expect(jobs[1]).toMatchObject({ salaryMin: 0, salaryCurrency: '', locations: [] });
   await expect(fetchRemoteOK(network(() => status(429)).doFetch)).rejects.toThrow('429');
@@ -88,19 +149,43 @@ test('Himalayas maps a job and drops one with no application link', async () => 
   const jobs = await fetchHimalayas(n.doFetch, noCriteria);
   expect(jobs).toHaveLength(2);
   expect(n.asked).toHaveLength(2); // stops at an empty page, not four
-  expect(jobs[0]).toMatchObject({ title: 'Staff Platform Engineer', sourceId: 'himalayas', sourceJobId: 'job-1', locations: ['United States'], remoteType: 'remote',
-    employmentType: 'full-time', salaryMin: 155000, salaryCurrency: 'USD', salaryPeriod: 'yearly' });
+  expect(jobs[0]).toMatchObject({
+    title: 'Staff Platform Engineer',
+    sourceId: 'himalayas',
+    sourceJobId: 'job-1',
+    locations: ['United States'],
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    salaryMin: 155000,
+    salaryCurrency: 'USD',
+    salaryPeriod: 'yearly',
+  });
   expect(jobs[0]!.postedAt).not.toBe('');
   expect(jobs[0]!.expiresAt).not.toBe('');
   expect(jobs[0]!.descriptionMarkdown).not.toContain('<strong>');
-  expect(jobs[1]).toMatchObject({ locations: ['Worldwide'], descriptionMarkdown: 'Lead support.', employmentType: '', salaryMin: 0 });
+  expect(jobs[1]).toMatchObject({
+    locations: ['Worldwide'],
+    descriptionMarkdown: 'Lead support.',
+    employmentType: '',
+    salaryMin: 0,
+  });
 });
 
 test('Himalayas pages through a bounded slice of the board', async () => {
-  const n = network((url) => { const o = new URL(url).searchParams.get('offset'); return ok(`{"jobs":[{"guid":"g${o}","title":"Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/${o}"}]}`); });
+  const n = network((url) => {
+    const o = new URL(url).searchParams.get('offset');
+    return ok(
+      `{"jobs":[{"guid":"g${o}","title":"Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/${o}"}]}`,
+    );
+  });
   const jobs = await fetchHimalayas(n.doFetch, noCriteria);
   expect(jobs).toHaveLength(HIMALAYAS_MAX_PAGES);
-  expect(n.asked.map((u) => new URL(u).searchParams.get('offset'))).toEqual(['0', '20', '40', '60']);
+  expect(n.asked.map((u) => new URL(u).searchParams.get('offset'))).toEqual([
+    '0',
+    '20',
+    '40',
+    '60',
+  ]);
 });
 
 test('Himalayas searches for the criteria, dedupes and stops at an empty page', async () => {
@@ -110,30 +195,61 @@ test('Himalayas searches for the criteria, dedupes and stops at an empty page', 
     return ok(`{"jobs":[{"guid":"a","title":"Backend Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/a"},
       {"guid":"p${page}","title":"Backend Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/p${page}"}]}`);
   });
-  const jobs = await fetchHimalayas(n.doFetch, { title: 'backend', keywords: '  engineer ', workFrom: 'ng' });
+  const jobs = await fetchHimalayas(n.doFetch, {
+    title: 'backend',
+    keywords: '  engineer ',
+    workFrom: 'ng',
+  });
   expect(n.asked.map((u) => u.replace('https://himalayas.app/jobs/api', ''))).toEqual([
-    '/search?country=NG&page=1&q=backend+engineer', '/search?country=NG&page=2&q=backend+engineer', '/search?country=NG&page=3&q=backend+engineer']);
+    '/search?country=NG&page=1&q=backend+engineer',
+    '/search?country=NG&page=2&q=backend+engineer',
+    '/search?country=NG&page=3&q=backend+engineer',
+  ]);
   expect(jobs).toHaveLength(3); // a posting on two pages is one job
   expect(himalayasQuery({ title: 'frontend', keywords: '' })).toEqual({ q: 'frontend' }); // no country is sent when none is set
 });
 
 test('Himalayas reads at most five search pages', async () => {
-  const n = network((url) => { const p = new URL(url).searchParams.get('page'); return ok(`{"jobs":[{"guid":"g${p}","title":"Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/${p}"}]}`); });
-  expect(await fetchHimalayas(n.doFetch, { title: '', keywords: 'go' })).toHaveLength(HIMALAYAS_MAX_SEARCH_PAGES);
+  const n = network((url) => {
+    const p = new URL(url).searchParams.get('page');
+    return ok(
+      `{"jobs":[{"guid":"g${p}","title":"Engineer","companyName":"Acme","applicationLink":"https://himalayas.app/j/${p}"}]}`,
+    );
+  });
+  expect(await fetchHimalayas(n.doFetch, { title: '', keywords: 'go' })).toHaveLength(
+    HIMALAYAS_MAX_SEARCH_PAGES,
+  );
   expect(n.asked).toHaveLength(5);
 });
 
 test('Himalayas keeps what it fetched when a later page fails, and fails on the first', async () => {
   let calls = 0;
-  const jobs = await fetchHimalayas(network(() => (++calls === 1 ? ok(himalayasPage) : status(500))).doFetch, noCriteria);
+  const jobs = await fetchHimalayas(
+    network(() => (++calls === 1 ? ok(himalayasPage) : status(500))).doFetch,
+    noCriteria,
+  );
   expect(jobs).toHaveLength(2);
-  await expect(fetchHimalayas(network(() => status(503)).doFetch, noCriteria)).rejects.toThrow('503');
+  await expect(fetchHimalayas(network(() => status(503)).doFetch, noCriteria)).rejects.toThrow(
+    '503',
+  );
 });
 
 test('employment types are the vocabulary or nothing', () => {
-  const want: Record<string, string> = { 'Full Time': 'full-time', full_time: 'full-time', 'FULL-TIME': 'full-time', Permanent: 'full-time', Contract: 'contract', Freelance: 'contract',
-    Intern: 'internship', Internship: 'internship', Sabbatical: '', '': '', 'something else': '' };
-  for (const [written, expected] of Object.entries(want)) expect(normalizeEmploymentType(written)).toBe(expected);
+  const want: Record<string, string> = {
+    'Full Time': 'full-time',
+    full_time: 'full-time',
+    'FULL-TIME': 'full-time',
+    Permanent: 'full-time',
+    Contract: 'contract',
+    Freelance: 'contract',
+    Intern: 'internship',
+    Internship: 'internship',
+    Sabbatical: '',
+    '': '',
+    'something else': '',
+  };
+  for (const [written, expected] of Object.entries(want))
+    expect(normalizeEmploymentType(written)).toBe(expected);
 });
 
 // ---- Jobicy
@@ -155,15 +271,32 @@ function jobicyNetwork() {
 test('Jobicy asks the feeds for the country and dedupes across them', async () => {
   const n = jobicyNetwork();
   const jobs = await fetchJobicy(n.doFetch, 'NG');
-  const geos = n.asked.filter((u) => !u.includes('get=locations')).map((u) => new URL(u).searchParams.get('geo'));
+  const geos = n.asked
+    .filter((u) => !u.includes('get=locations'))
+    .map((u) => new URL(u).searchParams.get('geo'));
   expect(geos).toEqual(['anywhere', 'emea']); // Nigeria is in EMEA and in none of Jobicy's other locations
   expect(jobs).toHaveLength(2); // a job in two feeds is one job
-  expect(jobs[0]).toMatchObject({ canonicalUrl: 'https://jobicy.com/jobs/1-go', sourceId: 'jobicy', sourceJobId: '1', locations: ['Anywhere'], employmentType: 'full-time',
-    salaryMin: 148000, salaryCurrency: 'USD', salaryPeriod: 'yearly' });
+  expect(jobs[0]).toMatchObject({
+    canonicalUrl: 'https://jobicy.com/jobs/1-go',
+    sourceId: 'jobicy',
+    sourceJobId: '1',
+    locations: ['Anywhere'],
+    employmentType: 'full-time',
+    salaryMin: 148000,
+    salaryCurrency: 'USD',
+    salaryPeriod: 'yearly',
+  });
   expect(jobs[0]!.postedAt).toBe('2026-09-30T08:18:51.000Z');
   expect(jobs[1]!.locations).toEqual(['Europe', 'UK']);
-  expect(jobicyFeeds('DE', JSON.parse(jobicyLocations).locations.map((l: { geoName: string; geoSlug: string }) => ({ name: l.geoName, slug: l.geoSlug }))))
-    .toEqual(['anywhere', 'emea', 'europe', 'germany']); // Germany adds its own feeds
+  expect(
+    jobicyFeeds(
+      'DE',
+      JSON.parse(jobicyLocations).locations.map((l: { geoName: string; geoSlug: string }) => ({
+        name: l.geoName,
+        slug: l.geoSlug,
+      })),
+    ),
+  ).toEqual(['anywhere', 'emea', 'europe', 'germany']); // Germany adds its own feeds
 });
 
 test('Jobicy without a country reads the whole board, and fails with its status', async () => {
@@ -176,7 +309,8 @@ test('Jobicy without a country reads the whole board, and fails with its status'
 });
 
 // ---- We Work Remotely
-const wwrFeed = (...items: string[]) => `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>We Work Remotely</title>${items.join('')}</channel></rss>`;
+const wwrFeed = (...items: string[]) =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>We Work Remotely</title>${items.join('')}</channel></rss>`;
 const wwrWorldwide = `<item><title>Twikey: Senior Java Developer</title><region>Anywhere in the World</region><skills>Java, PostgreSQL, and Spring</skills><type>Full-Time</type>
   <description>&lt;p&gt;Build &lt;strong&gt;payments&lt;/strong&gt;.&lt;/p&gt;</description><pubDate>Thu, 17 Sep 2026 10:51:23 +0000</pubDate>
   <expires_at>Sat, 17 Oct 2026 10:51:23 +0000</expires_at><guid>https://weworkremotely.com/remote-jobs/twikey-senior-java-developer</guid>
@@ -186,21 +320,42 @@ const wwrUSOnly = `<item><title>Glean: Application Security Engineer</title><reg
   <link>https://weworkremotely.com/remote-jobs/glean-application-security-engineer</link></item>`;
 
 test('We Work Remotely merges its category feeds into one job per posting', async () => {
-  const n = network((url) => ok(wwrFeed(wwrWorldwide, ...(url.endsWith('/remote-back-end-programming-jobs.rss') ? [wwrUSOnly] : []))));
+  const n = network((url) =>
+    ok(
+      wwrFeed(
+        wwrWorldwide,
+        ...(url.endsWith('/remote-back-end-programming-jobs.rss') ? [wwrUSOnly] : []),
+      ),
+    ),
+  );
   const jobs = await fetchWeWorkRemotely(n.doFetch);
   expect(jobs).toHaveLength(2);
   expect(n.asked).toHaveLength(WWR_CATEGORIES.length);
   const java = jobs.find((j) => j.title === 'Senior Java Developer')!;
-  expect(java).toMatchObject({ companyName: 'Twikey', sourceId: 'weworkremotely', canonicalUrl: 'https://weworkremotely.com/remote-jobs/twikey-senior-java-developer',
-    locations: ['Anywhere in the World'], remoteType: 'remote', employmentType: 'full-time', skills: ['Java', 'PostgreSQL', 'Spring'],
-    postedAt: '2026-09-17T10:51:23.000Z', expiresAt: '2026-10-17T10:51:23.000Z' });
+  expect(java).toMatchObject({
+    companyName: 'Twikey',
+    sourceId: 'weworkremotely',
+    canonicalUrl: 'https://weworkremotely.com/remote-jobs/twikey-senior-java-developer',
+    locations: ['Anywhere in the World'],
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    skills: ['Java', 'PostgreSQL', 'Spring'],
+    postedAt: '2026-09-17T10:51:23.000Z',
+    expiresAt: '2026-10-17T10:51:23.000Z',
+  });
   expect(java.descriptionMarkdown).toContain('payments');
   expect(java.descriptionMarkdown).not.toContain('<strong>');
-  expect(jobs.find((j) => j.title === 'Application Security Engineer')!.locations).toEqual(['🇺🇸 United States of America']); // narrower than the region, and truer
+  expect(jobs.find((j) => j.title === 'Application Security Engineer')!.locations).toEqual([
+    '🇺🇸 United States of America',
+  ]); // narrower than the region, and truer
 });
 
 test('We Work Remotely: one feed failing is not the source failing', async () => {
-  const jobs = await fetchWeWorkRemotely(network((url) => (url.endsWith('/remote-programming-jobs.rss') ? status(500) : ok(wwrFeed(wwrWorldwide)))).doFetch);
+  const jobs = await fetchWeWorkRemotely(
+    network((url) =>
+      url.endsWith('/remote-programming-jobs.rss') ? status(500) : ok(wwrFeed(wwrWorldwide)),
+    ).doFetch,
+  );
   expect(jobs).toHaveLength(1);
 });
 
@@ -236,27 +391,53 @@ const hnThread = `{"id":3,"title":"Ask HN: Who is hiring? (September 2026)","chi
   {"id":13,"created_at":"2026-09-01T18:00:00Z","text":"Just a comment with no structure at all, wishing everyone luck."},
   {"id":14,"created_at":"2026-09-01T19:00:00Z","text":"NoLink Corp | Backend Engineer | Berlin | Full-time"},
   {"id":15,"created_at":"2026-09-01T20:00:00Z","text":""}]}`;
-const hnNetwork = (stories = hnStories, thread = hnThread) => network((url) => (url.includes('search_by_date') ? ok(stories) : url.includes('/items/') ? ok(thread) : status(404)));
+const hnNetwork = (stories = hnStories, thread = hnThread) =>
+  network((url) =>
+    url.includes('search_by_date')
+      ? ok(stories)
+      : url.includes('/items/')
+        ? ok(thread)
+        : status(404),
+  );
 
 test('Hacker News reads the postings that follow the convention and carry a link', async () => {
   const jobs = await fetchHackerNews(hnNetwork().doFetch);
   expect(jobs).toHaveLength(2);
-  expect(jobs[0]).toMatchObject({ companyName: 'Modash.io', title: 'Senior Product Engineer', canonicalUrl: 'https://modash.io', sourceId: 'hackernews', sourceJobId: '11',
-    remoteType: 'remote', employmentType: 'full-time', locations: ['Remote (Europe)'] }); // "EUR" must not match inside "Europe"
-  expect(jobs[1]).toMatchObject({ title: 'Platform & DevOps Engineer', remoteType: 'hybrid', locations: ['Utrecht, The Netherlands'] });
+  expect(jobs[0]).toMatchObject({
+    companyName: 'Modash.io',
+    title: 'Senior Product Engineer',
+    canonicalUrl: 'https://modash.io',
+    sourceId: 'hackernews',
+    sourceJobId: '11',
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    locations: ['Remote (Europe)'],
+  }); // "EUR" must not match inside "Europe"
+  expect(jobs[1]).toMatchObject({
+    title: 'Platform & DevOps Engineer',
+    remoteType: 'hybrid',
+    locations: ['Utrecht, The Netherlands'],
+  });
   expect(jobs.map((j) => j.title)).not.toContain('Backend Engineer');
-  for (const j of jobs) { expect(j.canonicalUrl).not.toBe(''); expect(j.companyName).not.toBe(''); }
+  for (const j of jobs) {
+    expect(j.canonicalUrl).not.toBe('');
+    expect(j.companyName).not.toBe('');
+  }
 });
 
 test('Hacker News picks the hiring thread, not its siblings', async () => {
   expect(isHiringThreadTitle('Ask HN: Who is hiring? (September 2026)')).toBe(true);
   expect(isHiringThreadTitle('Ask HN: Who wants to be hired? (September 2026)')).toBe(false);
-  expect(isHiringThreadTitle('Ask HN: Freelancer? Seeking freelancer? (September 2026)')).toBe(false);
+  expect(isHiringThreadTitle('Ask HN: Freelancer? Seeking freelancer? (September 2026)')).toBe(
+    false,
+  );
   expect(isHiringThreadTitle('Ask HN: Anything else?')).toBe(false);
   const n = hnNetwork();
   await fetchHackerNews(n.doFetch);
   expect(n.asked[1]).toContain('/items/3');
-  await expect(fetchHackerNews(hnNetwork('{"hits":[]}').doFetch)).rejects.toThrow("no 'Who is hiring?' thread found");
+  await expect(fetchHackerNews(hnNetwork('{"hits":[]}').doFetch)).rejects.toThrow(
+    "no 'Who is hiring?' thread found",
+  );
 });
 
 test('locationsFromFields', () => {
@@ -275,9 +456,16 @@ test('locationsFromFields', () => {
 
 test('plainHeaderField drops a homepage written beside the name', () => {
   const cases: [string, string][] = [
-    ['Freeform ([http://freeform.co](http://freeform.co))', 'Freeform'], ['Snout [https://snout.com/](https://snout.com/)', 'Snout'],
-    ['Cerity Partners ([https://ceritypartners.com](https://ceritypartners.com))', 'Cerity Partners'], ['Acme (https://acme.example)', 'Acme'],
-    ['[Acme](https://acme.example)', 'Acme'], ['  Remote (Europe)  ', 'Remote (Europe)'], ['Open Education / Neon', 'Open Education / Neon'],
+    ['Freeform ([http://freeform.co](http://freeform.co))', 'Freeform'],
+    ['Snout [https://snout.com/](https://snout.com/)', 'Snout'],
+    [
+      'Cerity Partners ([https://ceritypartners.com](https://ceritypartners.com))',
+      'Cerity Partners',
+    ],
+    ['Acme (https://acme.example)', 'Acme'],
+    ['[Acme](https://acme.example)', 'Acme'],
+    ['  Remote (Europe)  ', 'Remote (Europe)'],
+    ['Open Education / Neon', 'Open Education / Neon'],
   ];
   for (const [input, want] of cases) expect(plainHeaderField(input), input).toBe(want);
 });
@@ -306,43 +494,111 @@ const ashbyJobs = `{"jobs":[{"id":"1e8c7f3d","title":"Strategic Solutions Engine
   "compensation":{"summaryComponents":[{"compensationType":"EquityPercentage","interval":"NONE"},{"compensationType":"Salary","interval":"1 YEAR","currencyCode":"USD","minValue":200000,"maxValue":250000}]}},
   {"id":"hidden","title":"Unlisted","jobUrl":"https://jobs.ashbyhq.com/railway/hidden","isListed":false},
   {"id":"old","title":"No workplace","jobUrl":"https://jobs.ashbyhq.com/railway/old","location":"Remote, AMER","isRemote":true}]}`;
-const endpoints: BoardEndpoints = { greenhouseApi: 'http://x/greenhouse', greenhouseEuApi: 'http://x/greenhouse-eu', leverApi: 'http://x/lever', leverEuApi: 'http://x/lever-eu',
-  ashbyApi: 'http://x/ashby', workableApi: 'http://x/workable', smartRecruitersApi: 'http://x/sr' };
+const endpoints: BoardEndpoints = {
+  greenhouseApi: 'http://x/greenhouse',
+  greenhouseEuApi: 'http://x/greenhouse-eu',
+  leverApi: 'http://x/lever',
+  leverEuApi: 'http://x/lever-eu',
+  ashbyApi: 'http://x/ashby',
+  workableApi: 'http://x/workable',
+  smartRecruitersApi: 'http://x/sr',
+  leverPages: 'http://x/lever-pages',
+  leverEuPages: 'http://x/lever-eu-pages',
+  ashbyPages: 'http://x/ashby-pages',
+};
 
 test('a Greenhouse board', async () => {
-  const n = network((url) => (url === 'http://x/greenhouse/v1/boards/gitlab/jobs?content=true' ? ok(greenhouseJobs) : url.endsWith('/broken/jobs?content=true') ? status(500) : status(404)));
+  const n = network((url) =>
+    url === 'http://x/greenhouse/v1/boards/gitlab/jobs?content=true'
+      ? ok(greenhouseJobs)
+      : url.endsWith('/broken/jobs?content=true')
+        ? status(500)
+        : status(404),
+  );
   const c = await readBoard(n.doFetch, { provider: 'greenhouse', name: 'gitlab' }, endpoints);
   expect(c.jobs).toHaveLength(2); // a posting without an address is dropped
-  expect(c.jobs[0]).toMatchObject({ canonicalUrl: 'https://job-boards.greenhouse.io/gitlab/jobs/8556658002', sourceId: 'company-pages', sourceJobId: 'greenhouse/gitlab/8556658002',
-    companyName: 'GitLab', companyUrl: 'https://job-boards.greenhouse.io/gitlab', locations: ['Remote, Canada', 'Remote, United Kingdom', 'Remote, United States'], remoteType: 'remote',
-    postedAt: '2026-05-22T13:16:29.000Z' });
+  expect(c.jobs[0]).toMatchObject({
+    canonicalUrl: 'https://job-boards.greenhouse.io/gitlab/jobs/8556658002',
+    sourceId: 'company-pages',
+    sourceJobId: 'greenhouse/gitlab/8556658002',
+    companyName: 'GitLab',
+    companyUrl: 'https://job-boards.greenhouse.io/gitlab',
+    locations: ['Remote, Canada', 'Remote, United Kingdom', 'Remote, United States'],
+    remoteType: 'remote',
+    postedAt: '2026-05-22T13:16:29.000Z',
+  });
   expect(c.jobs[0]!.descriptionMarkdown).toContain('intelligent'); // the content is HTML escaped once more
   expect(c.jobs[0]!.descriptionMarkdown).not.toContain('<');
   expect(c.jobs[1]!.remoteType).toBe('hybrid');
-  await expect(readBoard(n.doFetch, { provider: 'greenhouse', name: 'closed' }, endpoints)).rejects.toBeInstanceOf(BoardGoneError);
-  const broken = await readBoard(n.doFetch, { provider: 'greenhouse', name: 'broken' }, endpoints).catch((e) => e);
+  await expect(
+    readBoard(n.doFetch, { provider: 'greenhouse', name: 'closed' }, endpoints),
+  ).rejects.toBeInstanceOf(BoardGoneError);
+  const broken = await readBoard(
+    n.doFetch,
+    { provider: 'greenhouse', name: 'broken' },
+    endpoints,
+  ).catch((e) => e);
   expect(broken).toBeInstanceOf(Error);
   expect(broken).not.toBeInstanceOf(BoardGoneError);
   expect(isUnreachable(broken)).toBe(false);
-  expect(isUnreachable(await readBoard(network(() => undefined).doFetch, { provider: 'greenhouse', name: 'gitlab' }, endpoints).catch((e) => e))).toBe(true);
+  expect(
+    isUnreachable(
+      await readBoard(
+        network(() => undefined).doFetch,
+        { provider: 'greenhouse', name: 'gitlab' },
+        endpoints,
+      ).catch((e) => e),
+    ),
+  ).toBe(true);
 });
 
 test('a Lever board', async () => {
-  const c = await readBoard(network(() => ok(leverJobs)).doFetch, { provider: 'lever', name: 'spotify' }, endpoints);
+  const c = await readBoard(
+    network(() => ok(leverJobs)).doFetch,
+    { provider: 'lever', name: 'spotify' },
+    endpoints,
+  );
   expect(c.jobs).toHaveLength(2);
   const job = c.jobs[0]!;
-  expect(job).toMatchObject({ canonicalUrl: 'https://jobs.lever.co/spotify/2193db3f', locations: ['London', 'Stockholm'], remoteType: 'hybrid', employmentType: 'full-time',
-    salaryMin: 70000, salaryMax: 90000, salaryCurrency: 'GBP', salaryPeriod: 'year', companyName: '' });
-  for (const part of ['consumer experience', "What You'll Do", 'Develop Kotlin code', 'equal opportunity']) expect(job.descriptionMarkdown).toContain(part);
+  expect(job).toMatchObject({
+    canonicalUrl: 'https://jobs.lever.co/spotify/2193db3f',
+    locations: ['London', 'Stockholm'],
+    remoteType: 'hybrid',
+    employmentType: 'full-time',
+    salaryMin: 70000,
+    salaryMax: 90000,
+    salaryCurrency: 'GBP',
+    salaryPeriod: 'year',
+    companyName: '',
+  });
+  for (const part of [
+    'consumer experience',
+    "What You'll Do",
+    'Develop Kotlin code',
+    'equal opportunity',
+  ])
+    expect(job.descriptionMarkdown).toContain(part);
   expect(c.jobs[1]).toMatchObject({ remoteType: '', locations: ['Remote'] });
 });
 
 test('an Ashby board', async () => {
-  const n = network((url) => { expect(url).toContain('includeCompensation=true'); return ok(ashbyJobs); });
+  const n = network((url) => {
+    expect(url).toContain('includeCompensation=true');
+    return ok(ashbyJobs);
+  });
   const c = await readBoard(n.doFetch, { provider: 'ashby', name: 'railway' }, endpoints);
   expect(c.jobs).toHaveLength(2); // an unlisted posting is not the company's to show
-  expect(c.jobs[0]).toMatchObject({ canonicalUrl: 'https://jobs.ashbyhq.com/railway/1e8c7f3d', locations: ['Global', 'EMEA'], remoteType: 'remote', employmentType: 'full-time',
-    salaryMin: 200000, salaryMax: 250000, salaryCurrency: 'USD', salaryPeriod: 'year', postedAt: '2026-09-21T02:50:22.578Z' });
+  expect(c.jobs[0]).toMatchObject({
+    canonicalUrl: 'https://jobs.ashbyhq.com/railway/1e8c7f3d',
+    locations: ['Global', 'EMEA'],
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    salaryMin: 200000,
+    salaryMax: 250000,
+    salaryCurrency: 'USD',
+    salaryPeriod: 'year',
+    postedAt: '2026-09-21T02:50:22.578Z',
+  });
   expect(c.jobs[1]!.remoteType).toBe('remote'); // isRemote stands in for a missing workplace type
 });
 
@@ -351,8 +607,13 @@ test('EU boards are read from the EU servers', async () => {
   await readBoard(n.doFetch, { provider: 'greenhouse', region: 'eu', name: 'n26' }, endpoints);
   const l = network(() => ok('[]'));
   await readBoard(l.doFetch, { provider: 'lever', region: 'eu', name: 'acme' }, endpoints);
-  expect([...n.asked, ...l.asked]).toEqual(['http://x/greenhouse-eu/v1/boards/n26/jobs?content=true', 'http://x/lever-eu/v0/postings/acme?mode=json']);
-  expect(boardUrl({ provider: 'lever', region: 'eu', name: 'acme' })).toBe('https://jobs.eu.lever.co/acme');
+  expect([...n.asked, ...l.asked]).toEqual([
+    'http://x/greenhouse-eu/v1/boards/n26/jobs?content=true',
+    'http://x/lever-eu/v0/postings/acme?mode=json',
+  ]);
+  expect(boardUrl({ provider: 'lever', region: 'eu', name: 'acme' })).toBe(
+    'https://jobs.eu.lever.co/acme',
+  );
 });
 
 const workableWidget = `{"name":"Hugging Face","description":"Here at Hugging Face…","jobs":[
@@ -366,24 +627,47 @@ const workableWidget = `{"name":"Hugging Face","description":"Here at Hugging Fa
   {"title":"","shortcode":"NOTITLE000","description":""}]}`;
 
 test('a Workable board', async () => {
-  const n = network((url) => (url.includes('/accounts/huggingface?') ? ok(workableWidget) : url.includes('/accounts/busy?') ? status(429) : status(404)));
+  const n = network((url) =>
+    url.includes('/accounts/huggingface?')
+      ? ok(workableWidget)
+      : url.includes('/accounts/busy?')
+        ? status(429)
+        : status(404),
+  );
   const c = await readBoard(n.doFetch, { provider: 'workable', name: 'huggingface' }, endpoints);
   expect(c.undescribed).toBe(false);
   expect(c.name).toBe('Hugging Face');
   expect(c.jobs).toHaveLength(3); // a posting without a title is dropped
-  expect(c.jobs[0]).toMatchObject({ canonicalUrl: 'https://apply.workable.com/huggingface/j/F4C096B22E/', sourceJobId: 'workable/huggingface/F4C096B22E',
-    companyUrl: 'https://apply.workable.com/huggingface/', locations: [], remoteType: 'remote', employmentType: 'full-time', postedAt: '2026-07-30T00:00:00.000Z', companyName: '' });
+  expect(c.jobs[0]).toMatchObject({
+    canonicalUrl: 'https://apply.workable.com/huggingface/j/F4C096B22E/',
+    sourceJobId: 'workable/huggingface/F4C096B22E',
+    companyUrl: 'https://apply.workable.com/huggingface/',
+    locations: [],
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    postedAt: '2026-07-30T00:00:00.000Z',
+    companyName: '',
+  });
   expect(c.jobs[0]!.descriptionMarkdown).toContain('good AI');
   expect(c.jobs[0]!.descriptionMarkdown).toContain('Rust');
   expect(c.jobs[1]!.locations).toEqual(['Paris, Île-de-France, France']);
   expect(c.jobs[2]).toMatchObject({ remoteType: '', employmentType: 'part-time' });
-  await expect(readBoard(n.doFetch, { provider: 'workable', name: 'nobody' }, endpoints)).rejects.toBeInstanceOf(BoardGoneError);
-  const busy = await readBoard(n.doFetch, { provider: 'workable', name: 'busy' }, endpoints).catch((e) => e);
+  await expect(
+    readBoard(n.doFetch, { provider: 'workable', name: 'nobody' }, endpoints),
+  ).rejects.toBeInstanceOf(BoardGoneError);
+  const busy = await readBoard(n.doFetch, { provider: 'workable', name: 'busy' }, endpoints).catch(
+    (e) => e,
+  );
   expect(busy).toBeInstanceOf(BoardBusyError);
   expect(busy).not.toBeInstanceOf(BoardGoneError);
 });
 
-const srPosting = (id: string, name: string, remote: boolean, hybrid: boolean) => `{"id":"${id}","name":"${name}","company":{"identifier":"Sectigo","name":"Sectigo"},
+const srPosting = (
+  id: string,
+  name: string,
+  remote: boolean,
+  hybrid: boolean,
+) => `{"id":"${id}","name":"${name}","company":{"identifier":"Sectigo","name":"Sectigo"},
   "releasedDate":"2026-10-02T12:15:46.155Z","location":{"city":"Paris","region":"IDF","country":"fr","remote":${remote},"hybrid":${hybrid},"fullLocation":"Paris, IDF, France"},
   "typeOfEmployment":{"id":"permanent","label":"Full-time"}}`;
 const srDetails = `{"id":"3743990015853896","name":"Enterprise Onboarding Engineer","jobAd":{"sections":{
@@ -394,15 +678,28 @@ const srDetails = `{"id":"3743990015853896","name":"Enterprise Onboarding Engine
   "videos":{"title":"Videos To Watch","urls":["https://www.youtube.com/watch?v=R2zvMKayp8I"]}}}}`;
 
 test('a SmartRecruiters board pages by a hundred and is described apart', async () => {
-  const postings = Array.from({ length: 230 }, (_, i) => srPosting(String(3743990015853896n + BigInt(i)), i === 0 ? 'Enterprise Onboarding Engineer' : `Role ${i}`, i % 3 === 0, i % 5 === 4));
+  const postings = Array.from({ length: 230 }, (_, i) =>
+    srPosting(
+      String(3743990015853896n + BigInt(i)),
+      i === 0 ? 'Enterprise Onboarding Engineer' : `Role ${i}`,
+      i % 3 === 0,
+      i % 5 === 4,
+    ),
+  );
   const n = network((url) => {
     const u = new URL(url);
     if (u.pathname === '/sr/v1/companies/Sectigo/postings') {
       const offset = Number(u.searchParams.get('offset'));
       expect(u.searchParams.get('limit')).toBe('100');
-      return ok(`{"offset":${offset},"limit":100,"totalFound":230,"content":[${postings.slice(offset, offset + 100).join(',')}]}`);
+      return ok(
+        `{"offset":${offset},"limit":100,"totalFound":230,"content":[${postings.slice(offset, offset + 100).join(',')}]}`,
+      );
     }
-    if (u.pathname === '/sr/v1/companies/Sectigo/postings/3743990015853896' || u.pathname === '/sr/v1/companies/Sectigo/postings/3743990015853897') return ok(srDetails);
+    if (
+      u.pathname === '/sr/v1/companies/Sectigo/postings/3743990015853896' ||
+      u.pathname === '/sr/v1/companies/Sectigo/postings/3743990015853897'
+    )
+      return ok(srDetails);
     return status(404);
   });
   const board: Board = { provider: 'smartrecruiters', name: 'Sectigo' };
@@ -411,8 +708,16 @@ test('a SmartRecruiters board pages by a hundred and is described apart', async 
   expect(c.jobs).toHaveLength(230);
   expect(n.asked).toHaveLength(3);
   expect(c.name).toBe('Sectigo');
-  expect(c.jobs[0]).toMatchObject({ canonicalUrl: 'https://jobs.smartrecruiters.com/Sectigo/3743990015853896', sourceJobId: 'smartrecruiters/Sectigo/3743990015853896',
-    companyUrl: 'https://careers.smartrecruiters.com/Sectigo', companyName: 'Sectigo', locations: ['Paris, IDF, France'], remoteType: 'remote', employmentType: 'full-time', descriptionMarkdown: '' });
+  expect(c.jobs[0]).toMatchObject({
+    canonicalUrl: 'https://jobs.smartrecruiters.com/Sectigo/3743990015853896',
+    sourceJobId: 'smartrecruiters/Sectigo/3743990015853896',
+    companyUrl: 'https://careers.smartrecruiters.com/Sectigo',
+    companyName: 'Sectigo',
+    locations: ['Paris, IDF, France'],
+    remoteType: 'remote',
+    employmentType: 'full-time',
+    descriptionMarkdown: '',
+  });
   expect(c.jobs[4]!.remoteType).toBe('hybrid');
   expect(c.jobs[1]!.remoteType).toBe('');
 
@@ -420,17 +725,24 @@ test('a SmartRecruiters board pages by a hundred and is described apart', async 
   const known = new Map<string, string>();
   const full = await describeJobs(n.doFetch, board, c.jobs.slice(0, 3), endpoints, known);
   expect(full).toHaveLength(2); // a posting closed since the list is left out
-  for (const part of ['Company Description', 'Kubernetes', 'Equal Opportunity']) expect(full[0]!.descriptionMarkdown).toContain(part);
+  for (const part of ['Company Description', 'Kubernetes', 'Equal Opportunity'])
+    expect(full[0]!.descriptionMarkdown).toContain(part);
   expect(n.asked.length - before).toBe(3); // two described, and one asked for and gone
   await describeJobs(n.doFetch, board, c.jobs.slice(0, 2), endpoints, known);
   expect(n.asked.length - before).toBe(3); // a posting described before is not asked for again
   // Other providers' jobs are left as they are.
   const same = [c.jobs[0]!];
-  expect(await describeJobs(n.doFetch, { provider: 'greenhouse', name: 'gitlab' }, same, endpoints)).toBe(same);
+  expect(
+    await describeJobs(n.doFetch, { provider: 'greenhouse', name: 'gitlab' }, same, endpoints),
+  ).toBe(same);
 });
 
 test('a SmartRecruiters company with no postings reads as an empty board', async () => {
-  const c = await readBoard(network(() => ok('{"offset":0,"limit":100,"totalFound":0,"content":[]}')).doFetch, { provider: 'smartrecruiters', name: 'Visa' }, endpoints);
+  const c = await readBoard(
+    network(() => ok('{"offset":0,"limit":100,"totalFound":0,"content":[]}')).doFetch,
+    { provider: 'smartrecruiters', name: 'Visa' },
+    endpoints,
+  );
   expect(c.jobs).toEqual([]);
 });
 
@@ -438,5 +750,7 @@ test('helpers', () => {
   expect(parseTime('2026-09-29T10:38:50-04:00')).toBe('2026-09-29T14:38:50.000Z');
   expect(parseTime('nope', '2026-07-30')).toBe('2026-07-30T00:00:00.000Z');
   expect(parseTime('')).toBe('');
-  expect(encodeQuery({ q: 'backend engineer', country: 'NG' })).toBe('country=NG&q=backend+engineer');
+  expect(encodeQuery({ q: 'backend engineer', country: 'NG' })).toBe(
+    'country=NG&q=backend+engineer',
+  );
 });

@@ -46,7 +46,10 @@ export function foldAscii(s: string): string {
 }
 
 export function foldUnicode(s: string): string {
-  const stripped = s.normalize('NFKD').replace(/\p{Mn}/gu, '').normalize('NFC');
+  const stripped = s
+    .normalize('NFKD')
+    .replace(/\p{Mn}/gu, '')
+    .normalize('NFC');
   let out = '';
   let space = false;
   for (const r of stripped.toLowerCase()) {
@@ -66,7 +69,8 @@ export function foldUnicode(s: string): string {
 export function placeIn(p: Place, country: string): Place | undefined {
   if (p.kind !== 'city') return undefined;
   if (p.countries.length === 1 && p.countries[0] === country) return p;
-  if (p.elsewhere.includes(country)) return { kind: 'city', name: p.name, countries: [country], elsewhere: [] };
+  if (p.elsewhere.includes(country))
+    return { kind: 'city', name: p.name, countries: [country], elsewhere: [] };
   return undefined;
 }
 
@@ -78,7 +82,15 @@ const countryAliases: Record<string, string[]> = {
   BN: ['Brunei Darussalam'],
   BO: ['Bolivia (Plurinational State of)', 'Bolivia, Plurinational State of'],
   BR: ['Brasil'],
-  CD: ['DRC', 'DR Congo', 'Democratic Republic of the Congo', 'Congo (Democratic Republic of the)', 'Congo, The Democratic Republic of the', 'Congo, Democratic Republic of the', 'Congo-Kinshasa'],
+  CD: [
+    'DRC',
+    'DR Congo',
+    'Democratic Republic of the Congo',
+    'Congo (Democratic Republic of the)',
+    'Congo, The Democratic Republic of the',
+    'Congo, Democratic Republic of the',
+    'Congo-Kinshasa',
+  ],
   CG: ['Congo', 'Republic of Congo', 'Congo-Brazzaville'],
   CH: ['Schweiz', 'Suisse', 'Svizzera'],
   CI: ["Côte d'Ivoire"],
@@ -89,7 +101,17 @@ const countryAliases: Record<string, string[]> = {
   ES: ['España'],
   FI: ['Suomi'],
   FM: ['Micronesia (Federated States of)', 'Micronesia, Federated States of'],
-  GB: ['UK', 'U.K.', 'Great Britain', 'Britain', 'England', 'Scotland', 'Wales', 'Northern Ireland', 'United Kingdom of Great Britain and Northern Ireland'],
+  GB: [
+    'UK',
+    'U.K.',
+    'Great Britain',
+    'Britain',
+    'England',
+    'Scotland',
+    'Wales',
+    'Northern Ireland',
+    'United Kingdom of Great Britain and Northern Ireland',
+  ],
   IE: ['Republic of Ireland'],
   IR: ['Iran (Islamic Republic of)', 'Iran, Islamic Republic of'],
   IT: ['Italia'],
@@ -121,23 +143,87 @@ const countryAliases: Record<string, string[]> = {
 // States and provinces postings name in place of their country. One that has a country's name is the country when looked up alone.
 const subdivisions: Record<string, string[]> = {
   US: [
-    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
-    'Delaware', 'District of Columbia', 'Washington DC', 'Florida', 'Georgia', 'Hawaii', 'Idaho',
-    'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
-    'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska',
-    'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York State', 'North Carolina',
-    'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
-    'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia',
-    'Washington State', 'West Virginia', 'Wisconsin', 'Wyoming',
-    'Bay Area', 'San Francisco Bay Area', 'Silicon Valley',
+    'Alabama',
+    'Alaska',
+    'Arizona',
+    'Arkansas',
+    'California',
+    'Colorado',
+    'Connecticut',
+    'Delaware',
+    'District of Columbia',
+    'Washington DC',
+    'Florida',
+    'Georgia',
+    'Hawaii',
+    'Idaho',
+    'Illinois',
+    'Indiana',
+    'Iowa',
+    'Kansas',
+    'Kentucky',
+    'Louisiana',
+    'Maine',
+    'Maryland',
+    'Massachusetts',
+    'Michigan',
+    'Minnesota',
+    'Mississippi',
+    'Missouri',
+    'Montana',
+    'Nebraska',
+    'Nevada',
+    'New Hampshire',
+    'New Jersey',
+    'New Mexico',
+    'New York State',
+    'North Carolina',
+    'North Dakota',
+    'Ohio',
+    'Oklahoma',
+    'Oregon',
+    'Pennsylvania',
+    'Rhode Island',
+    'South Carolina',
+    'South Dakota',
+    'Tennessee',
+    'Texas',
+    'Utah',
+    'Vermont',
+    'Virginia',
+    'Washington State',
+    'West Virginia',
+    'Wisconsin',
+    'Wyoming',
+    'Bay Area',
+    'San Francisco Bay Area',
+    'Silicon Valley',
   ],
   CA: [
-    'Ontario', 'Quebec', 'Québec', 'British Columbia', 'Alberta', 'Manitoba', 'Saskatchewan',
-    'Nova Scotia', 'New Brunswick', 'Newfoundland and Labrador', 'Prince Edward Island',
+    'Ontario',
+    'Quebec',
+    'Québec',
+    'British Columbia',
+    'Alberta',
+    'Manitoba',
+    'Saskatchewan',
+    'Nova Scotia',
+    'New Brunswick',
+    'Newfoundland and Labrador',
+    'Prince Edward Island',
   ],
   DE: [
-    'Bayern', 'Bavaria', 'Baden-Württemberg', 'Nordrhein-Westfalen', 'North Rhine-Westphalia',
-    'Hessen', 'Hesse', 'Niedersachsen', 'Lower Saxony', 'Sachsen', 'Saxony',
+    'Bayern',
+    'Bavaria',
+    'Baden-Württemberg',
+    'Nordrhein-Westfalen',
+    'North Rhine-Westphalia',
+    'Hessen',
+    'Hesse',
+    'Niedersachsen',
+    'Lower Saxony',
+    'Sachsen',
+    'Saxony',
   ],
   AU: ['New South Wales', 'Queensland', 'Western Australia', 'South Australia', 'Tasmania'],
 };
@@ -153,14 +239,59 @@ interface RegionDefinition {
   exclude?: string[];
 }
 
-const middleEastCodes = ['AE', 'BH', 'EG', 'IL', 'IQ', 'IR', 'JO', 'KW', 'LB', 'OM', 'PS', 'QA', 'SA', 'SY', 'TR', 'YE'];
+const middleEastCodes = [
+  'AE',
+  'BH',
+  'EG',
+  'IL',
+  'IQ',
+  'IR',
+  'JO',
+  'KW',
+  'LB',
+  'OM',
+  'PS',
+  'QA',
+  'SA',
+  'SY',
+  'TR',
+  'YE',
+];
 const northAfrica = ['DZ', 'EG', 'EH', 'LY', 'MA', 'SD', 'TN'];
 const centralAmerica = ['BZ', 'CR', 'GT', 'HN', 'NI', 'PA', 'SV'];
 const euEEA = [
-  'AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE',
-  'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK',
+  'AT',
+  'BE',
+  'BG',
+  'CY',
+  'CZ',
+  'DE',
+  'DK',
+  'EE',
+  'ES',
+  'FI',
+  'FR',
+  'GR',
+  'HR',
+  'HU',
+  'IE',
+  'IT',
+  'LT',
+  'LU',
+  'LV',
+  'MT',
+  'NL',
+  'PL',
+  'PT',
+  'RO',
+  'SE',
+  'SI',
+  'SK',
   // The EEA and Switzerland, whom "EU work authorisation" also admits.
-  'IS', 'LI', 'NO', 'CH',
+  'IS',
+  'LI',
+  'NO',
+  'CH',
 ];
 
 // The regions postings were measured to name. North America includes Mexico (ADR-0023 §1).
@@ -174,29 +305,123 @@ export const regionDefinitions: RegionDefinition[] = [
   { name: 'Africa', continents: ['AF'] },
   { name: 'Sub-Saharan Africa', continents: ['AF'], exclude: northAfrica },
   { name: 'North Africa', include: northAfrica },
-  { name: 'West Africa', aliases: ['Western Africa'], include: ['BF', 'BJ', 'CI', 'CV', 'GH', 'GM', 'GN', 'GW', 'LR', 'ML', 'MR', 'NE', 'NG', 'SL', 'SN', 'TG'] },
-  { name: 'East Africa', aliases: ['Eastern Africa'], include: ['BI', 'DJ', 'ER', 'ET', 'KE', 'KM', 'MG', 'MU', 'MW', 'MZ', 'RW', 'SC', 'SO', 'SS', 'TZ', 'UG', 'ZM', 'ZW'] },
+  {
+    name: 'West Africa',
+    aliases: ['Western Africa'],
+    include: [
+      'BF',
+      'BJ',
+      'CI',
+      'CV',
+      'GH',
+      'GM',
+      'GN',
+      'GW',
+      'LR',
+      'ML',
+      'MR',
+      'NE',
+      'NG',
+      'SL',
+      'SN',
+      'TG',
+    ],
+  },
+  {
+    name: 'East Africa',
+    aliases: ['Eastern Africa'],
+    include: [
+      'BI',
+      'DJ',
+      'ER',
+      'ET',
+      'KE',
+      'KM',
+      'MG',
+      'MU',
+      'MW',
+      'MZ',
+      'RW',
+      'SC',
+      'SO',
+      'SS',
+      'TZ',
+      'UG',
+      'ZM',
+      'ZW',
+    ],
+  },
   { name: 'Southern Africa', include: ['BW', 'LS', 'NA', 'SZ', 'ZA'] },
   { name: 'Asia', continents: ['AS'] },
-  { name: 'APAC', aliases: ['Asia Pacific', 'Asia-Pacific', 'Asia and Pacific'], continents: ['AS', 'OC'], exclude: middleEastCodes },
-  { name: 'Southeast Asia', aliases: ['South East Asia', 'South-East Asia'], include: ['BN', 'ID', 'KH', 'LA', 'MM', 'MY', 'PH', 'SG', 'TH', 'TL', 'VN'] },
+  {
+    name: 'APAC',
+    aliases: ['Asia Pacific', 'Asia-Pacific', 'Asia and Pacific'],
+    continents: ['AS', 'OC'],
+    exclude: middleEastCodes,
+  },
+  {
+    name: 'Southeast Asia',
+    aliases: ['South East Asia', 'South-East Asia'],
+    include: ['BN', 'ID', 'KH', 'LA', 'MM', 'MY', 'PH', 'SG', 'TH', 'TL', 'VN'],
+  },
   { name: 'South Asia', include: ['AF', 'BD', 'BT', 'IN', 'LK', 'MV', 'NP', 'PK'] },
   { name: 'Oceania', continents: ['OC'] },
   { name: 'ANZ', aliases: ['Australasia'], include: ['AU', 'NZ'] },
-  { name: 'North America', aliases: ['Northern America', 'NORAM', 'NAMER'], include: ['CA', 'MX', 'US'] },
+  {
+    name: 'North America',
+    aliases: ['Northern America', 'NORAM', 'NAMER'],
+    include: ['CA', 'MX', 'US'],
+  },
   { name: 'Central America', include: centralAmerica },
   { name: 'South America', continents: ['SA'] },
-  { name: 'LATAM', aliases: ['LatAm', 'Latin America'], continents: ['SA'], include: [...centralAmerica, 'CU', 'DO', 'HT', 'MX', 'PR'] },
+  {
+    name: 'LATAM',
+    aliases: ['LatAm', 'Latin America'],
+    continents: ['SA'],
+    include: [...centralAmerica, 'CU', 'DO', 'HT', 'MX', 'PR'],
+  },
   { name: 'Americas', aliases: ['The Americas', 'AMER'], continents: ['NA', 'SA'] },
   { name: 'DACH', include: ['AT', 'CH', 'DE'] },
-  { name: 'Nordics', aliases: ['Nordic', 'Nordic countries'], include: ['DK', 'FI', 'IS', 'NO', 'SE'] },
+  {
+    name: 'Nordics',
+    aliases: ['Nordic', 'Nordic countries'],
+    include: ['DK', 'FI', 'IS', 'NO', 'SE'],
+  },
   { name: 'Scandinavia', include: ['DK', 'NO', 'SE'] },
   { name: 'Benelux', include: ['BE', 'LU', 'NL'] },
   { name: 'Baltics', aliases: ['Baltic states'], include: ['EE', 'LT', 'LV'] },
-  { name: 'CEE', aliases: ['Central and Eastern Europe', 'Eastern Europe', 'Central Eastern Europe'], include: ['AL', 'BA', 'BG', 'BY', 'CZ', 'EE', 'HR', 'HU', 'LT', 'LV', 'MD', 'ME', 'MK', 'PL', 'RO', 'RS', 'SI', 'SK', 'UA', 'XK'] },
+  {
+    name: 'CEE',
+    aliases: ['Central and Eastern Europe', 'Eastern Europe', 'Central Eastern Europe'],
+    include: [
+      'AL',
+      'BA',
+      'BG',
+      'BY',
+      'CZ',
+      'EE',
+      'HR',
+      'HU',
+      'LT',
+      'LV',
+      'MD',
+      'ME',
+      'MK',
+      'PL',
+      'RO',
+      'RS',
+      'SI',
+      'SK',
+      'UA',
+      'XK',
+    ],
+  },
 ];
 
-interface CityEntry { name: string; countries: string[] }
+interface CityEntry {
+  name: string;
+  countries: string[];
+}
 
 interface Tables {
   byCode: Map<string, Country>;
@@ -223,18 +448,27 @@ const buildCompounds = (): string[] => {
   for (const c of countryList) add(c.name);
   for (const aliases of Object.values(countryAliases)) aliases.forEach(add);
   for (const r of regionDefinitions) [r.name, ...(r.aliases ?? [])].forEach(add);
-  return names.sort((a, b) => (a.length !== b.length ? b.length - a.length : a < b ? -1 : a > b ? 1 : 0));
+  return names.sort((a, b) =>
+    a.length !== b.length ? b.length - a.length : a < b ? -1 : a > b ? 1 : 0,
+  );
 };
 
 let built: Tables | undefined;
 const tables = (): Tables => {
   if (built) return built;
-  const t: Tables = { byCode: new Map(), countryNames: new Map(), regions: new Map(), compounds: [], alsoSubdivision: new Map() };
+  const t: Tables = {
+    byCode: new Map(),
+    countryNames: new Map(),
+    regions: new Map(),
+    compounds: [],
+    alsoSubdivision: new Map(),
+  };
   for (const c of countryList) {
     t.byCode.set(c.code, c);
     t.countryNames.set(fold(c.name), c.code);
   }
-  for (const [code, names] of Object.entries(countryAliases)) for (const n of names) t.countryNames.set(fold(n), code);
+  for (const [code, names] of Object.entries(countryAliases))
+    for (const n of names) t.countryNames.set(fold(n), code);
   for (const [code, names] of Object.entries(subdivisions)) {
     for (const n of names) {
       if (t.countryNames.has(fold(n))) {
@@ -245,7 +479,12 @@ const tables = (): Tables => {
     }
   }
   for (const r of regionDefinitions) {
-    const place: Place = { kind: 'region', name: r.name, countries: regionCountries(r, t.byCode), elsewhere: [] };
+    const place: Place = {
+      kind: 'region',
+      name: r.name,
+      countries: regionCountries(r, t.byCode),
+      elsewhere: [],
+    };
     for (const n of [r.name, ...(r.aliases ?? [])]) t.regions.set(fold(n), place);
   }
   t.compounds = buildCompounds();
@@ -285,7 +524,10 @@ const readCities = (limit: number): void => {
     if (second >= 0 && second < end) {
       const name = cityTsv.slice(pos, first);
       if (!t.countryNames.has(name) && !t.regions.has(name)) {
-        map.set(name, { name: cityTsv.slice(second + 1, end), countries: cityTsv.slice(first + 1, second).split(',') });
+        map.set(name, {
+          name: cityTsv.slice(second + 1, end),
+          countries: cityTsv.slice(first + 1, second).split(','),
+        });
       }
     }
     pos = end + 1;
@@ -307,9 +549,17 @@ const cities = (): Map<string, CityEntry> => {
 
 // The steps that build the lazy tables, each small, so a host that budgets a turn can run them across turns before the first read.
 // The last city step reads whatever the slices before it left, so a table of any size is finished.
-export const warmSteps: (() => unknown)[] = [tables, ...Array.from({ length: 15 }, (_, i) => () => readCities(i === 14 ? Infinity : sliceLines))];
+export const warmSteps: (() => unknown)[] = [
+  tables,
+  ...Array.from({ length: 15 }, (_, i) => () => readCities(i === 14 ? Infinity : sliceLines)),
+];
 
-const countryPlaceOf = (t: Tables, code: string): Place => ({ kind: 'country', name: t.byCode.get(code)!.name, countries: [code], elsewhere: [] });
+const countryPlaceOf = (t: Tables, code: string): Place => ({
+  kind: 'country',
+  name: t.byCode.get(code)!.name,
+  countries: [code],
+  elsewhere: [],
+});
 
 // Resolves a place name to a region, a country or a city, in that order.
 // Cities are looked up only when `withCities` is set: a city name alone is often a word ("Nice", "Mobile").
@@ -322,21 +572,29 @@ export function lookup(name: string, withCities: boolean): Place | undefined {
   if (code) return countryPlaceOf(t, code);
   if (!withCities) return undefined;
   const city = cities().get(key);
-  if (city) return { kind: 'city', name: city.name, countries: city.countries.slice(0, 1), elsewhere: city.countries.slice(1) };
+  if (city)
+    return {
+      kind: 'city',
+      name: city.name,
+      countries: city.countries.slice(0, 1),
+      elsewhere: city.countries.slice(1),
+    };
   return undefined;
 }
 
 export const compounds = (): string[] => tables().compounds;
 
 // The country in which a country's name is also a state's: "Georgia" is a state of the US.
-export const subdivisionOf = (name: string): string | undefined => tables().alsoSubdivision.get(fold(name));
+export const subdivisionOf = (name: string): string | undefined =>
+  tables().alsoSubdivision.get(fold(name));
 
 export function countryPlace(code: string): Place | undefined {
   const t = tables();
   return t.byCode.has(code) ? countryPlaceOf(t, code) : undefined;
 }
 
-export const countryByCode = (code: string): Country | undefined => tables().byCode.get(code.trim().toUpperCase());
+export const countryByCode = (code: string): Country | undefined =>
+  tables().byCode.get(code.trim().toUpperCase());
 
 // Reads a country as a person writes it, or by its ISO code, and returns its code.
 export function resolveCountry(name: string): string | undefined {

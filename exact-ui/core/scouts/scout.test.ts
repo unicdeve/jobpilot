@@ -1,19 +1,47 @@
 import { expect, test } from 'bun:test';
 import { emptyCriteria } from '../search/criteria.ts';
-import { eligible, isValidSource, preScreen, validateScout, type EligibilityInput, type Scout } from './scout.ts';
+import {
+  eligible,
+  isValidSource,
+  preScreen,
+  validateScout,
+  type EligibilityInput,
+  type Scout,
+} from './scout.ts';
 
 // The cases are the Go tests' (internal/core/domain/scout_test.go), so the two cores cannot drift silently.
 const off = { kind: 'off' as const, everyHours: 0, dailyAt: 0 };
 const scout = (adjust: Partial<Scout> = {}): Scout => ({
-  name: 'Daily Go', savedSearchId: 'search-1', minMatchScore: 70, maxApplicationsPerRun: 5, source: 'local', isEnabled: true, schedule: off, ...adjust,
+  name: 'Daily Go',
+  savedSearchId: 'search-1',
+  minMatchScore: 70,
+  maxApplicationsPerRun: 5,
+  source: 'local',
+  isEnabled: true,
+  schedule: off,
+  ...adjust,
 });
 const job = (title: string, extra = {}) => ({
-  title, companyName: 'Acme', descriptionMarkdown: '', locations: [], remoteType: '', employmentType: '', salaryMin: 0, salaryMax: 0, ...extra,
+  title,
+  companyName: 'Acme',
+  descriptionMarkdown: '',
+  locations: [],
+  remoteType: '',
+  employmentType: '',
+  salaryMin: 0,
+  salaryMax: 0,
+  ...extra,
 });
 const goJob = job('Senior Go Engineer');
 const criteria = { ...emptyCriteria, keywords: 'Go' };
 const input = (extra: Partial<EligibilityInput> = {}): EligibilityInput => ({
-  job: goJob, criteria, score: 0, hasScore: false, alreadyApplied: false, createdSoFar: 0, ...extra,
+  job: goJob,
+  criteria,
+  score: 0,
+  hasScore: false,
+  alreadyApplied: false,
+  createdSoFar: 0,
+  ...extra,
 });
 
 const validateCases: [string, Partial<Scout>, string][] = [
@@ -25,9 +53,21 @@ const validateCases: [string, Partial<Scout>, string][] = [
   ['impossible score floor', { minMatchScore: 101 }, 'between 0 and 100'],
   ['a run that can create nothing', { maxApplicationsPerRun: 0 }, 'between 1 and 50'],
   ['a run with no real ceiling', { maxApplicationsPerRun: 5000 }, 'between 1 and 50'],
-  ['bad interval', { schedule: { kind: 'every', everyHours: 25, dailyAt: 0 } }, 'every 1 to 24 hours'],
-  ['bad daily time', { schedule: { kind: 'daily', everyHours: 0, dailyAt: 1440 } }, 'between 00:00 and 23:59'],
-  ['unknown schedule', { schedule: { kind: 'cron' as never, everyHours: 0, dailyAt: 0 } }, 'unknown schedule'],
+  [
+    'bad interval',
+    { schedule: { kind: 'every', everyHours: 25, dailyAt: 0 } },
+    'every 1 to 24 hours',
+  ],
+  [
+    'bad daily time',
+    { schedule: { kind: 'daily', everyHours: 0, dailyAt: 1440 } },
+    'between 00:00 and 23:59',
+  ],
+  [
+    'unknown schedule',
+    { schedule: { kind: 'cron' as never, everyHours: 0, dailyAt: 0 } },
+    'unknown schedule',
+  ],
 ];
 test.each(validateCases)('validate: %s', (_n, adjust, want) => {
   const err = validateScout(scout(adjust));
@@ -42,12 +82,18 @@ test('a matching job that clears the floor is eligible, and says why', () => {
   expect(reason).toContain('70');
 });
 test('a job the search excludes is rejected before anything else', () => {
-  const [ok, reason] = eligible(scout(), input({ job: job('Frontend Engineer'), score: 99, hasScore: true }));
+  const [ok, reason] = eligible(
+    scout(),
+    input({ job: job('Frontend Engineer'), score: 99, hasScore: true }),
+  );
   expect(ok).toBe(false);
   expect(reason).toBe('does not match the saved search');
 });
 test('a job already applied to is rejected', () => {
-  const [ok, reason] = eligible(scout(), input({ score: 99, hasScore: true, alreadyApplied: true }));
+  const [ok, reason] = eligible(
+    scout(),
+    input({ score: 99, hasScore: true, alreadyApplied: true }),
+  );
   expect(ok).toBe(false);
   expect(reason).toContain('already exists');
 });
@@ -80,11 +126,18 @@ test('a missing job is refused rather than dereferenced', () => {
 });
 test('pre-screen skips the score', () => {
   expect(preScreen(scout(), input())[0]).toBe(true);
-  expect(preScreen(scout(), input({ job: job('Frontend Engineer') }))).toEqual([false, 'does not match the saved search']);
+  expect(preScreen(scout(), input({ job: job('Frontend Engineer') }))).toEqual([
+    false,
+    'does not match the saved search',
+  ]);
 });
 test('a job the user ruled out is passed over before anything else', () => {
-  expect(preScreen(scout(), input({ job: job('Frontend Engineer', { notInterestedAt: '2026-09-25T10:00:00Z' }) })))
-    .toEqual([false, 'you marked this job not interested']);
+  expect(
+    preScreen(
+      scout(),
+      input({ job: job('Frontend Engineer', { notInterestedAt: '2026-09-25T10:00:00Z' }) }),
+    ),
+  ).toEqual([false, 'you marked this job not interested']);
 });
 test('scout sources', () => {
   expect(isValidSource('local')).toBe(true);

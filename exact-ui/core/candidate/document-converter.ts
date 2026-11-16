@@ -33,7 +33,14 @@ export const RESUME_ACCEPT = ['.pdf', '.docx', '.txt', '.md', '.markdown', '.htm
 export function isPdf(data: Uint8Array): boolean {
   const limit = Math.min(data.length, 1024);
   for (let i = 0; i < limit && i + 5 <= data.length; i++) {
-    if (data[i] === 0x25 && data[i + 1] === 0x50 && data[i + 2] === 0x44 && data[i + 3] === 0x46 && data[i + 4] === 0x2d) return true;
+    if (
+      data[i] === 0x25 &&
+      data[i + 1] === 0x50 &&
+      data[i + 2] === 0x44 &&
+      data[i + 3] === 0x46 &&
+      data[i + 4] === 0x2d
+    )
+      return true;
   }
   return false;
 }
@@ -47,26 +54,41 @@ function extensionOf(name: string): string {
 function textOf(data: Uint8Array): string {
   let s: string;
   if (data.length >= 2 && data[0] === 0xff && data[1] === 0xfe) s = decodeUtf16(data, true, 2);
-  else if (data.length >= 2 && data[0] === 0xfe && data[1] === 0xff) s = decodeUtf16(data, false, 2);
+  else if (data.length >= 2 && data[0] === 0xfe && data[1] === 0xff)
+    s = decodeUtf16(data, false, 2);
   else s = decodeUtf8(data);
-  return s.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
+  return s
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u0000/g, '')
+    .trim();
 }
 
 export function convertDocument(name: string, data: Uint8Array): ConvertResult {
   const label = name.replace(/\\/g, '/').split('/').pop() || 'The file';
   try {
     if (data.length === 0) fail('empty', `${label} is empty.`);
-    if (data.length > MAX_DOCUMENT_BYTES) fail('too-large', `${label} is larger than the device will read.`);
+    if (data.length > MAX_DOCUMENT_BYTES)
+      fail('too-large', `${label} is larger than the device will read.`);
     let markdown: string;
     if (isPdf(data)) markdown = extractPdf(data);
     else {
       const ext = extensionOf(name);
-      if (ext === '' || !EXTENSION.test(ext)) fail('no-extension', `"${label}" has no extension that says what kind of document it is.`);
-      if (WORD.has(ext) || (isZip(data) && readZipEntries(data).has('word/document.xml'))) markdown = docxToMarkdown(data);
+      if (ext === '' || !EXTENSION.test(ext))
+        fail('no-extension', `"${label}" has no extension that says what kind of document it is.`);
+      if (WORD.has(ext) || (isZip(data) && readZipEntries(data).has('word/document.xml')))
+        markdown = docxToMarkdown(data);
       else if (HTML.has(ext)) markdown = htmlToMarkdown(textOf(data));
       else if (TEXT.has(ext)) markdown = textOf(data);
-      else if (ext === '.doc' || ext === '.rtf' || ext === '.odt' || ext === '.pages') fail('unsupported', `${label} is a ${ext.slice(1).toUpperCase()} file, which the device cannot read. Save it as .docx or PDF, or paste the text.`);
-      else fail('unsupported', `${label} is a ${ext} file, which the device cannot read. A PDF, .docx, text or Markdown file works.`);
+      else if (ext === '.doc' || ext === '.rtf' || ext === '.odt' || ext === '.pages')
+        fail(
+          'unsupported',
+          `${label} is a ${ext.slice(1).toUpperCase()} file, which the device cannot read. Save it as .docx or PDF, or paste the text.`,
+        );
+      else
+        fail(
+          'unsupported',
+          `${label} is a ${ext} file, which the device cannot read. A PDF, .docx, text or Markdown file works.`,
+        );
     }
     markdown = markdown.trim();
     if (markdown === '') fail('empty', `${label} has no text.`);

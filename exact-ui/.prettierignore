@@ -1,0 +1,8 @@
+node_modules
+target
+dist
+.exact
+app.contract.d.ts
+exact.mjs
+fixtures
+bun.lock

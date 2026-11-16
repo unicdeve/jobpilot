@@ -12,19 +12,29 @@ export const signalsVersion = 3;
 // RE2's \s: ASCII whitespace only.
 const WS = '[\\t\\n\\f\\r ]';
 // unicode.IsSpace, which is what strings.Fields and strings.TrimSpace split and trim on (JS's \s also has U+FEFF and lacks U+0085).
-export const GO_SPACE = '\\t\\n\\v\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000';
+export const GO_SPACE =
+  '\\t\\n\\v\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000';
 
 // strings.Fields
-export const fields = (s: string): string[] => s.split(new RegExp(`[${GO_SPACE}]+`)).filter((w) => w !== '');
+export const fields = (s: string): string[] =>
+  s.split(new RegExp(`[${GO_SPACE}]+`)).filter((w) => w !== '');
 // strings.TrimSpace
-export const trimSpace = (s: string): string => s.replace(new RegExp(`^[${GO_SPACE}]+|[${GO_SPACE}]+$`, 'g'), '');
+export const trimSpace = (s: string): string =>
+  s.replace(new RegExp(`^[${GO_SPACE}]+|[${GO_SPACE}]+$`, 'g'), '');
 
 const htmlTag = /<[^>]*>/g;
 const markdownLink = /\[([^\]]*)\]\([^)]*\)/g;
 const markdownMarks = /\*\*|__|\\|#|`/g;
 const abbreviationMap: Record<string, string> = {
-  'U.S.A.': 'USA', 'U.S.': 'US', 'U.K.': 'UK', 'U.A.E.': 'UAE',
-  'e.g.': 'eg', 'i.e.': 'ie', 'etc.': 'etc', 'approx.': 'approx', 'incl.': 'incl',
+  'U.S.A.': 'USA',
+  'U.S.': 'US',
+  'U.K.': 'UK',
+  'U.A.E.': 'UAE',
+  'e.g.': 'eg',
+  'i.e.': 'ie',
+  'etc.': 'etc',
+  'approx.': 'approx',
+  'incl.': 'incl',
 };
 const abbreviations = /U\.S\.A\.|U\.S\.|U\.K\.|U\.A\.E\.|e\.g\.|i\.e\.|etc\.|approx\.|incl\./g;
 // Also splits at " | ", which is how a Hacker News posting separates its fields.
@@ -36,16 +46,75 @@ export const maxEvidence = 280;
 
 // html.UnescapeString for what postings contain: numeric references and the common named ones (Go knows all ~2200 HTML5 names).
 const named: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®', trade: '™', euro: '€', pound: '£', yen: '¥', cent: '¢',
-  ndash: '–', mdash: '—', hellip: '…', bull: '•', middot: '·', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»',
-  sect: '§', deg: '°', times: '×', eacute: 'é', egrave: 'è', agrave: 'à', aacute: 'á', uuml: 'ü', ouml: 'ö', auml: 'ä', szlig: 'ß', ccedil: 'ç', ntilde: 'ñ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  euro: '€',
+  pound: '£',
+  yen: '¥',
+  cent: '¢',
+  ndash: '–',
+  mdash: '—',
+  hellip: '…',
+  bull: '•',
+  middot: '·',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  laquo: '«',
+  raquo: '»',
+  sect: '§',
+  deg: '°',
+  times: '×',
+  eacute: 'é',
+  egrave: 'è',
+  agrave: 'à',
+  aacute: 'á',
+  uuml: 'ü',
+  ouml: 'ö',
+  auml: 'ä',
+  szlig: 'ß',
+  ccedil: 'ç',
+  ntilde: 'ñ',
 };
 // Names Go also reads without their semicolon.
 const legacy = new Set(['amp', 'lt', 'gt', 'quot', 'nbsp', 'copy', 'reg']);
 // Windows-1252 code points that HTML reads in place of C1 controls.
 const cp1252: Record<number, string> = {
-  0x80: '€', 0x82: '‚', 0x83: 'ƒ', 0x84: '„', 0x85: '…', 0x86: '†', 0x87: '‡', 0x88: 'ˆ', 0x89: '‰', 0x8a: 'Š', 0x8b: '‹', 0x8c: 'Œ', 0x8e: 'Ž',
-  0x91: '‘', 0x92: '’', 0x93: '“', 0x94: '”', 0x95: '•', 0x96: '–', 0x97: '—', 0x98: '˜', 0x99: '™', 0x9a: 'š', 0x9b: '›', 0x9c: 'œ', 0x9e: 'ž', 0x9f: 'Ÿ',
+  0x80: '€',
+  0x82: '‚',
+  0x83: 'ƒ',
+  0x84: '„',
+  0x85: '…',
+  0x86: '†',
+  0x87: '‡',
+  0x88: 'ˆ',
+  0x89: '‰',
+  0x8a: 'Š',
+  0x8b: '‹',
+  0x8c: 'Œ',
+  0x8e: 'Ž',
+  0x91: '‘',
+  0x92: '’',
+  0x93: '“',
+  0x94: '”',
+  0x95: '•',
+  0x96: '–',
+  0x97: '—',
+  0x98: '˜',
+  0x99: '™',
+  0x9a: 'š',
+  0x9b: '›',
+  0x9c: 'œ',
+  0x9e: 'ž',
+  0x9f: 'Ÿ',
 };
 
 const fromCodePoint = (n: number): string => {
@@ -55,18 +124,21 @@ const fromCodePoint = (n: number): string => {
 };
 
 export const unescapeHtml = (s: string): string =>
-  s.replace(/&(?:#([xX][0-9a-fA-F]+|[0-9]+);?|([A-Za-z][A-Za-z0-9]*)(;?))/g, (all, num: string | undefined, name: string | undefined, semi: string | undefined) => {
-    if (num !== undefined) {
-      const n = num[0] === 'x' || num[0] === 'X' ? parseInt(num.slice(1), 16) : parseInt(num, 10);
-      return Number.isFinite(n) ? fromCodePoint(n) : '�';
-    }
-    if (name !== undefined && semi === ';' && named[name] !== undefined) return named[name]!;
-    if (name !== undefined && semi === '') {
-      const prefix = [...legacy].find((l) => name.startsWith(l));
-      if (prefix !== undefined) return named[prefix]! + name.slice(prefix.length);
-    }
-    return all;
-  });
+  s.replace(
+    /&(?:#([xX][0-9a-fA-F]+|[0-9]+);?|([A-Za-z][A-Za-z0-9]*)(;?))/g,
+    (all, num: string | undefined, name: string | undefined, semi: string | undefined) => {
+      if (num !== undefined) {
+        const n = num[0] === 'x' || num[0] === 'X' ? parseInt(num.slice(1), 16) : parseInt(num, 10);
+        return Number.isFinite(n) ? fromCodePoint(n) : '�';
+      }
+      if (name !== undefined && semi === ';' && named[name] !== undefined) return named[name]!;
+      if (name !== undefined && semi === '') {
+        const prefix = [...legacy].find((l) => name.startsWith(l));
+        if (prefix !== undefined) return named[prefix]! + name.slice(prefix.length);
+      }
+      return all;
+    },
+  );
 
 // A posting as its sentences, in plain text: HTML and markdown removed, a list item or a line its own sentence.
 export function sentences(description: string): string[] {
@@ -96,7 +168,9 @@ export function evidence(sentence: string): string {
 }
 
 // The fields of a job that reading its signals needs.
-export interface SignalJob extends WorkableJob { descriptionMarkdown: string }
+export interface SignalJob extends WorkableJob {
+  descriptionMarkdown: string;
+}
 
 export interface Signals {
   workable: Workable;

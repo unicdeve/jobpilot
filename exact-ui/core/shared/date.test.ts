@@ -1,5 +1,18 @@
 import { expect, test } from 'bun:test';
-import { dateAfter, dateBefore, dateFromJSON, dateFromSql, dateString, dateToJSON, dateToSql, isZeroDate, newDate, parseDate, parseDraftDate, zeroDate } from './date.ts';
+import {
+  dateAfter,
+  dateBefore,
+  dateFromJSON,
+  dateFromSql,
+  dateString,
+  dateToJSON,
+  dateToSql,
+  isZeroDate,
+  newDate,
+  parseDate,
+  parseDraftDate,
+  zeroDate,
+} from './date.ts';
 
 // The cases are the Go test's (internal/core/domain/date_test.go), so the two cores cannot drift silently.
 test('reads what an HTML date input sends', () => {
@@ -38,7 +51,8 @@ test('SQL stores text SQLite can order, and NULL for no date', () => {
 });
 
 test('SQL reads back what earlier rows stored', () => {
-  for (const stored of ['2022-07-01', '2022-07-01T00:00:00Z']) expect(dateString(dateFromSql(stored))).toBe('2022-07-01');
+  for (const stored of ['2022-07-01', '2022-07-01T00:00:00Z'])
+    expect(dateString(dateFromSql(stored))).toBe('2022-07-01');
   expect(isZeroDate(dateFromSql(null))).toBe(true);
   expect(() => dateFromSql('nope')).toThrow('stored value');
 });
@@ -70,8 +84,14 @@ test('orders dates', () => {
 
 test('parseDraftDate reads how resumes write', () => {
   const want: Record<string, string> = {
-    'Jan 2022': '2022-01-01', 'January 2022': '2022-01-01', '03/2019': '2019-03-01', '2019/03': '2019-03-01', '2022-07': '2022-07-01',
+    'Jan 2022': '2022-01-01',
+    'January 2022': '2022-01-01',
+    '03/2019': '2019-03-01',
+    '2019/03': '2019-03-01',
+    '2022-07': '2022-07-01',
   };
-  for (const [spelling, iso] of Object.entries(want)) expect(dateString(parseDraftDate(spelling)!)).toBe(iso);
-  for (const unreadable of ['', 'Present', 'current', 'sometime in 2019']) expect(parseDraftDate(unreadable)).toBeNull();
+  for (const [spelling, iso] of Object.entries(want))
+    expect(dateString(parseDraftDate(spelling)!)).toBe(iso);
+  for (const unreadable of ['', 'Present', 'current', 'sometime in 2019'])
+    expect(parseDraftDate(unreadable)).toBeNull();
 });
