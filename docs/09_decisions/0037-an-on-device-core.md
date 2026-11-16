@@ -58,6 +58,12 @@ The slice is in `exact-ui/core/`, with `bun test` coverage, and a Discover tab i
 It ports the search rule (`SearchCriteria.MatchesFor`, minus work-from and fit-hours) and the Remotive source, keeps the listing in SQLite for four hours, and shows the matches, with no daemon.
 
 - The application state machine and the apply-link check are ported too (`core/application.ts`), with the Go test's transition cases.
+- More deterministic rules are ported in `exact-ui/core/`, each with the Go test's cases:
+  the full search rule (work-from, relocation and fit-hours, with the geo tables), the scout rules and schedule, dates, the draft check, signals, search templates, standing questions, offers and notification rules.
+  Services that need repositories, the model or the clock (the scout run loop) are not ported.
+- The geo city table (about 62,000 rows) is not bundled.
+  The host loads it once, and until then a city is not a known place, so its jobs are kept.
+- The Go and TypeScript cores differ in a few places: the HTML entity table is partial, evidence is cut by UTF-16 units not bytes, and Go's `ToLower` differs from JavaScript's on İ.
 - It passes on the web host, including SQLite and the offline-after-fetch path.
 - It has not been built for iOS or Android: this machine has Xcode 27.0 where Exact needs 27.1, and lacks Android SDK platform 37.2 and a JDK without JDK-8335662.
 - A data source cannot read the clock, so the view passes the current hour in.
