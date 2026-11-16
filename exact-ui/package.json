@@ -8,7 +8,15 @@
     "test": "bun test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "bun run typecheck && bun run format:check && bun run test"
+    "check": "bun run typecheck && bun run format:check && bun run test",
+    "web": "bun exact.mjs web",
+    "ios": "bun exact.mjs ios --run",
+    "mac": "bun exact.mjs mac --run",
+    "android": "bun exact.mjs android --run",
+    "android:emulator": "emulator -avd $(emulator -list-avds | head -1)",
+    "share": "bun exact.mjs share",
+    "verify": "bun exact.mjs verify",
+    "test:contract": "bun exact.mjs test web"
   },
   "dependencies": {},
   "devDependencies": {
