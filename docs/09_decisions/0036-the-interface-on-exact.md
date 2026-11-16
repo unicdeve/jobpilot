@@ -43,7 +43,8 @@ The stand-in is not the daemon: contract drift between the two is not caught unt
   The slice takes it from `API_BASE_URL`; reading the discovery file needs a grant and a decision.
 - **Tauri's other jobs.** Starting the daemon, notifications (ADR-0028), the resume dialog, and the opener plugin have no Exact counterpart yet.
 - **Toolchain.** Building the Apple hosts needs Xcode 27.1 or later, and a release needs a path through Exact's checkout, which has no versions.
-- **Scope.** Profile, resumes, scouts, activity, settings, and the application detail are not migrated.
+- **Scope.** The slice now reads jobs, applications and their history, scouts, the profile, resumes, activity, and the model setting, all read-only.
+  Nothing that writes is migrated: editing the profile, resumes, scouts and settings, importing a job, and the cover-letter and answers screens.
 
 ## Consequences
 

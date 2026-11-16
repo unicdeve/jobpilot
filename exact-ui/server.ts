@@ -47,6 +47,7 @@ Bun.serve({ hostname, port: Number(port), routes: {
   '/v1/scouts': () => send(SCOUTS),
   '/v1/resumes': () => send(RESUMES),
   '/v1/agent-runs': () => send({ runs: RUNS, total: RUNS.length }),
+  '/v1/settings/llm': () => send({ provider: 'ollama', base_url: 'http://127.0.0.1:11434', model: 'llama3.2' }),
   '/v1/applications': () => send(APPLICATIONS),
 } });
 console.log(`server.ts: ${API}`);

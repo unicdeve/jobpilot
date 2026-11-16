@@ -65,6 +65,15 @@ test "resumes and activity open from the profile"
   clock data
   expect text "run-status-run1" == "completed"
 
+test "settings show the model JobPilot uses"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-settings"
+  clock data
+  expect text "setting-provider" == "ollama"
+  expect text "setting-model" == "llama3.2"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

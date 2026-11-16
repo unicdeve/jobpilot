@@ -104,6 +104,11 @@ const sources: Sources = {
       started: str(r.started_at).slice(0, 10), events: num(r.event_count),
     }));
   },
+  loadModel: async (): Promise<Result<'loadModel'>> => {
+    const s = await get('/v1/settings/llm');
+    if (!isObject(s)) return { provider: '', model: '', address: '' };
+    return { provider: str(s.provider), model: str(s.model), address: str(s.base_url) };
+  },
   loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
     const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
     if (!Array.isArray(list)) return [];

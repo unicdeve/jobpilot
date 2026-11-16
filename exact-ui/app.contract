@@ -13,6 +13,7 @@ routes nav
   tab profile "/profile"
     resumes "/resumes"
     activity "/activity"
+    settings "/settings"
 
 shape Job
   id: string
@@ -59,6 +60,11 @@ shape Run
   started: string
   events: number
 
+shape Model
+  provider: string
+  model: string
+  address: string
+
 shape Step
   id: string
   from: string
@@ -91,6 +97,9 @@ component App
   resource me = loadProfile() as shape Me else empty()
   resource resumes = loadResumes() as shape Resume[] else empty()
   resource runs = loadRuns() as shape Run[] else empty()
+  resource model = loadModel() as shape Model else empty()
+  action reloadModel
+    refresh model
   action reloadResumes
     refresh resumes
   action reloadRuns
@@ -126,8 +135,8 @@ component App
               column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
                 display="flex" flex-direction="column"
                 header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
-                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "scouts" ? "Scouts" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : opened.title)
-                    role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "resumes" or e.name == "activity" ? 2 : 1) flex=1
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "scouts" ? "Scouts" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
+                    role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "resumes" or e.name == "activity" or e.name == "settings" ? 2 : 1) flex=1
                   if e.name == "jobs"
                     input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
                       testId="search" width="100%"
@@ -218,6 +227,9 @@ component App
                         link href=path("activity") testId="open-activity"
                           text "Activity" flex=1
                           image "symbol:forward-chevron"
+                        link href=path("settings") testId="open-settings"
+                          text "Settings" flex=1
+                          image "symbol:forward-chevron"
                 else if e.name == "resumes"
                   if failed(resumes)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
@@ -233,6 +245,25 @@ component App
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
                               text r.name
                               text r.updated font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                else if e.name == "settings"
+                  if failed(model)
+                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
+                      button press=reloadModel testId="retry-settings"
+                        text "Try Again"
+                  else
+                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      section
+                        row
+                          text "Provider"
+                          text model.provider testId="setting-provider"
+                        row
+                          text "Model"
+                          text model.model testId="setting-model"
+                        if model.address != ""
+                          row padding-top=10 padding-bottom=10
+                            column flex=1 min-width=0 gap=2
+                              text "Address"
+                              text model.address font="-exact-subheadline" color="-exact-secondary-label"
                 else if e.name == "activity"
                   if failed(runs)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
