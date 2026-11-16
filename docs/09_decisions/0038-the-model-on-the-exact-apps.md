@@ -2,6 +2,7 @@
 
 ## Status
 
+Accepted on 2026-11-16, by the user's instruction, with the spike below still to be run and its results recorded here.
 Proposed on 2026-11-16.
 It settles the question ADR-0037 §4 left open: which model scores a job on a phone, and where its key lives.
 
@@ -110,7 +111,13 @@ Until the spike answers, a phone has no model of its own.
 - **One key at a time.** `llm-keys` allows many labels, but the settings name one.
   Whether the app needs more than one is open.
 
-## Spike before acceptance
+## Spike
+
+The user accepted this ADR before the spike ran, so the spike now confirms it and its results are recorded here.
+Answered from Exact's reference (2026-11-16): a network grant is a line in the app's `grants`, fixed at build time.
+`net.fetch https:` is the only grant that reaches a host the person types, and nothing asks for it after install.
+So §3's first branch is closed: a custom endpoint needs `net.fetch https:` in the build, and the app ships without it until a decision justifies it.
+Open still: Android's secret store, and a real key saved and read on a device.
 
 On iOS and Android, store a key in the `llm-keys` secret and read it back, then send one scoring request to an OpenAI-compatible host the user names, through `core/match.ts`, and show the score.
 Record what the Android secret store is, and whether the custom-endpoint grant can be asked for at run time.

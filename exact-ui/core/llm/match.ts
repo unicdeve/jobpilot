@@ -44,9 +44,9 @@ export type RandomBytes = (n: number) => Uint8Array;
 const defaultRandomBytes: RandomBytes = (n) => {
   const out = new Uint8Array(n);
   const c = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
+  // The boundary that fences untrusted text must not be guessable, so with no secure source there is no prompt (never Math.random).
   if (c?.getRandomValues) return c.getRandomValues(out);
-  for (let i = 0; i < n; i++) out[i] = Math.floor(Math.random() * 256);
-  return out;
+  throw new Error('this device has no secure random source to delimit untrusted text with');
 };
 
 // Delimits untrusted content with a random per-call boundary token and a warning that nothing in it is an instruction.
