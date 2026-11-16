@@ -61,6 +61,9 @@ It ports the search rule (`SearchCriteria.MatchesFor`, minus work-from and fit-h
 - More deterministic rules are ported in `exact-ui/core/`, each with the Go test's cases:
   the full search rule (work-from, relocation and fit-hours, with the geo tables), the scout rules and schedule, dates, the draft check, signals, search templates, standing questions, offers and notification rules.
   Services that need repositories, the model or the clock (the scout run loop) are not ported.
+- The ported core lives in `exact-ui/core/`, one folder per area, with each test beside its module:
+  `shared` (the database interface, dates), `applications`, `search` (the search rule, signal readers, geo), `sources` (job sources and discovery), `scouts`, `candidate` (profile, resumes, kept answers, the draft check), `llm` (matching, providers, settings) and `activity` (runs, notifications).
+  New core code goes into the folder of its area, not into `core/` itself.
 - The geo city table (about 62,000 rows) is not bundled.
   The host loads it once, and until then a city is not a known place, so its jobs are kept.
 - The Go and TypeScript cores differ in a few places: the HTML entity table is partial, evidence is cut by UTF-16 units not bytes, and Go's `ToLower` differs from JavaScript's on İ.
