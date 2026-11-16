@@ -182,3 +182,117 @@ test "an unreachable daemon offers Try Again, and recovers"
   tap "retry-jobs"
   clock data
   expect tree has "job-j1"
+
+test "the profile is edited on the device and kept after a relaunch"
+  clock data
+  tap "tab-profile"
+  tap "edit-profile"
+  clock data
+  type "p-first" "Grace"
+  type "p-last" "Hopper"
+  type "p-email" "grace@example.com"
+  type "p-skills" "Go: 6, SQLite"
+  type "p-exp" "Engineer | Acme | 2022-07 | | Payments"
+  type "p-auth" "Nigeria: authorized"
+  type "p-links" "github https://github.com/grace"
+  tap "profile-save"
+  clock data
+  expect text "profile-name" == "Grace Hopper"
+  expect text "profile-skills" == "Go (6 y), SQLite"
+  reload
+  clock data
+  tap "tab-profile"
+  clock data
+  expect text "profile-name" == "Grace Hopper"
+  expect text "profile-email" == "grace@example.com"
+
+test "a profile line that cannot be read is refused and nothing is kept"
+  clock data
+  tap "tab-profile"
+  tap "edit-profile"
+  clock data
+  type "p-first" "Grace"
+  type "p-skills" "Go: lots"
+  tap "profile-save"
+  clock data
+  expect tree has "profile-error"
+
+test "a resume is added as text and listed"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-resumes"
+  clock data
+  expect text "resume-note" == "Resumes are kept as text or Markdown that you paste or type. Importing a PDF or Word file is not available in this app yet."
+  tap "resume-add"
+  clock data
+  expect tree has "resume-error"
+  type "resume-name" "Main"
+  type "resume-text" "Go engineer"
+  tap "resume-add"
+  clock data
+  clock settle
+  expect tree missing "resume-error"
+  expect text "resume-title-0" == "Main"
+
+test "a kept answer is added by the candidate and deleted"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-answers"
+  clock data
+  type "kept-question" "Why us?"
+  type "kept-answer" "I like local-first software."
+  tap "kept-add"
+  clock data
+  expect text "kept-q-a-1767225600000-1" == "Why us?"
+  tap "kept-a-1767225600000-1-delete"
+  clock data
+  expect tree missing "kept-q-a-1767225600000-1"
+
+test "a scout run appears in Activity"
+  clock data
+  tap "tab-scouts"
+  clock data
+  tap "new-scout"
+  clock data
+  type "scout-name" "Go roles"
+  type "scout-keywords" "go"
+  tap "scout-save"
+  clock data
+  tap "scout-scout-1"
+  clock data
+  tap "scout-run"
+  clock data
+  tap "tab-profile"
+  tap "open-activity"
+  clock data
+  expect text "run-title-0" == "Go roles"
+  tap "clear-activity"
+  tap "clear-confirm"
+  clock data
+  expect text "run-title-0" == "Go roles in Europe"
+
+test "settings that would send a key unencrypted to another host are refused"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-settings"
+  clock data
+  type "set-base" "http://models.example.com/v1"
+  type "set-model" "m"
+  type "set-label" "work"
+  type "set-key" "sk-secret"
+  tap "settings-save"
+  clock data
+  expect tree has "settings-error"
+  expect tree missing "settings-saved"
+  type "set-base" "https://models.example.com/v1"
+  clock data
+  expect tree has "set-notice"
+  type "set-label" ""
+  type "set-key" ""
+  tap "settings-save"
+  clock data
+  expect tree missing "settings-error"
+  expect tree has "settings-saved"

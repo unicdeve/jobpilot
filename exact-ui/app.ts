@@ -4,7 +4,16 @@ import type { Answer, Database, Result, Sources, Storage } from './app.contract.
 // run sets API_BASE_URL to the address `jobpilot-cli ui` prints; the default is the test server's (server.ts).
 import { emptyCriteria } from './core/search/criteria.ts';
 import type { Db } from './core/shared/db.ts';
-import { ensureAgentRunTables } from './core/activity/agent-run-store.ts';
+import { clearActivity, ensureAgentRunTables, failInterruptedRuns, listRuns as listAgentRuns } from './core/activity/agent-run-store.ts';
+import { defaultNotificationSettings, validateNotificationSettings } from './core/activity/notification.ts';
+import { emptyCandidate } from './core/candidate/candidate.ts';
+import { ensureCandidateSchema, firstCandidate, saveCandidate } from './core/candidate/candidate-store.ts';
+import { deleteKept, ensurePersonalAnswerSchema, keepAnswer, keptAnswers } from './core/candidate/answers-store.ts';
+import { describeProfile, profileFromForm, profileToForm, seekerOf, type ProfileForm } from './core/candidate/profile-form.ts';
+import { newResume } from './core/candidate/resume.ts';
+import { deleteResume, ensureResumeSchema, resumesOf, saveResume } from './core/candidate/resume-store.ts';
+import { ensureSettingsTable, loadDiscoverySettings, loadLLMSettings, loadNotificationSettings, saveDiscoverySettings, saveLLMSettings, saveNotificationSettings } from './core/llm/llm-settings-store.ts';
+import { checkModelForm, dataNotice, hasKey, llmKeysSecret, withKey } from './core/llm/model-settings.ts';
 import { applicationColumns, ensureApplicationSchema, getTracked, saveSql, toTracked, trackedJobIds } from './core/applications/application-store.ts';
 import { foundId, searchBoard, sourceUrls } from './core/sources/discover-sources.ts';
 import type { DoFetch } from './core/sources/job-source.ts';
@@ -44,6 +53,7 @@ net.fetch https://api.eu.lever.co
 net.fetch https://api.ashbyhq.com
 net.fetch https://apply.workable.com
 net.fetch https://api.smartrecruiters.com
+secret.keep llm-keys
 sqlite.open ${CACHE}
 sqlite.open ${KEPT}`;
 
@@ -125,7 +135,15 @@ const prepareKept = async (db: Db): Promise<void> => {
   await ensureSavedSearchSchema(db);
   await ensureScoutSchema(db);
   await ensureAgentRunTables(db);
+  await ensureCandidateSchema(db);
+  await ensurePersonalAnswerSchema(db);
+  await ensureResumeSchema(db);
+  await ensureSettingsTable(db);
 };
+// The one candidate on this device (ADR-0037): JobPilot is local and has one.
+const ME = 'me';
+// Ids made from the clock the view passed in, so they are stable and unique per write.
+const idMaker = (prefix: string, now: number): (() => string) => { let n = 0; return () => `${prefix}-${now}-${++n}`; };
 const kept = <T>(storage: Storage, work: (db: Db) => Promise<T>): Promise<T> => opened(storage, KEPT, prepareKept, (db) => work(db as unknown as Db));
 // Each answer has a budget for one turn: ending it between jobs keeps a long search inside it.
 declare const scheduler: { yield(): Promise<void> } | undefined;
@@ -199,38 +217,124 @@ const sources: Sources = {
       id: e.id, action: e.action.replaceAll('_', ' '), status: e.status, policy: e.policyResult,
       detail: [e.inputSummary, e.outputSummary].filter((x) => x !== '').join(' — '),
     }))),
-  loadProfile: async (): Promise<Result<'loadProfile'>> => {
-    const p = await get('/v1/profile');
-    if (!isObject(p)) return { name: '', email: '', phone: '', location: '' };
-    const place = [str(p.location_city), str(p.location_region), str(p.location_country)].filter((s) => s !== '');
-    return { name: `${str(p.first_name)} ${str(p.last_name)}`.trim(), email: str(p.email), phone: str(p.phone), location: place.join(', ') };
+  // The profile on the device first; with none there, the daemon's, when it answers (the daemon is optional now).
+  loadProfile: async (_args, _store, storage): Promise<Result<'loadProfile'>> => {
+    const mine = await kept(storage, (db) => firstCandidate(db));
+    if (mine !== undefined) return { ...describeProfile(mine), local: true };
+    const none = { name: '', email: '', phone: '', location: '', timeZone: '', links: [], authorizations: [], skills: '', experiences: [], local: false };
+    let p: unknown = null;
+    try { p = await get('/v1/profile'); } catch { p = null; }
+    if (!isObject(p)) return none;
+    const place = [str(p.location_city), str(p.location_region), str(p.location_country)].filter((x) => x !== '');
+    return { ...none, name: `${str(p.first_name)} ${str(p.last_name)}`.trim(), email: str(p.email), phone: str(p.phone), location: place.join(', ') };
   },
-  loadResumes: async (): Promise<Result<'loadResumes'>> => {
-    const profile = await get('/v1/profile');
-    if (!isObject(profile)) return [];
-    const list = await get(`/v1/resumes?candidate_id=${encodeURIComponent(str(profile.id))}`);
-    if (!Array.isArray(list)) throw new Error('The daemon returned an invalid resume list.');
-    return list.filter(isObject).map((r) => ({ id: str(r.id), name: str(r.name), updated: str(r.updated_at).slice(0, 10) }));
+  loadProfileForm: async (_args, _store, storage): Promise<Result<'loadProfileForm'>> => kept(storage, async (db) => profileToForm(await firstCandidate(db))),
+  saveProfile: async ([firstName, lastName, email, phone, city, region, country, timeZone, links, authorizations, skills, experiences, now], _store, storage): Promise<Result<'saveProfile'>> =>
+    kept(storage, async (db) => {
+      const form: ProfileForm = { firstName, lastName, email, phone, city, region, country, timeZone, links, authorizations, skills, experiences };
+      const parsed = profileFromForm(form, (await firstCandidate(db)) ?? emptyCandidate(ME, now));
+      if (!parsed.ok) return { ok: false, error: parsed.error };
+      const saved = await saveCandidate(db, parsed.value, now, idMaker('p', now));
+      return saved.ok ? { ok: true, error: '' } : { ok: false, error: saved.error };
+    }),
+  // Resumes are typed or pasted text; turning a PDF or Word file into text is not ported (ADR-0037), so none is read here.
+  loadResumes: async (_args, _store, storage): Promise<Result<'loadResumes'>> => {
+    const mine = await kept(storage, async (db) => (await resumesOf(db, ME)).map((r) => ({
+      id: r.id, name: r.name, updated: day(r.updatedAt), local: true, detail: `${r.markdownContent.length} characters` })));
+    let remote: Result<'loadResumes'> = [];
+    try {
+      const profile = await get('/v1/profile');
+      const list = isObject(profile) ? await get(`/v1/resumes?candidate_id=${encodeURIComponent(str(profile.id))}`) : null;
+      if (Array.isArray(list)) remote = list.filter(isObject).map((r) => ({ id: str(r.id), name: str(r.name), updated: str(r.updated_at).slice(0, 10), local: false, detail: '' }));
+    } catch { remote = []; }
+    return [...mine, ...remote];
   },
-  loadRuns: async (): Promise<Result<'loadRuns'>> => {
-    const page = await get('/v1/agent-runs?limit=50');
-    if (!isObject(page) || !Array.isArray(page.runs)) throw new Error('The daemon returned an invalid activity list.');
-    return page.runs.filter(isObject).map((r) => ({
-      id: str(r.id), title: str(r.scout_name) || str(r.task_type), status: str(r.status),
-      started: str(r.started_at).slice(0, 10), events: num(r.event_count),
-    }));
+  addResume: async ([name, text, now], _store, storage): Promise<Result<'addResume'>> => kept(storage, async (db) => {
+    const made = newResume({ id: `resume-${now}`, candidateId: ME, fileName: name, markdown: text }, now);
+    if (!made.ok) return { ok: false, error: made.error };
+    await saveResume(db, made.resume);
+    return { ok: true, error: '' };
+  }),
+  removeResume: async ([id], _store, storage): Promise<Result<'removeResume'>> => kept(storage, async (db) => { await deleteResume(db, id); return { ok: true, error: '' }; }),
+  loadKept: async (_args, _store, storage): Promise<Result<'loadKept'>> =>
+    kept(storage, async (db) => (await keptAnswers(db, ME)).map((a) => ({ id: a.id, question: a.question, answer: a.answer, updated: day(a.updatedAt) }))),
+  // Only what the candidate typed: nothing writes an answer for them (ADR-0034).
+  addKept: async ([question, answer, now], _store, storage): Promise<Result<'addKept'>> => kept(storage, async (db) => {
+    if (question.trim() === '') return { ok: false, error: 'Say which question this answers.' };
+    const r = await keepAnswer(db, ME, question, answer, now, idMaker('a', now));
+    return r.ok ? { ok: true, error: '' } : { ok: false, error: r.error };
+  }),
+  removeKept: async ([id], _store, storage): Promise<Result<'removeKept'>> => kept(storage, async (db) => {
+    const r = await deleteKept(db, ME, id);
+    return r.ok ? { ok: true, error: '' } : { ok: false, error: r.error };
+  }),
+  // Runs recorded on the device (a scout run leaves one), then the daemon's when it answers.
+  loadRuns: async (_args, _store, storage): Promise<Result<'loadRuns'>> => {
+    const mine = await kept(storage, async (db) => (await listAgentRuns(db, { limit: 100 })).runs.map((r) => ({
+      id: r.id, title: r.scoutName ?? r.taskType.replaceAll('_', ' '), status: r.status, started: day(r.startedAt), events: r.eventCount, local: true })));
+    let remote: Result<'loadRuns'> = [];
+    try {
+      const page = await get('/v1/agent-runs?limit=50');
+      if (isObject(page) && Array.isArray(page.runs)) remote = page.runs.filter(isObject).map((r) => ({
+        id: str(r.id), title: str(r.scout_name) || str(r.task_type), status: str(r.status), started: str(r.started_at).slice(0, 10), events: num(r.event_count), local: false }));
+    } catch { remote = []; }
+    return [...mine, ...remote];
   },
+  clearRuns: async (_args, _store, storage): Promise<Result<'clearRuns'>> => kept(storage, async (db) => { await clearActivity(db); return { ok: true, error: '' }; }),
+  // Once at launch, from the view (a data source cannot read the clock): a run left "running" by the app closing is failed.
+  startup: async ([now], _store, storage): Promise<Result<'startup'>> => kept(storage, async (db) => { await failInterruptedRuns(db, now); return { ok: true, error: '' }; }),
+  // The daemon's model, shown only when it answers.
   loadModel: async (): Promise<Result<'loadModel'>> => {
-    const s = await get('/v1/settings/llm');
+    let s: unknown = null;
+    try { s = await get('/v1/settings/llm'); } catch { s = null; }
     if (!isObject(s)) return { provider: '', model: '', address: '' };
     return { provider: str(s.provider), model: str(s.model), address: str(s.base_url) };
+  },
+  // The store is read before the first await: it is gone after one (the host's rule for a data source).
+  loadSettings: async (_args, store, storage): Promise<Result<'loadSettings'>> => {
+    const keys = store.get(llmKeysSecret);
+    return kept(storage, async (db) => {
+      const m = await loadLLMSettings(db);
+      const n = { ...defaultNotificationSettings(), ...(await loadNotificationSettings(db)) };
+      const label = m?.apiKeyLabel ?? '';
+      return { provider: m?.provider ?? 'ollama', baseUrl: m?.baseUrl ?? '', model: m?.model ?? '', keyLabel: label, hasKey: hasKey(keys, label),
+        notify: n.enabled, strong: String(n.strongMatchScore), refresh: (await loadDiscoverySettings(db)).refreshOnLaunch };
+    });
+  },
+  // Where the data goes for the address as typed, shown beside the field before anything is saved (ADR-0030 section 6).
+  loadNotice: ([baseUrl]): Result<'loadNotice'> => ({ text: dataNotice({ baseUrl }) }),
+  // ADR-0030's checks run first; the key goes to the one Keychain secret (ADR-0038 section 2), never to SQLite.
+  saveSettings: async ([provider, baseUrl, model, keyLabel, apiKey, notify, strong, refresh], store, storage): Promise<Result<'saveSettings'>> => {
+    // Every check and the key's write come before the first await, while the store still exists; SQLite is written only after
+    // they pass, so a refused form changes nothing.
+    // No address, model or key means no model is set up, which is allowed: only the other settings are kept.
+    const none = baseUrl.trim() === '' && model.trim() === '' && keyLabel.trim() === '' && apiKey.trim() === '';
+    const checked = none ? undefined : checkModelForm({ provider, baseUrl, model, keyLabel, apiKey });
+    if (checked !== undefined && !checked.ok) return { ok: false, error: checked.error };
+    const notifications = { enabled: notify, strongMatchScore: /^\d{1,3}$/.test(strong.trim()) ? Number(strong) : -1 };
+    if (validateNotificationSettings(notifications) !== null) return { ok: false, error: 'A strong match needs a score between 1 and 100.' };
+    if (checked !== undefined && checked.ok && checked.newKey !== '') {
+      // Never fall back to SQLite: a device that cannot keep the key keeps nothing.
+      try { store.set(llmKeysSecret, withKey(store.get(llmKeysSecret), checked.settings.apiKeyLabel ?? '', checked.newKey)); }
+      catch { return { ok: false, error: 'This device could not keep the key securely, so nothing was saved.' }; }
+    }
+    return kept(storage, async (db) => {
+      await saveNotificationSettings(db, notifications);
+      if (checked !== undefined && checked.ok) {
+        const err = await saveLLMSettings(db, checked.settings);
+        if (err !== null) return { ok: false, error: err };
+      }
+      await saveDiscoverySettings(db, { refreshOnLaunch: refresh });
+      return { ok: true, error: '' };
+    });
   },
   // Search every ported source at once (core/discover-sources.ts): one that fails is named, never fatal; the rest dedupe by URL.
   discover: async ([query, slot], _store, storage): Promise<Result<'discover'>> => {
     if (query.trim() === '') return { jobs: [], failed: [], error: '' };
     const trackedJobs = await kept(storage, (db) => trackedJobIds(db));
+    const seeker = seekerOf(await kept(storage, (db) => firstCandidate(db)));
     const board = await opened(storage, CACHE, async () => undefined, (db) =>
-      searchBoard(db as unknown as Db, doFetch, URLS, slot * SLOT_MS, { ...emptyCriteria, keywords: query }, turn));
+      searchBoard(db as unknown as Db, doFetch, URLS, slot * SLOT_MS, { ...emptyCriteria, keywords: query }, turn, seeker));
     return {
       error: board.error, failed: board.sources.filter((x) => x.status !== 'ok').map((x) => x.sourceName),
       jobs: board.jobs.slice(0, 100).map((j) => ({ id: foundId(j), title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl,
@@ -282,10 +386,13 @@ const sources: Sources = {
       return { ok: saved.ok, error: saved.ok ? '' : saved.error };
     }),
   // A manual run (ADR-0037 section 3). No model is chosen yet (section 4), so no score is given and no application is created.
-  runScout: async ([id, now], _store, storage): Promise<Result<'runScout'>> =>
-    runScoutNow({
+  runScout: async ([id, now], _store, storage): Promise<Result<'runScout'>> => {
+    // The profile feeds the search rule's work-from, relocation and fit-hours (ADR-0037).
+    const seeker = seekerOf(await kept(storage, (db) => firstCandidate(db)));
+    return runScoutNow({
       withDb: (work) => kept(storage, work), now,
-      search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn)),
-    }, id),
+      search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn, seeker)),
+    }, id);
+  },
 };
 export const answer: Answer = (source, args, store, storage, native) => sources[source](args, store, storage, native);

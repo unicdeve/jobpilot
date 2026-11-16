@@ -14,7 +14,9 @@ routes nav
     scout "/scout/:id"
     scoutrun "/scout-run/:id"
   tab profile "/profile"
+    profileedit "/profile-edit"
     resumes "/resumes"
+    answers "/answers"
     activity "/activity"
     settings "/settings"
 
@@ -101,10 +103,38 @@ shape Me
   email: string
   phone: string
   location: string
+  timeZone: string
+  links: string[]
+  authorizations: string[]
+  skills: string
+  experiences: string[]
+  local: bool
+
+shape ProfileFields
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  city: string
+  region: string
+  country: string
+  timeZone: string
+  links: string
+  authorizations: string
+  skills: string
+  experiences: string
 
 shape Resume
   id: string
   name: string
+  updated: string
+  detail: string
+  local: bool
+
+shape KeptAnswer
+  id: string
+  question: string
+  answer: string
   updated: string
 
 shape Run
@@ -113,6 +143,20 @@ shape Run
   status: string
   started: string
   events: number
+  local: bool
+
+shape Notice
+  text: string
+
+shape ModelSettings
+  provider: string
+  baseUrl: string
+  model: string
+  keyLabel: string
+  hasKey: bool
+  notify: bool
+  strong: string
+  refresh: bool
 
 shape Model
   provider: string
@@ -181,7 +225,7 @@ component App
   derive fCeiling = fresh ? scoutForm.ceiling : dCeiling
   derive fEnabled = fresh ? scoutForm.enabled : dEnabled
   mutation savedScout as shape Reply refreshes scouts, savedSearches, scoutChoices, scoutForm, scoutRuns then afterSave
-  mutation ranScout as shape RunReply refreshes scouts, scoutRuns, applications
+  mutation ranScout as shape RunReply refreshes scouts, scoutRuns, applications, runs
   derive saveError = pending(savedScout) ? "" : match savedScout { case some(r) => r.error, case none => "" }
   derive ranHere = ranFor == openScout and not pending(ranScout)
   derive runOk = ranHere and match ranScout { case some(r) => r.ok, case none => false }
@@ -225,9 +269,203 @@ component App
       ranFor = openScout
       send ranScout = runScout(openScout, time.epochAtZero + performanceNow())
   resource me = loadProfile() as shape Me else empty()
+  resource profileForm = loadProfileForm() as shape ProfileFields else empty()
   resource resumes = loadResumes() as shape Resume[] else empty()
+  resource keptList = loadKept() as shape KeptAnswer[] else empty()
   resource runs = loadRuns() as shape Run[] else empty()
   resource model = loadModel() as shape Model else empty()
+  resource settings = loadSettings() as shape ModelSettings else empty()
+  state pFor = ""
+  state pFirst = ""
+  state pLast = ""
+  state pEmail = ""
+  state pPhone = ""
+  state pCity = ""
+  state pRegion = ""
+  state pCountry = ""
+  state pZone = ""
+  state pLinks = ""
+  state pAuth = ""
+  state pSkills = ""
+  state pExp = ""
+  derive pFresh = pFor == ""
+  derive vFirst = pFresh ? profileForm.firstName : pFirst
+  derive vLast = pFresh ? profileForm.lastName : pLast
+  derive vEmail = pFresh ? profileForm.email : pEmail
+  derive vPhone = pFresh ? profileForm.phone : pPhone
+  derive vCity = pFresh ? profileForm.city : pCity
+  derive vRegion = pFresh ? profileForm.region : pRegion
+  derive vCountry = pFresh ? profileForm.country : pCountry
+  derive vZone = pFresh ? profileForm.timeZone : pZone
+  derive vLinks = pFresh ? profileForm.links : pLinks
+  derive vAuth = pFresh ? profileForm.authorizations : pAuth
+  derive vSkills = pFresh ? profileForm.skills : pSkills
+  derive vExp = pFresh ? profileForm.experiences : pExp
+  mutation savedProfile as shape Reply refreshes me, profileForm then afterProfile
+  derive profileError = pending(savedProfile) ? "" : match savedProfile { case some(r) => r.error, case none => "" }
+  action beginProfile
+    if pFresh
+      pFirst = profileForm.firstName
+      pLast = profileForm.lastName
+      pEmail = profileForm.email
+      pPhone = profileForm.phone
+      pCity = profileForm.city
+      pRegion = profileForm.region
+      pCountry = profileForm.country
+      pZone = profileForm.timeZone
+      pLinks = profileForm.links
+      pAuth = profileForm.authorizations
+      pSkills = profileForm.skills
+      pExp = profileForm.experiences
+      pFor = "me"
+  action editFirst(v: string)
+    beginProfile()
+    pFirst = v
+  action editLast(v: string)
+    beginProfile()
+    pLast = v
+  action editEmail(v: string)
+    beginProfile()
+    pEmail = v
+  action editPhone(v: string)
+    beginProfile()
+    pPhone = v
+  action editCity(v: string)
+    beginProfile()
+    pCity = v
+  action editRegion(v: string)
+    beginProfile()
+    pRegion = v
+  action editCountry(v: string)
+    beginProfile()
+    pCountry = v
+  action editZone(v: string)
+    beginProfile()
+    pZone = v
+  action editLinks(v: string)
+    beginProfile()
+    pLinks = v
+  action editAuth(v: string)
+    beginProfile()
+    pAuth = v
+  action editSkills(v: string)
+    beginProfile()
+    pSkills = v
+  action editExp(v: string)
+    beginProfile()
+    pExp = v
+  action submitProfile
+    if not pending(savedProfile)
+      send savedProfile = saveProfile(vFirst, vLast, vEmail, vPhone, vCity, vRegion, vCountry, vZone, vLinks, vAuth, vSkills, vExp, time.epochAtZero + performanceNow())
+  action afterProfile
+    if match savedProfile { case some(r) => r.ok, case none => false }
+      pFor = ""
+      nav = back(nav)
+  state rName = ""
+  state rText = ""
+  mutation addedResume as shape Reply refreshes resumes then afterResume
+  mutation removedResume as shape Reply refreshes resumes
+  derive resumeError = pending(addedResume) ? "" : match addedResume { case some(r) => r.error, case none => "" }
+  action editRName(v: string)
+    rName = v
+  action editRText(v: string)
+    rText = v
+  action submitResume
+    if not pending(addedResume)
+      send addedResume = addResume(rName.trim(), rText, time.epochAtZero + performanceNow())
+  action afterResume
+    if match addedResume { case some(r) => r.ok, case none => false }
+      rName = ""
+      rText = ""
+  action dropResume(id: string)
+    send removedResume = removeResume(id)
+  state kQuestion = ""
+  state kAnswer = ""
+  mutation addedKept as shape Reply refreshes keptList then afterKept
+  mutation removedKept as shape Reply refreshes keptList
+  derive keptError = pending(addedKept) ? "" : match addedKept { case some(r) => r.error, case none => "" }
+  action editKQuestion(v: string)
+    kQuestion = v
+  action editKAnswer(v: string)
+    kAnswer = v
+  action submitKept
+    if not pending(addedKept)
+      send addedKept = addKept(kQuestion.trim(), kAnswer.trim(), time.epochAtZero + performanceNow())
+  action afterKept
+    if match addedKept { case some(r) => r.ok, case none => false }
+      kQuestion = ""
+      kAnswer = ""
+  action dropKept(id: string)
+    send removedKept = removeKept(id)
+  mutation cleared as shape Reply refreshes runs
+  action askClear
+    showModal("clear-activity")
+  action clearNow
+    send cleared = clearRuns()
+  resource started = startup() with time.epochAtZero when time.epochAtZero > 0 as shape Reply else empty()
+  state sFor = ""
+  state sProvider = ""
+  state sBase = ""
+  state sModel = ""
+  state sLabel = ""
+  state sKey = ""
+  state sNotify = true
+  state sStrong = ""
+  state sRefresh = true
+  derive sFresh = sFor == ""
+  derive wProvider = sFresh ? settings.provider : sProvider
+  derive wBase = sFresh ? settings.baseUrl : sBase
+  derive wModel = sFresh ? settings.model : sModel
+  derive wLabel = sFresh ? settings.keyLabel : sLabel
+  derive wKey = sFresh ? "" : sKey
+  derive wNotify = sFresh ? settings.notify : sNotify
+  derive wStrong = sFresh ? settings.strong : sStrong
+  derive wRefresh = sFresh ? settings.refresh : sRefresh
+  resource notice = loadNotice(wBase) as shape Notice else empty()
+  mutation savedSettings as shape Reply refreshes settings then afterSettings
+  derive settingsError = pending(savedSettings) ? "" : match savedSettings { case some(r) => r.error, case none => "" }
+  action beginSettings
+    if sFresh
+      sProvider = settings.provider
+      sBase = settings.baseUrl
+      sModel = settings.model
+      sLabel = settings.keyLabel
+      sKey = ""
+      sNotify = settings.notify
+      sStrong = settings.strong
+      sRefresh = settings.refresh
+      sFor = "me"
+  action editProvider(v: string)
+    beginSettings()
+    sProvider = v
+  action editBase(v: string)
+    beginSettings()
+    sBase = v
+  action editModel(v: string)
+    beginSettings()
+    sModel = v
+  action editLabel(v: string)
+    beginSettings()
+    sLabel = v
+  action editKey(v: string)
+    beginSettings()
+    sKey = v
+  action editNotify(on: bool)
+    beginSettings()
+    sNotify = on
+  action editStrong(v: string)
+    beginSettings()
+    sStrong = v
+  action editRefresh(on: bool)
+    beginSettings()
+    sRefresh = on
+  action submitSettings
+    if not pending(savedSettings)
+      send savedSettings = saveSettings(wProvider, wBase, wModel, wLabel, wKey, wNotify, wStrong, wRefresh)
+  action afterSettings
+    if match savedSettings { case some(r) => r.ok, case none => false }
+      sFor = ""
+      sKey = ""
   state finding = ""
   resource time = exactTime() as shape Time
   derive slot = floor(time.epochAtZero / 900000)
@@ -281,6 +519,8 @@ component App
     nav = go(nav, url)
   action back
     draftFor = ""
+    pFor = ""
+    sFor = ""
     nav = back(nav)
   action search(v: string)
     query = v
@@ -299,8 +539,14 @@ component App
               column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
                 display="flex" flex-direction="column"
                 header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
-                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "scout" ? (openScout == "new" ? "New Scout" : "Scout") : e.name == "scoutrun" ? "Run" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
-                    role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "scout" or e.name == "scoutrun" or e.name == "resumes" or e.name == "activity" or e.name == "settings" ? 2 : 1) flex=1
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "scout" ? (openScout == "new" ? "New Scout" : "Scout") : e.name == "scoutrun" ? "Run" : e.name == "profile" ? "Profile" : e.name == "profileedit" ? "Edit Profile" : e.name == "resumes" ? "Resumes" : e.name == "answers" ? "Kept Answers" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
+                    role="heading" aria-level=(e.name == "jobs" or e.name == "applications" or e.name == "discover" or e.name == "scouts" or e.name == "profile" ? 1 : 2) flex=1
+                  if e.name == "profile"
+                    button press=follow(path("profileedit")) testId="edit-profile"
+                      text "Edit"
+                  if e.name == "activity" and runs.filter(r => r.local).length > 0
+                    button press=askClear destructive=true testId="clear-activity"
+                      text "Clear"
                   if e.name == "jobs"
                     input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
                       testId="search" width="100%"
@@ -485,13 +731,13 @@ component App
                                 text t.detail font="-exact-subheadline" color="-exact-secondary-label"
                             text t.status font="-exact-footnote" color="-exact-secondary-label"
                 else if e.name == "profile"
-                  if failed(me)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadProfile testId="retry-profile"
-                        text "Try Again"
-                  else
-                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
-                      section
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      if me.name == "" and me.email == ""
+                        row padding-top=10 padding-bottom=10
+                          text "Nothing here yet. Tap Edit to add your details; only what you enter is kept, on this device." flex=1 min-width=0
+                            color="-exact-secondary-label" testId="profile-empty"
+                      else
                         row
                           text "Name"
                           text me.name testId="profile-name"
@@ -507,39 +753,215 @@ component App
                           row
                             text "Location"
                             text me.location
+                        if me.timeZone != ""
+                          row
+                            text "Time zone"
+                            text me.timeZone
+                    if me.skills != ""
                       section
-                        link href=path("resumes") testId="open-resumes"
-                          text "Resumes" flex=1
-                          image "symbol:forward-chevron"
-                        link href=path("activity") testId="open-activity"
-                          text "Activity" flex=1
-                          image "symbol:forward-chevron"
-                        link href=path("settings") testId="open-settings"
-                          text "Settings" flex=1
-                          image "symbol:forward-chevron"
+                        header
+                          text "Skills"
+                        row padding-top=10 padding-bottom=10
+                          text me.skills flex=1 min-width=0 testId="profile-skills"
+                    if me.experiences.length > 0
+                      section
+                        header
+                          text "Experience"
+                        for x in me.experiences key=x
+                          row padding-top=10 padding-bottom=10
+                            text x flex=1 min-width=0
+                    if me.authorizations.length > 0
+                      section
+                        header
+                          text "Work Authorization"
+                        for x in me.authorizations key=x
+                          row
+                            text x flex=1 min-width=0
+                    if me.links.length > 0
+                      section
+                        header
+                          text "Links"
+                        for x in me.links key=x
+                          row padding-top=10 padding-bottom=10
+                            text x flex=1 min-width=0
+                    section
+                      link href=path("resumes") testId="open-resumes"
+                        text "Resumes" flex=1
+                        image "symbol:forward-chevron"
+                      link href=path("answers") testId="open-answers"
+                        text "Kept Answers" flex=1
+                        image "symbol:forward-chevron"
+                      link href=path("activity") testId="open-activity"
+                        text "Activity" flex=1
+                        image "symbol:forward-chevron"
+                      link href=path("settings") testId="open-settings"
+                        text "Settings" flex=1
+                        image "symbol:forward-chevron"
+                else if e.name == "profileedit"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      header
+                        text "You"
+                      row padding-top=10 padding-bottom=10
+                        input value=vFirst input=editFirst placeholder="First name" aria-label="First name" autocapitalize="words" testId="p-first" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=vLast input=editLast placeholder="Last name" aria-label="Last name" autocapitalize="words" testId="p-last" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input type="email" value=vEmail input=editEmail placeholder="Email" aria-label="Email" testId="p-email" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input type="tel" value=vPhone input=editPhone placeholder="Phone" aria-label="Phone" testId="p-phone" flex=1 min-width=0
+                    section
+                      header
+                        text "Where You Are"
+                      row padding-top=10 padding-bottom=10
+                        input value=vCity input=editCity placeholder="City" aria-label="City" autocapitalize="words" testId="p-city" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=vRegion input=editRegion placeholder="Region" aria-label="Region" autocapitalize="words" testId="p-region" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=vCountry input=editCountry placeholder="Country" aria-label="Country" autocapitalize="words" testId="p-country" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=vZone input=editZone placeholder="Time zone, such as Africa/Lagos" aria-label="Time zone" autocapitalize="none" testId="p-zone" flex=1 min-width=0
+                    section
+                      header
+                        text "Skills"
+                      row padding-top=10 padding-bottom=10
+                        textarea value=vSkills input=editSkills rows=3 placeholder="Go: 6, SQLite" aria-label="Skills, with years after a colon" testId="p-skills" flex=1 min-width=0
+                      footer
+                        text "Separate with commas or new lines. Years are optional."
+                    section
+                      header
+                        text "Experience"
+                      row padding-top=10 padding-bottom=10
+                        textarea value=vExp input=editExp rows=4 placeholder="Title | Company | 2022-07 | | What you did" aria-label="Experience, one role per line" testId="p-exp" flex=1 min-width=0
+                      footer
+                        text "One role per line: title | company | start | end | what you did. Leave the end empty for a current role."
+                    section
+                      header
+                        text "Work Authorization"
+                      row padding-top=10 padding-bottom=10
+                        textarea value=vAuth input=editAuth rows=2 placeholder="Nigeria: authorized" aria-label="Work authorization, one country per line" testId="p-auth" flex=1 min-width=0
+                      footer
+                        text "One country per line: authorized, or needs sponsorship."
+                    section
+                      header
+                        text "Links"
+                      row padding-top=10 padding-bottom=10
+                        textarea value=vLinks input=editLinks rows=3 placeholder="github https://github.com/you" aria-label="Links, one per line" testId="p-links" flex=1 min-width=0
+                      footer
+                        text "One per line: linkedin, github, portfolio, website, twitter or other, then the address."
+                    section
+                      button press=submitProfile disabled=(pending(savedProfile)) testId="profile-save"
+                        text "Save"
+                      if profileError != ""
+                        row padding-top=10 padding-bottom=10
+                          text profileError color="-exact-system-red" flex=1 min-width=0 testId="profile-error"
                 else if e.name == "resumes"
-                  if failed(resumes)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadResumes testId="retry-resumes"
-                        text "Try Again"
-                  else if resumes.length == 0 and not pending(resumes)
-                    EmptyState(symbol="symbol:document", title="No Resumes", message="Add a resume in JobPilot and it appears here.")
-                  else
-                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      header
+                        text "Add a Resume"
+                      row padding-top=10 padding-bottom=10
+                        input value=rName input=editRName placeholder="Name" aria-label="Resume name" autocapitalize="words" testId="resume-name" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        textarea value=rText input=editRText rows=6 placeholder="Paste or type your resume" aria-label="Resume text" testId="resume-text" flex=1 min-width=0
+                      button press=submitResume disabled=(pending(addedResume)) testId="resume-add"
+                        text "Add Resume"
+                      if resumeError != ""
+                        row padding-top=10 padding-bottom=10
+                          text resumeError color="-exact-system-red" flex=1 min-width=0 testId="resume-error"
+                      footer
+                        text "Resumes are kept as text or Markdown that you paste or type. Importing a PDF or Word file is not available in this app yet." testId="resume-note"
+                    if resumes.length > 0
                       section
-                        for r in resumes key=r.id
-                          row testId=`resume-${r.id}`
+                        header
+                          text "Your Resumes"
+                        for r, i in resumes key=r.id
+                          row delete=dropResume(r.id) disabled=(not r.local) testId=`resume-${r.id}`
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text r.name
-                              text r.updated font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
-                else if e.name == "settings"
-                  if failed(model)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadModel testId="retry-settings"
-                        text "Try Again"
-                  else
-                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                              text r.name testId=`resume-title-${i}`
+                              if r.detail != ""
+                                text r.detail font="-exact-footnote" color="-exact-secondary-label"
+                            text r.updated font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                else if e.name == "answers"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      header
+                        text "Keep an Answer"
+                      row padding-top=10 padding-bottom=10
+                        input value=kQuestion input=editKQuestion placeholder="The question" aria-label="The question" testId="kept-question" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        textarea value=kAnswer input=editKAnswer rows=4 placeholder="Your answer, in your own words" aria-label="Your answer" testId="kept-answer" flex=1 min-width=0
+                      button press=submitKept disabled=(pending(addedKept)) testId="kept-add"
+                        text "Keep Answer"
+                      if keptError != ""
+                        row padding-top=10 padding-bottom=10
+                          text keptError color="-exact-system-red" flex=1 min-width=0 testId="kept-error"
+                      footer
+                        text "JobPilot never writes an answer for you. These are only what you typed, kept so you can copy them into an application."
+                    if keptList.length > 0
                       section
+                        header
+                          text "Kept"
+                        for k in keptList key=k.id
+                          row delete=dropKept(k.id) testId=`kept-${k.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text k.question testId=`kept-q-${k.id}`
+                              text k.answer font="-exact-subheadline" color="-exact-secondary-label"
+                              text k.updated font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
+                else if e.name == "settings"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                    section
+                      header
+                        text "Model"
+                      row
+                        text "Provider" flex=1
+                        select value=wProvider change=editProvider aria-label="Provider" testId="set-provider"
+                          option "Ollama" value="ollama"
+                          option "OpenAI-compatible" value="openai"
+                      row padding-top=10 padding-bottom=10
+                        input type="url" value=wBase input=editBase placeholder="Base URL" aria-label="Base URL" autocapitalize="none" testId="set-base" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=wModel input=editModel placeholder="Model" aria-label="Model" autocapitalize="none" testId="set-model" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input value=wLabel input=editLabel placeholder="Key name, such as openrouter" aria-label="Key name" autocapitalize="none" testId="set-label" flex=1 min-width=0
+                      row padding-top=10 padding-bottom=10
+                        input type="password" value=wKey input=editKey placeholder=(settings.hasKey ? "A key is kept; type to replace it" : "API key") aria-label="API key" testId="set-key" flex=1 min-width=0
+                      if notice.text != ""
+                        row padding-top=10 padding-bottom=10
+                          text notice.text flex=1 min-width=0 color="-exact-label" testId="set-notice"
+                      if settings.model == "" and settings.baseUrl == ""
+                        row padding-top=10 padding-bottom=10
+                          text "No model is set up, so scouts find and filter jobs but score none." flex=1 min-width=0 color="-exact-secondary-label" testId="set-nomodel"
+                      footer
+                        text "The key is kept in this device’s secure storage, never in the app’s database, and is not shown again. On the web build it is kept in the browser, for development only."
+                    section
+                      header
+                        text "Notifications"
+                      row
+                        text "Notify me" flex=1
+                        input type="checkbox" switch checked=wNotify change=editNotify aria-label="Notify me" testId="set-notify"
+                      row
+                        text "Strong match from" flex=1
+                        input type="number" value=wStrong input=editStrong min=1 max=100 step=5 aria-label="Strong match score" testId="set-strong"
+                    section
+                      header
+                        text "Discovery"
+                      row
+                        text "Refresh on launch" flex=1
+                        input type="checkbox" switch checked=wRefresh change=editRefresh aria-label="Refresh on launch" testId="set-refresh"
+                    section
+                      button press=submitSettings disabled=(pending(savedSettings)) testId="settings-save"
+                        text "Save"
+                      if settingsError != ""
+                        row padding-top=10 padding-bottom=10
+                          text settingsError color="-exact-system-red" flex=1 min-width=0 testId="settings-error"
+                      else if sFresh and match savedSettings { case some(r) => r.ok, case none => false }
+                        row
+                          text "Saved" color="-exact-secondary-label" testId="settings-saved"
+                    if model.provider != ""
+                      section
+                        header
+                          text "JobPilot on Your Computer"
                         row
                           text "Provider"
                           text model.provider testId="setting-provider"
@@ -552,19 +974,15 @@ component App
                               text "Address"
                               text model.address font="-exact-subheadline" color="-exact-secondary-label"
                 else if e.name == "activity"
-                  if failed(runs)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadRuns testId="retry-activity"
-                        text "Try Again"
-                  else if runs.length == 0 and not pending(runs)
+                  if runs.length == 0 and not pending(runs)
                     EmptyState(symbol="symbol:search", title="No Activity", message="What JobPilot does on your behalf is recorded here.")
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
-                        for r in runs key=r.id
+                        for r, i in runs key=r.id
                           row testId=`run-${r.id}`
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text r.title
+                              text r.title testId=`run-title-${i}`
                               text `${r.events} ${r.events == 1 ? "step" : "steps"}` font="-exact-subheadline" color="-exact-secondary-label"
                             column align-items="flex-end" gap=2
                               text r.status testId=`run-status-${r.id}`
@@ -654,6 +1072,12 @@ component App
                     section
                       link href=opened.url testId="detail-open"
                         text "Open the Posting"
+      dialog id="clear-activity" role="alertdialog" aria-label="Clear all activity?"
+        text "This removes the record of every run on this device. Your applications and scouts stay."
+        button press=clearNow destructive=true commandfor="clear-activity" command="close" testId="clear-confirm"
+          text "Clear"
+        button commandfor="clear-activity" command="close" testId="clear-cancel"
+          text "Cancel"
       row role="tablist" testId="tabs"
         button role="tab" aria-controls="panel-jobs" aria-selected=(nav.tab == "jobs") press=pick("jobs")
           testId="tab-jobs" flex=1
