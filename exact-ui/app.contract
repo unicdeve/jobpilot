@@ -3,6 +3,14 @@
 // The candidate writes and sends their own application (ADR-0034): the detail's one action opens the
 // posting in their own browser, and nothing here fills or submits a form.
 use EmptyState from "exact:content"
+use Badge from "exact:content"
+
+// Motion: rows rise into place as a list first shows, and a reply (a run's result, an error) settles in.
+// Every animation is "none" under Reduce Motion.
+keyframes rise
+  from opacity=0 translate="0px 12px"
+keyframes settle
+  from opacity=0 scale=0.97
 
 routes nav
   tab jobs "/"
@@ -210,10 +218,24 @@ shape Application
   state: string
   updated: string
 
+shape Media
+  prefersReducedMotion: bool
+
+// A status reads as a word in a badge; the colour only repeats it. Good news is green, a closed door red,
+// a step in progress the brand's teal, and anything settled or waiting the neutral grey.
+fn stateTint(s: string): option<string> = s == "Offer" or s == "Interviewing" ? some("-exact-system-green") : s == "Rejected" ? some("-exact-system-red") : s == "Sent" or s == "Approved" or s == "Matched" ? some("AccentColor") : none
+fn runTint(s: string): option<string> = s == "failed" ? some("-exact-system-red") : s == "running" ? some("AccentColor") : s == "completed" ? some("-exact-system-green") : none
+fn capital(s: string): string = s == "" ? "" : s.slice(0, 1).toUpperCase() + s.slice(1)
+// A row's entrance, staggered by its place in the list and capped, so a long list does not wait on its tail.
+fn rise(still: bool, i: number): string = still ? "none" : `rise 360ms cubic-bezier(0.2, 0.7, 0.2, 1) ${i < 8 ? i * 45 : 360}ms both`
+fn settle(still: bool): string = still ? "none" : "settle 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both"
+
 fn matches(j: Job, q: string): bool = j.title.toLowerCase().includes(q.trim().toLowerCase()) or j.company.toLowerCase().includes(q.trim().toLowerCase())
 fn blankJob(): Job = Job(id="", title="", company="", location="", remote="", salary="", posted="", skills=[], description="", url="")
 
 component App
+  resource media = exactViewport() as shape Media
+  derive still = media.prefersReducedMotion
   state query = ""
   resource jobs = loadJobs() as shape Job[] else empty()
   resource applications = loadApplications() as shape Application[] else empty()
@@ -390,6 +412,8 @@ component App
   mutation removedResume as shape Reply refreshes resumes
   mutation importedResume as shape Reply refreshes resumes
   derive importError = pending(importedResume) ? "" : match importedResume { case some(r) => r.error, case none => "" }
+  action chooseResume
+    showPicker("resume-file")
   action pickedResume(files: Picked[])
     if files.length > 0 and not pending(importedResume)
       send importedResume = importResume(match files.at(0) { case some(f) => f.path, case none => "" }, match files.at(0) { case some(f) => f.name, case none => "" }, time.epochAtZero + performanceNow())
@@ -582,7 +606,7 @@ component App
 
   view
     main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow testId="app" width="100%" height="100%"
-      display="flex" flex-direction="column"
+      display="flex" flex-direction="column" accent-color="AccentColor"
       column flex=1 min-height=0 position="relative"
         for t in nav.tabs key=t.name
           column role="tabpanel" id=`panel-${t.name}` position="absolute" inset=0
@@ -609,53 +633,61 @@ component App
                       testId="find" width="100%"
                 if e.name == "jobs"
                   if failed(jobs)
-                    EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadJobs testId="retry-jobs"
+                    EmptyState(symbol="symbol:bag", title="Jobs from Your Computer", message="Jobs that JobPilot finds on your computer show here while it is running. To search from this phone, use Discover.")
+                      button press=pick("discover") buttonStyle="filled" testId="jobs-discover"
+                        text "Search in Discover"
+                      button press=reloadJobs buttonStyle="tinted" testId="retry-jobs"
                         text "Try Again"
                   else if jobs.length == 0 and not pending(jobs)
-                    EmptyState(symbol="symbol:search", title="No Jobs Yet", message="Run a search in JobPilot and what it finds appears here.")
+                    EmptyState(symbol="symbol:bag", title="No Jobs Yet", message="Jobs that JobPilot finds on your computer show here. To search from this phone, use Discover.")
+                      button press=pick("discover") buttonStyle="filled" testId="jobs-discover-empty"
+                        text "Search in Discover"
                   else if shown.length == 0 and not pending(jobs)
                     EmptyState(symbol="symbol:search", title=`No Results for “${query.trim()}”`, message="Check the spelling or try a new search.")
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
-                        for j in shown key=j.id
-                          link href=path("job", j.id) testId=`job-${j.id}`
+                        for j, i in shown key=j.id
+                          link href=path("job", j.id) testId=`job-${j.id}` animation=rise(still, i)
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text j.title
-                              text `${j.company}${j.location == "" ? "" : " · " + j.location}` font="-exact-subheadline"
+                              text j.title font="-exact-headline"
+                              text [j.company, j.location].filter(x => x != "").join(" · ") font="-exact-subheadline"
                                 color="-exact-secondary-label" line-clamp=1
                             image "symbol:forward-chevron"
                 else if e.name == "applications"
                   if failed(applications)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
-                      button press=reloadApplications testId="retry-applications"
+                      button press=reloadApplications buttonStyle="tinted" testId="retry-applications"
                         text "Try Again"
                   else if applications.length == 0 and not pending(applications)
-                    EmptyState(symbol="symbol:document", title="No Applications", message="Start one from a job you want to apply for.")
+                    EmptyState(symbol="symbol:document", title="No Applications", message="Track a job from Discover, or let a Scout find some for you.")
+                      button press=pick("discover") buttonStyle="filled" testId="applications-discover"
+                        text "Find a Job"
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
-                        for a in applications key=a.id
+                        for a, i in applications key=a.id
                           link href=path("application", a.id) testId=`application-${a.id}` display="flex" flex-wrap="wrap" align-items="center"
+                            animation=rise(still, i)
                             column flex="1 1 12rem" min-width=0 gap=2 padding-top=4 padding-bottom=4
-                              text a.title
+                              text a.title font="-exact-headline"
                               text a.company font="-exact-subheadline" color="-exact-secondary-label"
-                            column align-items="flex-end" gap=2
-                              text a.state testId=`state-${a.id}`
+                            column align-items="flex-end" gap=4
+                              column testId=`state-${a.id}`
+                                Badge(label=a.state, tint=stateTint(a.state))
                               text a.updated font="-exact-footnote" color="-exact-secondary-label"
                                 font-variant-numeric="tabular-nums"
                             image "symbol:forward-chevron"
                 else if e.name == "discover"
                   if failed(found)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach the Job Board", message="Check your connection.")
-                      button press=reloadFound testId="retry-found"
+                      button press=reloadFound buttonStyle="tinted" testId="retry-found"
                         text "Try Again"
                   else if finding.trim() == ""
                     EmptyState(symbol="symbol:search", title="Search the Job Board", message="Type a role or a keyword to search every job source at once.")
                   else if found.error != ""
                     EmptyState(symbol="symbol:alert", title="Nothing to Show", message=found.error)
-                      button press=reloadFound testId="retry-found"
+                      button press=reloadFound buttonStyle="tinted" testId="retry-found"
                         text "Try Again"
                   else if found.jobs.length == 0 and not pending(found)
                     EmptyState(symbol="symbol:search", title="No Jobs Found", message=found.failed.length > 0 ? `${found.failed.join(", ")} did not answer.` : "Try other keywords.")
@@ -667,49 +699,54 @@ component App
                             text `${found.failed.join(", ")} did not answer, so their jobs are missing.` flex=1 min-width=0
                               font="-exact-subheadline" color="-exact-secondary-label" testId="source-notice"
                       section
-                        for f in found.jobs key=f.id
-                          row display="flex" flex-wrap="wrap" align-items="center" gap=8
+                        for f, i in found.jobs key=f.id
+                          row display="flex" flex-wrap="wrap" align-items="center" gap=8 animation=rise(still, i)
                             link href=f.url testId=`found-${f.id}` flex="1 1 12rem" min-width=0
                               column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                                text f.title
-                                text `${f.company}${f.location == "" ? "" : " · " + f.location}` font="-exact-subheadline"
+                                text f.title font="-exact-headline"
+                                text [f.company, f.location].filter(x => x != "").join(" · ") font="-exact-subheadline"
                                   color="-exact-secondary-label"
                                 text `via ${f.source}` font="-exact-footnote" color="-exact-secondary-label" testId=`found-source-${f.id}`
                             if f.tracked
-                              text "Tracked" font="-exact-subheadline" color="-exact-secondary-label" testId=`tracked-${f.id}`
+                              column testId=`tracked-${f.id}` animation=settle(still)
+                                Badge(label="Tracked", tint=some("AccentColor"))
                             else
-                              button press=track(f.id, f.title, f.company, f.url) testId=`track-${f.id}`
+                              button press=track(f.id, f.title, f.company, f.url) buttonStyle="tinted" testId=`track-${f.id}`
                                 text "Track"
                 else if e.name == "scouts"
                   if failed(scouts)
                     EmptyState(symbol="symbol:alert", title="Can’t Load Scouts", message="Something went wrong reading them.")
-                      button press=reloadScouts testId="retry-scouts"
+                      button press=reloadScouts buttonStyle="tinted" testId="retry-scouts"
                         text "Try Again"
                   else if scouts.length == 0 and savedSearches.length == 0 and not pending(scouts)
-                    EmptyState(symbol="symbol:radio", title="No Scouts", message="A Scout runs a saved search and creates applications for you to review. Tap New to make one.")
+                    EmptyState(symbol="symbol:radio", title="No Scouts", message="A Scout runs a saved search and creates applications for you to review.")
+                      button press=follow(path("scout", "new")) buttonStyle="filled" testId="scouts-new"
+                        text "New Scout"
                   else
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       if scouts.length > 0
                         section
-                          for s in scouts key=s.id
+                          for s, i in scouts key=s.id
                             if s.local
-                              link href=path("scout", s.id) testId=`scout-${s.id}`
+                              link href=path("scout", s.id) testId=`scout-${s.id}` animation=rise(still, i)
                                 column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                                  text s.name
+                                  text s.name font="-exact-headline"
                                   text s.search font="-exact-subheadline" color="-exact-secondary-label" line-clamp=1
                                   text `Minimum match ${s.minScore}% · up to ${s.ceiling} per run` font="-exact-subheadline" color="-exact-secondary-label"
                                   if s.lastRun != ""
                                     text `Last run ${s.lastRun}` font="-exact-footnote" color="-exact-secondary-label"
-                                text (s.enabled ? "On" : "Off") testId=`scout-state-${s.id}`
+                                column testId=`scout-state-${s.id}`
+                                  Badge(label=(s.enabled ? "On" : "Off"), tint=(s.enabled ? some("AccentColor") : none))
                                 image "symbol:forward-chevron"
                             else
-                              row testId=`scout-${s.id}`
+                              row testId=`scout-${s.id}` animation=rise(still, i)
                                 column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                                  text s.name
+                                  text s.name font="-exact-headline"
                                   text `Minimum match ${s.minScore}% · up to ${s.ceiling} per run` font="-exact-subheadline" color="-exact-secondary-label"
                                   if s.lastRun != ""
                                     text `Last run ${s.lastRun}` font="-exact-footnote" color="-exact-secondary-label"
-                                text (s.enabled ? "On" : "Off") testId=`scout-state-${s.id}`
+                                column testId=`scout-state-${s.id}`
+                                  Badge(label=(s.enabled ? "On" : "Off"), tint=(s.enabled ? some("AccentColor") : none))
                       if savedSearches.length > 0
                         section
                           header
@@ -746,23 +783,24 @@ component App
                       button press=submitScout disabled=(pending(savedScout)) testId="scout-save"
                         text "Save"
                       if saveError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text saveError color="-exact-system-red" flex=1 min-width=0 testId="scout-error"
                     if openScout != "new"
                       section
                         button press=runNow disabled=(pending(ranScout)) testId="scout-run"
                           text (pending(ranScout) ? "Running…" : "Run Now")
                         if runText != ""
-                          row padding-top=10 padding-bottom=10
+                          row padding-top=10 padding-bottom=10 animation=settle(still)
                             text runText color=(runOk ? "-exact-label" : "-exact-system-red") flex=1 min-width=0 testId="scout-run-result"
                       if scoutRuns.length > 0
                         section
                           header
                             text "Runs"
-                          for r in scoutRuns key=r.id
-                            link href=path("scoutrun", r.id) testId=`scout-run-${r.id}`
-                              column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
-                                text r.status testId=`scout-run-status-${r.id}`
+                          for r, i in scoutRuns key=r.id
+                            link href=path("scoutrun", r.id) testId=`scout-run-${r.id}` animation=rise(still, i)
+                              column flex=1 min-width=0 gap=4 padding-top=4 padding-bottom=4 align-items="flex-start"
+                                column testId=`scout-run-status-${r.id}`
+                                  Badge(label=capital(r.status), tint=runTint(r.status))
                                 text r.summary font="-exact-subheadline" color="-exact-secondary-label"
                                 if r.error != ""
                                   text r.error font="-exact-footnote" color="-exact-system-red"
@@ -907,7 +945,7 @@ component App
                       button press=submitProfile disabled=(pending(savedProfile)) testId="profile-save"
                         text "Save"
                       if profileError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text profileError color="-exact-system-red" flex=1 min-width=0 testId="profile-error"
                 else if e.name == "resumes"
                   list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
@@ -921,12 +959,14 @@ component App
                       button press=submitResume disabled=(pending(addedResume)) testId="resume-add"
                         text "Add Resume"
                       row padding-top=10 padding-bottom=10
-                        input type="file" id="resume-file" testId="resume-file" change=pickedResume aria-label="Import a resume file" flex=1 min-width=0
+                        button press=chooseResume buttonStyle="tinted" disabled=(pending(importedResume)) testId="resume-import"
+                          text (pending(importedResume) ? "Reading…" : "Import a File")
+                        input type="file" id="resume-file" testId="resume-file" change=pickedResume aria-label="Import a resume file" display="none"
                       if importError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text importError color="-exact-system-red" flex=1 min-width=0 testId="resume-import-error"
                       if resumeError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text resumeError color="-exact-system-red" flex=1 min-width=0 testId="resume-error"
                       footer
                         text "Resumes are kept as text or Markdown that you paste or type, or read from a PDF, Word, text or Markdown file on this device. A scanned or protected PDF cannot be read: paste its text instead." testId="resume-note"
@@ -951,7 +991,7 @@ component App
                       button press=submitCompany disabled=(pending(addedCompany)) testId="company-add"
                         text "Watch Company"
                       if companyError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text companyError color="-exact-system-red" flex=1 min-width=0 testId="company-error"
                       footer
                         text "Paste a Greenhouse, Lever, Ashby, Workable or SmartRecruiters hiring page, or any posting on it. Its openings join Discover and your scouts as Company pages."
@@ -990,7 +1030,7 @@ component App
                       button press=submitKept disabled=(pending(addedKept)) testId="kept-add"
                         text "Keep Answer"
                       if keptError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text keptError color="-exact-system-red" flex=1 min-width=0 testId="kept-error"
                       footer
                         text "JobPilot never writes an answer for you. These are only what you typed, kept so you can copy them into an application."
@@ -1049,7 +1089,7 @@ component App
                       button press=submitSettings disabled=(pending(savedSettings)) testId="settings-save"
                         text "Save"
                       if settingsError != ""
-                        row padding-top=10 padding-bottom=10
+                        row padding-top=10 padding-bottom=10 animation=settle(still)
                           text settingsError color="-exact-system-red" flex=1 min-width=0 testId="settings-error"
                       else if sFresh and match savedSettings { case some(r) => r.ok, case none => false }
                         row
@@ -1076,12 +1116,13 @@ component App
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
                         for r, i in runs key=r.id
-                          row testId=`run-${r.id}`
+                          row testId=`run-${r.id}` animation=rise(still, i)
                             column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
                               text r.title testId=`run-title-${i}`
                               text `${r.events} ${r.events == 1 ? "step" : "steps"}` font="-exact-subheadline" color="-exact-secondary-label"
-                            column align-items="flex-end" gap=2
-                              text r.status testId=`run-status-${r.id}`
+                            column align-items="flex-end" gap=4
+                              column testId=`run-status-${r.id}`
+                                Badge(label=capital(r.status), tint=runTint(r.status))
                               text r.started font="-exact-footnote" color="-exact-secondary-label" font-variant-numeric="tabular-nums"
                 else if e.name == "application"
                   list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
@@ -1090,8 +1131,9 @@ component App
                         text "Company"
                         text app.company
                       row
-                        text "Status"
-                        text app.state testId="app-state"
+                        text "Status" flex=1
+                        column testId="app-state" -exact-layout-transition=(still ? "none" : "260ms ease")
+                          Badge(label=app.state, tint=stateTint(app.state))
                       row
                         text "Updated"
                         text app.updated font-variant-numeric="tabular-nums"
@@ -1109,7 +1151,7 @@ component App
                             button press=advance(n.code) testId=`next-${n.code}`
                               text n.label
                           if moveError != ""
-                            row
+                            row animation=settle(still)
                               text moveError color="-exact-system-red" testId="move-error"
                       section
                         row padding-top=10 padding-bottom=10
@@ -1118,7 +1160,7 @@ component App
                         button press=saveLink disabled=(pending(linked)) testId="save-link"
                           text "Save Link"
                         if linkError != ""
-                          row
+                          row animation=settle(still)
                             text linkError color="-exact-system-red" testId="link-error"
                     if steps.length > 0
                       section
@@ -1154,6 +1196,10 @@ component App
                       row
                         text "Fit"
                         text scoreText testId="detail-score"
+                      if fit.jobId == selected and fit.score >= 0
+                        row padding-top=6 padding-bottom=10
+                          progress value=fit.score max=100 aria-label="Match score" aria-valuetext=scoreText
+                            flex=1 min-width=0 animation=settle(still) testId="detail-meter"
                       if fit.jobId == selected and fit.rationale != ""
                         row padding-top=10 padding-bottom=10
                           text fit.rationale flex=1 min-width=0 testId="detail-rationale"
@@ -1177,7 +1223,7 @@ component App
                           button press=watchThisCompany disabled=(pending(watchedJob)) testId="company-watch"
                             text "Watch This Company"
                         if watchJobError != ""
-                          row
+                          row animation=settle(still)
                             text watchJobError color="-exact-system-red" flex=1 min-width=0 testId="company-watch-error"
       dialog id="clear-activity" role="alertdialog" aria-label="Clear all activity?"
         text "This removes the record of every run on this device. Your applications and scouts stay."

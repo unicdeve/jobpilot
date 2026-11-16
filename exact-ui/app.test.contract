@@ -78,7 +78,7 @@ test "resumes and activity open from the profile"
   tap "tab-profile"
   tap "open-activity"
   clock data
-  expect text "run-status-run1" == "completed"
+  expect text "run-status-run1" == "Completed"
 
 test "settings show the model JobPilot uses"
   clock data
@@ -256,7 +256,7 @@ test "a resume file is read on the device and listed"
   clock data
   tap "open-resumes"
   clock data
-  tap "resume-file"
+  tap "resume-import"
   pick "resume-file" "fixtures/resume.pdf"
   clock data
   expect text "resume-title-0" == "resume.pdf"
@@ -267,7 +267,7 @@ test "a file that is not a resume format is refused and nothing is kept"
   clock data
   tap "open-resumes"
   clock data
-  tap "resume-file"
+  tap "resume-import"
   pick "resume-file" "fixtures/notes.xyz"
   clock data
   expect tree has "resume-import-error"

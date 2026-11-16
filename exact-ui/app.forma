@@ -1,0 +1,6 @@
+forma jobpilot
+
+// Lagoon, the phone apps' brand: a deep teal, light and dark.
+// Each side keeps a filled button's white label at 3:1 or more.
+theme
+  AccentColor = light-dark(#0e7c7b, #1f9e98)
