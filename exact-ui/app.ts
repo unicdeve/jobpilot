@@ -2,8 +2,17 @@ import type { Answer, Result, Sources } from './app.contract.d.ts';
 
 // The JobPilot daemon's loopback address (ADR-0012). The daemon picks a free port on every start, so a real
 // run sets API_BASE_URL to the address `jobpilot-cli ui` prints; the default is the test server's (server.ts).
+import { emptyCriteria, matches } from './core/criteria.ts';
+import { fetchRemotive, type SourceJob } from './core/remotive.ts';
+
 export const API: string = import.meta.env.API_BASE_URL ?? 'http://127.0.0.1:4417';
-export const grants = `net.fetch ${API}`;
+const SOURCE: string = import.meta.env.REMOTIVE_URL ?? 'https://remotive.com/api/remote-jobs';
+// ADR-0037: discovery with no daemon. The listing is kept in SQLite on the device for Remotive's own cache
+// window (its terms ask for few requests a day), and the search rule runs here, as it does in the Go core.
+// A data source cannot read the clock, so the view passes the current hour.
+const FRESH_HOURS = 4;
+const CACHE = 'app:/data/jobs.db';
+export const grants = `net.fetch ${API}\nnet.fetch ${SOURCE}\nsqlite.open ${CACHE}`;
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -109,6 +118,27 @@ const sources: Sources = {
     if (!isObject(s)) return { provider: '', model: '', address: '' };
     return { provider: str(s.provider), model: str(s.model), address: str(s.base_url) };
   },
+discover: async ([query, hour], _store, storage): Promise<Result<'discover'>> => {
+  const db = await storage.sqlite.open(CACHE);
+  try {
+    await db.execute('CREATE TABLE IF NOT EXISTS found (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
+    await db.execute('CREATE TABLE IF NOT EXISTS fetched (at INTEGER NOT NULL)');
+    const at = Number((await db.query('SELECT MAX(at) FROM fetched')).rows[0]?.[0] ?? 0);
+    if (hour - at >= FRESH_HOURS) {
+      const listing = await fetchRemotive((url) => fetch(url, { exactTimeout: 15000 }), SOURCE);
+      await db.transaction([
+        { sql: 'DELETE FROM found' },
+        ...listing.map((j) => ({ sql: 'INSERT OR REPLACE INTO found (id, body) VALUES (?, ?)', params: [j.sourceJobId, JSON.stringify(j)] })),
+        { sql: 'DELETE FROM fetched' },
+        { sql: 'INSERT INTO fetched (at) VALUES (?)', params: [hour] },
+      ]);
+    }
+    const criteria = { ...emptyCriteria, keywords: query };
+    return (await db.query('SELECT body FROM found ORDER BY id')).rows
+      .map(([body]) => JSON.parse(String(body)) as SourceJob).filter((j) => matches(criteria, j))
+      .slice(0, 100).map((j) => ({ id: j.sourceJobId, title: j.title, company: j.companyName, location: j.locations.join(', '), url: j.canonicalUrl }));
+  } finally { await db.close(); }
+},
   loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
     const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
     if (!Array.isArray(list)) return [];

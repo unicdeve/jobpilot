@@ -9,6 +9,7 @@ routes nav
     job "/job/:id"
   tab applications "/applications"
     application "/application/:id"
+  tab discover "/discover"
   tab scouts "/scouts"
   tab profile "/profile"
     resumes "/resumes"
@@ -33,6 +34,16 @@ shape Match
   rationale: string
   strengths: string[]
   gaps: string[]
+
+shape Time
+  epochAtZero: number
+
+shape Found
+  id: string
+  title: string
+  company: string
+  location: string
+  url: string
 
 shape Scout
   id: string
@@ -98,6 +109,14 @@ component App
   resource resumes = loadResumes() as shape Resume[] else empty()
   resource runs = loadRuns() as shape Run[] else empty()
   resource model = loadModel() as shape Model else empty()
+  state finding = ""
+  resource time = exactTime() as shape Time
+  derive hour = floor(time.epochAtZero / 3600000)
+  resource found = discover(finding, hour) when time.epochAtZero > 0 as shape Found[] else empty()
+  action find(v: string)
+    finding = v
+  action reloadFound
+    refresh found
   action reloadModel
     refresh model
   action reloadResumes
@@ -135,7 +154,7 @@ component App
               column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
                 display="flex" flex-direction="column"
                 header display="flex" flex-wrap="wrap" align-items="center" gap=8 padding="8px 16px"
-                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "scouts" ? "Scouts" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
+                  text (e.name == "jobs" ? "Jobs" : e.name == "applications" ? "Applications" : e.name == "application" ? app.title : e.name == "discover" ? "Discover" : e.name == "scouts" ? "Scouts" : e.name == "profile" ? "Profile" : e.name == "resumes" ? "Resumes" : e.name == "activity" ? "Activity" : e.name == "settings" ? "Settings" : opened.title)
                     role="heading" aria-level=(e.name == "job" or e.name == "application" or e.name == "resumes" or e.name == "activity" or e.name == "settings" ? 2 : 1) flex=1
                   if e.name == "jobs"
                     input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
@@ -179,6 +198,24 @@ component App
                               text a.updated font="-exact-footnote" color="-exact-secondary-label"
                                 font-variant-numeric="tabular-nums"
                             image "symbol:forward-chevron"
+                else if e.name == "discover"
+                  input type="search" value=finding input=find placeholder="Search keywords" aria-label="Search the Job Board" testId="find"
+                    width="100%"
+                  if failed(found)
+                    EmptyState(symbol="symbol:alert", title="Can’t Reach the Job Board", message="Check your connection.")
+                      button press=reloadFound testId="retry-found"
+                        text "Try Again"
+                  else if found.length == 0 and not pending(found)
+                    EmptyState(symbol="symbol:search", title="No Jobs Found", message="Try other keywords.")
+                  else
+                    list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+                      section
+                        for f in found key=f.id
+                          link href=f.url testId=`found-${f.id}`
+                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                              text f.title
+                              text `${f.company}${f.location == "" ? "" : " · " + f.location}` font="-exact-subheadline"
+                                color="-exact-secondary-label"
                 else if e.name == "scouts"
                   if failed(scouts)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
@@ -355,6 +392,10 @@ component App
           press=pick("applications") testId="tab-applications" flex=1
           image "symbol:document"
           text "Applications"
+        button role="tab" aria-controls="panel-discover" aria-selected=(nav.tab == "discover") press=pick("discover")
+          testId="tab-discover" flex=1
+          image "symbol:search"
+          text "Discover"
         button role="tab" aria-controls="panel-scouts" aria-selected=(nav.tab == "scouts") press=pick("scouts")
           testId="tab-scouts" flex=1
           image "symbol:search"

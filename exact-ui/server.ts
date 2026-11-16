@@ -20,6 +20,12 @@ const APPLICATIONS = [
   { id: 'a1', job_id: 'j1', candidate_id: 'c1', state: 'SUBMITTED', apply_url: 'https://acme.example/apply', updated_at: '2026-11-13T10:00:00Z' },
   { id: 'a2', job_id: 'j3', candidate_id: 'c1', state: 'INTERVIEWING', updated_at: '2026-11-14T10:00:00Z' },
 ];
+const REMOTIVE = { jobs: [
+  { id: 1, url: 'https://remotive.com/j/1', title: 'Go Developer', company_name: 'Acme', tags: ['go'], job_type: 'full_time',
+    publication_date: '2026-11-10T09:00:00', candidate_required_location: 'Europe', description: '<p>Build services in Go.</p>' },
+  { id: 2, url: 'https://remotive.com/j/2', title: 'Product Designer', company_name: 'Globex', tags: [], job_type: 'full_time',
+    publication_date: '2026-11-11T09:00:00', candidate_required_location: 'Worldwide', description: '<p>Design calm tools.</p>' },
+] };
 const SCOUTS = [
   { id: 'sc1', name: 'Go roles in Europe', is_enabled: true, min_match_score: 70, max_applications_per_run: 5, last_run_at: '2026-11-14T08:00:00Z' },
   { id: 'sc2', name: 'Design, remote', is_enabled: false, min_match_score: 80, max_applications_per_run: 3 },
@@ -38,6 +44,7 @@ const send = (body: unknown, status = 200) => Response.json(body, { status, head
 
 const { hostname, port } = new URL(API);
 Bun.serve({ hostname, port: Number(port), routes: {
+  '/remotive': () => send(REMOTIVE),
   '/v1/health': () => send({ status: 'ok' }),
   '/v1/profile': () => send({ id: 'c1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.com', phone: '', location_city: 'London', location_region: '', location_country: 'UK' }),
   '/v1/jobs': () => send({ jobs: JOBS, total: JOBS.length }),

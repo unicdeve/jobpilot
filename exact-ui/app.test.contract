@@ -74,6 +74,17 @@ test "settings show the model JobPilot uses"
   expect text "setting-provider" == "ollama"
   expect text "setting-model" == "llama3.2"
 
+test "discovery runs on the device, with no daemon"
+  clock data
+  tap "tab-discover"
+  clock data
+  expect tree has "found-1"
+  expect tree has "found-2"
+  type "find" "go"
+  clock data
+  expect tree has "found-1"
+  expect tree missing "found-2"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

@@ -13,7 +13,8 @@
     "database": false
   },
   "env": [
-    "API_BASE_URL"
+    "API_BASE_URL",
+    "REMOTIVE_URL"
   ],
   "host": {
     "web": {},

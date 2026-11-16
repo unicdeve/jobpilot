@@ -25,7 +25,9 @@ Both run on iOS and Android without a server.
 
 ### 1. The mobile apps carry their own core
 
-Discovery, matching rules, the application state machine, and storage are reimplemented in Rust (an Exact data crate) over on-device SQLite.
+Discovery, matching rules, the application state machine, and storage are reimplemented over on-device SQLite.
+The first slice is TypeScript in Exact's data module, not Rust: it already reaches `fetch` and SQLite on every host, and its rules run under `bun test` with no Exact at all.
+Rust (a data crate) stays open for what TypeScript cannot do, such as linking an inference engine.
 It is a port of behavior, not a link to the Go code.
 The Go daemon and its tests stay the reference for what each rule does, and the port is checked against the same fixtures.
 
@@ -49,6 +51,17 @@ NobodyWho (https://github.com/nobodywho-ooo/nobodywho) is a candidate for the se
 It runs GGUF models on iOS and Android, with tool calling, and has Swift, Kotlin, React Native and Flutter bindings.
 Its core is Rust, but it documents no Rust crate and no Exact integration, so whether an Exact data crate can depend on it is unverified.
 Its licence is EUPL-1.2, which needs a review before JobPilot ships it.
+
+## Spike findings
+
+The slice is in `exact-ui/core/`, with `bun test` coverage, and a Discover tab in the app.
+It ports the search rule (`SearchCriteria.MatchesFor`, minus work-from and fit-hours) and the Remotive source, keeps the listing in SQLite for four hours, and shows the matches, with no daemon.
+
+- It passes on the web host, including SQLite and the offline-after-fetch path.
+- It has not been built for iOS or Android: this machine has Xcode 27.0 where Exact needs 27.1, and lacks Android SDK platform 37.2 and a JDK without JDK-8335662.
+- A data source cannot read the clock, so the view passes the current hour in.
+  Staleness is decided at hour resolution, and the Go core's `time.Now()` rules (the four-hour cache, a scout's next run) need the same treatment.
+- Remotive's HTML description is stripped to text, not converted to Markdown as in Go.
 
 ## Open questions
 

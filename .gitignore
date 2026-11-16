@@ -43,3 +43,4 @@ obj/
 logs/
 .DS_Store
 docs/.DS_Store
+!exact-ui/.env
