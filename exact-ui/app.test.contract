@@ -29,6 +29,16 @@ test "applications show where each one stands"
   expect text "state-a1" == "Sent"
   expect text "state-a2" == "Interviewing"
 
+test "an application shows its history and its apply page"
+  clock data
+  tap "tab-applications"
+  clock data
+  tap "application-a1"
+  clock data
+  expect text "app-state" == "Sent"
+  expect tree has "app-apply"
+  expect tree has "step-s2"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

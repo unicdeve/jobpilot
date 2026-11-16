@@ -70,9 +70,17 @@ const sources: Sources = {
     return Promise.all(list.filter(isObject).map(async (a) => {
       const job = toJob(await get(`/v1/jobs/${encodeURIComponent(str(a.job_id))}`));
       return {
-        id: str(a.id), jobId: str(a.job_id), title: job?.title ?? 'A job that is no longer stored',
+        id: str(a.id), applyUrl: str(a.apply_url), jobId: str(a.job_id), title: job?.title ?? 'A job that is no longer stored',
         company: job?.company ?? '', state: STATES[str(a.state)] ?? str(a.state), updated: str(a.updated_at).slice(0, 10),
       };
+    }));
+  },
+  loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
+    const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
+    if (!Array.isArray(list)) return [];
+    return list.filter(isObject).map((s) => ({
+      id: str(s.id), from: STATES[str(s.from_state)] ?? str(s.from_state), to: STATES[str(s.to_state)] ?? str(s.to_state),
+      reason: str(s.reason), at: str(s.created_at).slice(0, 10),
     }));
   },
 };
