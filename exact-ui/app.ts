@@ -2,6 +2,9 @@ import type { Answer, Database, Result, Sources, Storage } from './app.contract.
 
 // The JobPilot daemon's loopback address (ADR-0012). The daemon picks a free port on every start, so a real
 // run sets API_BASE_URL to the address `jobpilot-cli ui` prints; the default is the test server's (server.ts).
+import { convertDocument } from './core/candidate/document-converter.ts';
+import { makeScorer } from './core/llm/scorer.ts';
+import { loadBundledCities } from './core/search/geo-cities.ts';
 import { emptyCriteria } from './core/search/criteria.ts';
 import type { Db } from './core/shared/db.ts';
 import { clearActivity, ensureAgentRunTables, failInterruptedRuns, listRuns as listAgentRuns } from './core/activity/agent-run-store.ts';
@@ -16,7 +19,7 @@ import { ensureSettingsTable, loadDiscoverySettings, loadLLMSettings, loadNotifi
 import { checkModelForm, dataNotice, hasKey, llmKeysSecret, withKey } from './core/llm/model-settings.ts';
 import { applicationColumns, ensureApplicationSchema, getTracked, saveSql, toTracked, trackedJobIds } from './core/applications/application-store.ts';
 import { ensureWatchSchema, deleteCompany, listCompanies } from './core/companies/watch-store.ts';
-import { companyPagesSource, suggestions, starterBoard, watch, type Watcher } from './core/companies/watch.ts';
+import { companyForJob, companyPagesSource, suggestions, starterBoard, watch, watchJob, type Watcher } from './core/companies/watch.ts';
 import { providerName } from './core/companies/company.ts';
 import { boardUrl, defaultBoardEndpoints, type BoardEndpoints, type BoardFetch } from './core/sources/company-boards.ts';
 import { foundId, searchBoard, sourceUrls } from './core/sources/discover-sources.ts';
@@ -26,6 +29,9 @@ import { describeCriteria, loadScoutForm, saveScoutForm, searchChoices } from '.
 import { runScoutNow } from './core/scouts/scout-manual.ts';
 import { ensureScoutSchema, listRunEvents, listRuns, listScouts } from './core/scouts/scout-store.ts';
 import { choices, day, isLocal, move, newApplication, setApplyLink, applicationId } from './core/applications/tracking.ts';
+
+// The city table is handed over once, before any search: it is only a string until the first lookup reads it, in slices (core/search/geo.ts).
+loadBundledCities();
 
 export const API: string = import.meta.env.API_BASE_URL ?? 'http://127.0.0.1:4417';
 // ADR-0037: discovery with no daemon. Every ported source is searched here, each kept in SQLite on the device for its own cache
@@ -57,6 +63,11 @@ net.fetch https://api.eu.lever.co
 net.fetch https://api.ashbyhq.com
 net.fetch https://apply.workable.com
 net.fetch https://api.smartrecruiters.com
+fs.read app:/tmp/picked
+net.fetch https://api.openai.com
+net.fetch https://openrouter.ai
+device.local-network lanPurpose
+net.fetch local-network
 secret.keep llm-keys
 sqlite.open ${CACHE}
 sqlite.open ${KEPT}`;
@@ -275,6 +286,19 @@ const sources: Sources = {
     await saveResume(db, made.resume);
     return { ok: true, error: '' };
   }),
+  // ADR-0016, ADR-0037: a picked file is read as bytes and converted to Markdown on the device; a PDF that cannot be read says why.
+  importResume: async ([path, name, now], _store, storage): Promise<Result<'importResume'>> => {
+    let bytes: Uint8Array;
+    try { bytes = new Uint8Array(await storage.fs.readFile(path)); } catch { return { ok: false, error: `${name} could not be read from this device.` }; }
+    const converted = convertDocument(name, bytes);
+    if (!converted.ok) return { ok: false, error: converted.error };
+    return kept(storage, async (db) => {
+      const made = newResume({ id: `resume-${now}`, candidateId: ME, fileName: name, markdown: converted.markdown }, now);
+      if (!made.ok) return { ok: false, error: made.error };
+      await saveResume(db, made.resume);
+      return { ok: true, error: '' };
+    });
+  },
   removeResume: async ([id], _store, storage): Promise<Result<'removeResume'>> => kept(storage, async (db) => { await deleteResume(db, id); return { ok: true, error: '' }; }),
   loadKept: async (_args, _store, storage): Promise<Result<'loadKept'>> =>
     kept(storage, async (db) => (await keptAnswers(db, ME)).map((a) => ({ id: a.id, question: a.question, answer: a.answer, updated: day(a.updatedAt) }))),
@@ -376,6 +400,15 @@ const sources: Sources = {
     try { await watch(watcher(storage, now), address, now); return { ok: true, error: '' }; }
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
   },
+  // Whether a job's posting is on a hiring page JobPilot reads, and whether that company is already watched (ADR-0024).
+  loadJobCompany: async ([url, description], _store, storage): Promise<Result<'loadJobCompany'>> => kept(storage, async (db) => {
+    const found = await companyForJob(db, { canonicalUrl: url, descriptionMarkdown: description });
+    return { onBoard: found.board !== undefined, watched: found.company !== undefined, name: found.company?.name ?? '' };
+  }),
+  watchJobCompany: async ([url, description, now], _store, storage): Promise<Result<'watchJobCompany'>> => {
+    try { await watchJob(watcher(storage, now), { canonicalUrl: url, descriptionMarkdown: description }, now); return { ok: true, error: '' }; }
+    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  },
   unwatchCompany: async ([id], _store, storage): Promise<Result<'unwatchCompany'>> => kept(storage, async (db) => { await deleteCompany(db, id); return { ok: true, error: '' }; }),
   loadHistory: async ([id], _store, storage): Promise<Result<'loadHistory'>> => {
     if (isLocal(id)) {
@@ -421,12 +454,19 @@ const sources: Sources = {
       const saved = await saveScoutForm(db, id, { name, choice, keywords, minScore, ceiling, enabled }, now);
       return { ok: saved.ok, error: saved.ok ? '' : saved.error };
     }),
-  // A manual run (ADR-0037 section 3). No model is chosen yet (section 4), so no score is given and no application is created.
-  runScout: async ([id, now], _store, storage): Promise<Result<'runScout'>> => {
+  // A manual run (ADR-0037 section 3), scored by the model the user named (ADR-0038); with none, no score is given and no application is created.
+  runScout: async ([id, now], store, storage): Promise<Result<'runScout'>> => {
     // The profile feeds the search rule's work-from, relocation and fit-hours (ADR-0037).
-    const seeker = seekerOf(await kept(storage, (db) => firstCandidate(db)));
+    const candidate = await kept(storage, (db) => firstCandidate(db));
+    const seeker = seekerOf(candidate);
+    // ADR-0038: the model the user named scores each job while the app is open; with none (or no profile) a run scores nothing.
+    // The key is read here, for this run, from the one Keychain secret, and goes only to the request that needs it.
+    const settings = await kept(storage, (db) => loadLLMSettings(db));
+    let keys: string | null = null;
+    try { keys = store.get(llmKeysSecret); } catch { /* a device that cannot read it scores with no key */ }
+    const score = makeScorer(settings, keys, candidate, (url, init) => fetch(url, { exactTimeout: 60000, ...init }));
     return runScoutNow({
-      withDb: (work) => kept(storage, work), now,
+      withDb: (work) => kept(storage, work), now, score,
       search: (criteria) => opened(storage, CACHE, async () => undefined, (db) => searchBoard(db as unknown as Db, doFetch, URLS, Math.floor(now / SLOT_MS) * SLOT_MS, criteria, turn, seeker,
         [companyPagesSource(watcher(storage, Math.floor(now / SLOT_MS) * SLOT_MS), Math.floor(now / SLOT_MS) * SLOT_MS)])),
     }, id);

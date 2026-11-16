@@ -16,6 +16,21 @@ test "jobs list, search and a job's detail with its match"
   expect text "detail-rationale" == "Strong Go and SQLite background."
   expect text "detail-skills" == "Go, SQLite"
 
+test "a job on a hiring page offers to watch its company, once"
+  clock data
+  tap "job-j4"
+  clock data
+  tap "company-watch"
+  clock data
+  expect text "company-watching" == "Watching Acme Robotics"
+  expect tree missing "company-watch"
+
+test "a job off every hiring page offers no watch"
+  clock data
+  tap "job-j1"
+  clock data
+  expect tree missing "company-watch"
+
 test "a job with no analysis says so"
   clock data
   tap "job-j2"
@@ -223,7 +238,7 @@ test "a resume is added as text and listed"
   clock data
   tap "open-resumes"
   clock data
-  expect text "resume-note" == "Resumes are kept as text or Markdown that you paste or type. Importing a PDF or Word file is not available in this app yet."
+  expect text "resume-note" == "Resumes are kept as text or Markdown that you paste or type, or read from a PDF, Word, text or Markdown file on this device. A scanned or protected PDF cannot be read: paste its text instead."
   tap "resume-add"
   clock data
   expect tree has "resume-error"
@@ -234,6 +249,29 @@ test "a resume is added as text and listed"
   clock settle
   expect tree missing "resume-error"
   expect text "resume-title-0" == "Main"
+
+test "a resume file is read on the device and listed"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-resumes"
+  clock data
+  tap "resume-file"
+  pick "resume-file" "fixtures/resume.pdf"
+  clock data
+  expect text "resume-title-0" == "resume.pdf"
+
+test "a file that is not a resume format is refused and nothing is kept"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-resumes"
+  clock data
+  tap "resume-file"
+  pick "resume-file" "fixtures/notes.xyz"
+  clock data
+  expect tree has "resume-import-error"
+  expect tree missing "resume-title-1"
 
 test "a kept answer is added by the candidate and deleted"
   clock data

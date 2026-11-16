@@ -141,6 +141,11 @@ shape Watched
   roles: string
   problem: bool
 
+shape JobCompany
+  onBoard: bool
+  watched: bool
+  name: string
+
 shape Suggested
   id: string
   name: string
@@ -383,6 +388,11 @@ component App
   state rText = ""
   mutation addedResume as shape Reply refreshes resumes then afterResume
   mutation removedResume as shape Reply refreshes resumes
+  mutation importedResume as shape Reply refreshes resumes
+  derive importError = pending(importedResume) ? "" : match importedResume { case some(r) => r.error, case none => "" }
+  action pickedResume(files: Picked[])
+    if files.length > 0 and not pending(importedResume)
+      send importedResume = importResume(match files.at(0) { case some(f) => f.path, case none => "" }, match files.at(0) { case some(f) => f.name, case none => "" }, time.epochAtZero + performanceNow())
   derive resumeError = pending(addedResume) ? "" : match addedResume { case some(r) => r.error, case none => "" }
   action editRName(v: string)
     rName = v
@@ -546,6 +556,12 @@ component App
     refresh me
   derive shown = jobs.filter(j => matches(j, query))
   derive opened = match first(jobs.filter(j => j.id == selected)) { case some(j) => j, case none => blankJob() }
+  resource jobCompany = loadJobCompany(opened.url, opened.description) when selected != "" as shape JobCompany else empty()
+  mutation watchedJob as shape Reply refreshes jobCompany, watchedList, suggestedList
+  derive watchJobError = pending(watchedJob) ? "" : match watchedJob { case some(r) => r.error, case none => "" }
+  action watchThisCompany
+    if not pending(watchedJob)
+      send watchedJob = watchJobCompany(opened.url, opened.description, time.epochAtZero + performanceNow())
   derive scoreText = fit.jobId == selected and fit.score >= 0 ? `${fit.score}% match` : "No match analysis yet"
 
   action pick(name: string)
@@ -904,11 +920,16 @@ component App
                         textarea value=rText input=editRText rows=6 placeholder="Paste or type your resume" aria-label="Resume text" testId="resume-text" flex=1 min-width=0
                       button press=submitResume disabled=(pending(addedResume)) testId="resume-add"
                         text "Add Resume"
+                      row padding-top=10 padding-bottom=10
+                        input type="file" id="resume-file" testId="resume-file" change=pickedResume aria-label="Import a resume file" flex=1 min-width=0
+                      if importError != ""
+                        row padding-top=10 padding-bottom=10
+                          text importError color="-exact-system-red" flex=1 min-width=0 testId="resume-import-error"
                       if resumeError != ""
                         row padding-top=10 padding-bottom=10
                           text resumeError color="-exact-system-red" flex=1 min-width=0 testId="resume-error"
                       footer
-                        text "Resumes are kept as text or Markdown that you paste or type. Importing a PDF or Word file is not available in this app yet." testId="resume-note"
+                        text "Resumes are kept as text or Markdown that you paste or type, or read from a PDF, Word, text or Markdown file on this device. A scanned or protected PDF cannot be read: paste its text instead." testId="resume-note"
                     if resumes.length > 0
                       section
                         header
@@ -1147,6 +1168,17 @@ component App
                     section
                       link href=opened.url testId="detail-open"
                         text "Open the Posting"
+                    if jobCompany.onBoard
+                      section
+                        if jobCompany.watched
+                          row
+                            text `Watching ${jobCompany.name}` flex=1 min-width=0 testId="company-watching"
+                        else
+                          button press=watchThisCompany disabled=(pending(watchedJob)) testId="company-watch"
+                            text "Watch This Company"
+                        if watchJobError != ""
+                          row
+                            text watchJobError color="-exact-system-red" flex=1 min-width=0 testId="company-watch-error"
       dialog id="clear-activity" role="alertdialog" aria-label="Clear all activity?"
         text "This removes the record of every run on this device. Your applications and scouts stay."
         button press=clearNow destructive=true commandfor="clear-activity" command="close" testId="clear-confirm"

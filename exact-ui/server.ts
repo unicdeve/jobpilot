@@ -12,6 +12,9 @@ const JOBS = [
   { id: 'j3', title: 'Platform Engineer', company_name: 'Initech', locations: ['London'], remote_type: 'onsite',
     salary_min: 70000, salary_max: 70000, salary_currency: 'GBP', salary_period: 'year', posted_at: '2026-11-01T09:00:00Z',
     skills: ['Kubernetes'], description_markdown: 'Keep the lights on.', canonical_url: 'https://initech.example/jobs/3' },
+  { id: 'j4', title: 'Go Systems Engineer', company_name: '', locations: ['Remote, Worldwide'], remote_type: 'remote',
+    salary_min: 0, salary_max: 0, salary_currency: '', salary_period: '', posted_at: '2026-11-09T09:00:00Z',
+    skills: [], description_markdown: 'Go services.', canonical_url: 'https://job-boards.greenhouse.io/acme/jobs/5' },
 ];
 const MATCHES: Record<string, object> = {
   j1: { score: 86, rationale: 'Strong Go and SQLite background.', strengths: ['Go for six years', 'Local-first work'], gaps: ['No Berlin presence'] },
