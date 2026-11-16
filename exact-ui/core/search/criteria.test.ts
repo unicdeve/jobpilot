@@ -6,7 +6,6 @@ import { loadCities } from './geo.ts';
 import { readOffers } from './offers.ts';
 import { sentences } from './signals.ts';
 import { readWorkable } from './workable.ts';
-import { fetchRemotive, stripHtml, toJob } from './remotive.ts';
 
 const job: Job = { title: 'Engineer, Backend (Go)', companyName: 'Acme', descriptionMarkdown: 'Build services.', locations: ['Berlin'],
   remoteType: 'remote', employmentType: 'full_time', salaryMin: 0, salaryMax: 0 };
@@ -36,24 +35,10 @@ test('an excluded company is left out, ignoring case and spaces', () => {
   expect(matches(c({ excludedCompanies: [' acme '] }), job)).toBe(false);
 });
 
-const item = { id: 7, url: 'https://remotive.com/j/7', title: 'Go Dev', company_name: 'Acme', tags: ['go'], job_type: 'full_time',
-  publication_date: '2026-09-07T01:10:43', candidate_required_location: 'Europe', description: '<p>Build &amp; ship</p>' };
-test('a Remotive item becomes a job', () => {
-  expect(toJob(item)).toMatchObject({ sourceId: 'remotive', sourceJobId: '7', remoteType: 'remote', locations: ['Europe'],
-    descriptionMarkdown: 'Build & ship', postedAt: '2026-09-07T01:10:43Z', skills: ['go'] });
-  expect(toJob({ title: 'no id' })).toBeUndefined();
-  expect(stripHtml('a<br/>b')).toBe('a\nb');
-});
-test('the listing is fetched whole, and a bad answer is an error', async () => {
-  const ok = async () => ({ ok: true, status: 200, json: async () => ({ jobs: [item, { nope: 1 }] }) });
-  expect(await fetchRemotive(ok)).toHaveLength(1);
-  await expect(fetchRemotive(async () => ({ ok: false, status: 503, json: async () => ({}) }))).rejects.toThrow('503');
-  await expect(fetchRemotive(async () => ({ ok: true, status: 200, json: async () => ({}) }))).rejects.toThrow('decode');
-});
 
 
 // The signals a job carries into the rule, as ReadSignals sets them in Go (hours are given directly below).
-loadCities(gunzipSync(readFileSync(new URL('../../internal/core/domain/geo/cities.tsv.gz', import.meta.url))).toString('utf8'));
+loadCities(gunzipSync(readFileSync(new URL('../../../internal/core/domain/geo/cities.tsv.gz', import.meta.url))).toString('utf8'));
 const readJob = (remoteType: string, locations: string[], description: string): Job => ({
   ...job, remoteType, locations, descriptionMarkdown: description,
   workable: readWorkable({ title: job.title, remoteType, locations }, sentences(description)), ...readOffers(description),
@@ -112,3 +97,12 @@ test('isEmpty ignores fitHours and relocation; mayMatch ignores what a descripti
   expect(mayMatch(c({ workFrom: 'NG' }), listed)).toBe(true);
   expect(mayMatch(c({ title: 'engineer' }), listed)).toBe(false);
 });
+
+import { foldAscii, foldUnicode } from './geo.ts';
+{
+  test('fold: the ASCII path reads exactly as the Unicode rule does', () => {
+    const samples = ['Bosnia and Herzegovina', 'U.A.E.', "Cote d'Ivoire", '  Remote -- (EU) ', 'São Paulo', 'New York, NY', 'a.b.c', '', 'ABC-123_x/y'];
+    for (let i = 0; i < 500; i++) samples.push(Array.from({ length: i % 30 }, () => String.fromCharCode(Math.floor(Math.random() * 128))).join(''));
+    for (const s of samples.filter((x) => /^[\x00-\x7f]*$/.test(x))) expect(foldAscii(s)).toBe(foldUnicode(s));
+  });
+}

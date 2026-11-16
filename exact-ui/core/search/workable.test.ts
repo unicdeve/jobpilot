@@ -9,7 +9,7 @@ import { openTo, readWorkable, workableKnown, type Workable } from './workable.t
 // The cases are the Go tests' (internal/core/domain/signals_test.go, geo/geo_test.go). The city table is the Go package's own file;
 // the app installs it the same way with loadCities.
 beforeAll(() => {
-  const gz = readFileSync(new URL('../../internal/core/domain/geo/cities.tsv.gz', import.meta.url));
+  const gz = readFileSync(new URL('../../../internal/core/domain/geo/cities.tsv.gz', import.meta.url));
   loadCities(gunzipSync(gz).toString('utf8'));
 });
 

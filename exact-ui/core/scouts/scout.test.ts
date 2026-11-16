@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { emptyCriteria } from './criteria.ts';
+import { emptyCriteria } from '../search/criteria.ts';
 import { eligible, isValidSource, preScreen, validateScout, type EligibilityInput, type Scout } from './scout.ts';
 
 // The cases are the Go tests' (internal/core/domain/scout_test.go), so the two cores cannot drift silently.

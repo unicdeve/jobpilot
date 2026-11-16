@@ -1,7 +1,7 @@
 // A port of the Go core's Scout rules (internal/core/domain/scout.go), ADR-0037. The schedule is in scoutSchedule.ts.
 // Pure: no Exact, network, storage or clock dependency; the caller passes `now`.
 // Not ported: the run loop in services/scout.go (repositories, scoring, notifier). Work-from and fit-hours stay unported, as in criteria.ts.
-import { matches, type Job, type SearchCriteria } from './criteria.ts';
+import { matches, type Job, type SearchCriteria } from '../search/criteria.ts';
 import { validateSchedule, type ScoutSchedule } from './scout-schedule.ts';
 
 export type ScoutSource = 'local' | 'sources';

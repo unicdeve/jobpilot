@@ -1,7 +1,7 @@
 // A port of the Go core's draft checks (internal/core/domain/draftcheck.go), ADR-0037.
 // It has no Exact, network or storage dependency, and reads no clock (`now` is a parameter), so it runs the same in the app's JS engine and under `bun test`.
 // Go's regexp is RE2: \s is ASCII only, so it is spelled out here; \b and \w are ASCII in both engines.
-import { fields, sentences, trimSpace } from './signals.ts';
+import { fields, sentences, trimSpace } from '../search/signals.ts';
 
 export type DraftFlagKind = 'stock_phrase' | 'length' | 'unsupported_claim';
 

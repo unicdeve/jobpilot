@@ -7,7 +7,7 @@ import { evidence, fields, maxEvidence, readSignals, sentences, signalsVersion, 
 import { openTo, workableKnown } from './workable.ts';
 
 beforeAll(() => {
-  loadCities(gunzipSync(readFileSync(new URL('../../internal/core/domain/geo/cities.tsv.gz', import.meta.url))).toString('utf8'));
+  loadCities(gunzipSync(readFileSync(new URL('../../../internal/core/domain/geo/cities.tsv.gz', import.meta.url))).toString('utf8'));
 });
 
 const sig = (remoteType: string, locations: string[], descriptionMarkdown = '', title = '') =>

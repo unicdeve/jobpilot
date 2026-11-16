@@ -73,6 +73,8 @@ const compoundName = (): RegExp => {
   return compoundCache;
 };
 
+export const warmSteps: (() => unknown)[] = [...geo.warmSteps, compoundName];
+
 // Joins the words of a compound name with no-break spaces, which no separator splits at and which folding reads as spaces.
 function keepCompoundsWhole(location: string): string {
   return location.replace(compoundName(), (name) => name.replace(/[ ,()&/]/g, '\u00a0'));

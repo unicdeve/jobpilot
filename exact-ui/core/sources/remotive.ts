@@ -1,6 +1,6 @@
 // A port of the Remotive job source (internal/adapters/secondary/discovery/remotive.go), ADR-0037.
 // Remotive acts on none of its query parameters, so the whole listing is fetched and matches() filters it.
-import type { Job } from './criteria.ts';
+import type { Job } from '../search/criteria.ts';
 
 export const REMOTIVE_URL = 'https://remotive.com/api/remote-jobs';
 

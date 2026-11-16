@@ -20,6 +20,31 @@ export interface Place {
 // The one way a place name is reduced to a lookup key: lower case, accents removed, dots dropped,
 // and anything else that is not a letter or a digit read as a space.
 export function fold(s: string): string {
+  return asciiOnly.test(s) ? foldAscii(s) : foldUnicode(s);
+}
+
+const asciiOnly = /^[\x00-\x7f]*$/;
+
+// The same rule for ASCII, by character code: Hermes runs a Unicode-property regex per character slowly, and almost every name is ASCII.
+export function foldAscii(s: string): string {
+  let out = '';
+  let space = false;
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c === 46) continue;
+    if (c >= 65 && c <= 90) c += 32;
+    if ((c >= 97 && c <= 122) || (c >= 48 && c <= 57)) {
+      if (space && out.length > 0) out += ' ';
+      space = false;
+      out += String.fromCharCode(c);
+    } else {
+      space = true;
+    }
+  }
+  return out;
+}
+
+export function foldUnicode(s: string): string {
   const stripped = s.normalize('NFKD').replace(/\p{Mn}/gu, '').normalize('NFC');
   let out = '';
   let space = false;
@@ -256,6 +281,9 @@ const cities = (): Map<string, CityEntry> => {
   cityTable = map;
   return map;
 };
+
+// The lazy tables, one step each, so a host that budgets a turn can build them across turns before the first read.
+export const warmSteps: (() => unknown)[] = [tables, cities];
 
 const countryPlaceOf = (t: Tables, code: string): Place => ({ kind: 'country', name: t.byCode.get(code)!.name, countries: [code], elsewhere: [] });
 
