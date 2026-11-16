@@ -159,6 +159,9 @@ component App
                   if e.name == "jobs"
                     input type="search" value=query input=search placeholder="Search" aria-label="Search Jobs"
                       testId="search" width="100%"
+                  if e.name == "discover"
+                    input type="search" value=finding input=find placeholder="Search keywords" aria-label="Search the Job Board"
+                      testId="find" width="100%"
                 if e.name == "jobs"
                   if failed(jobs)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach JobPilot", message="Check that the daemon is running.")
@@ -189,8 +192,8 @@ component App
                     list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
                       section
                         for a in applications key=a.id
-                          link href=path("application", a.id) testId=`application-${a.id}`
-                            column flex=1 min-width=0 gap=2 padding-top=4 padding-bottom=4
+                          link href=path("application", a.id) testId=`application-${a.id}` display="flex" flex-wrap="wrap" align-items="center"
+                            column flex="1 1 12rem" min-width=0 gap=2 padding-top=4 padding-bottom=4
                               text a.title
                               text a.company font="-exact-subheadline" color="-exact-secondary-label"
                             column align-items="flex-end" gap=2
@@ -199,8 +202,6 @@ component App
                                 font-variant-numeric="tabular-nums"
                             image "symbol:forward-chevron"
                 else if e.name == "discover"
-                  input type="search" value=finding input=find placeholder="Search keywords" aria-label="Search the Job Board" testId="find"
-                    width="100%"
                   if failed(found)
                     EmptyState(symbol="symbol:alert", title="Can’t Reach the Job Board", message="Check your connection.")
                       button press=reloadFound testId="retry-found"
