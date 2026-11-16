@@ -41,7 +41,7 @@ export class BoardGoneError extends Error { constructor() { super('no hiring pag
 export class BoardBusyError extends Error { constructor() { super('the hiring page asked JobPilot to wait before asking again'); this.name = 'BoardBusyError'; } }
 // ports.PartialAnswer: a source made of parts that answered for some. `error` is unset when some part answered.
 export class PartialAnswerError extends Error {
-  constructor(public failing: string[], public error?: Error) { super(error?.message ?? `${failing.length} parts did not answer`); this.name = 'PartialAnswerError'; }
+  constructor(public failing: string[], public error?: Error, public jobs: FullSourceJob[] = []) { super(error?.message ?? `${failing.length} parts did not answer`); this.name = 'PartialAnswerError'; }
 }
 export const isUnreachable = (e: unknown): boolean => e instanceof SourceUnreachableError;
 

@@ -74,7 +74,7 @@ export async function searchSources(
   if (targets.length === 0) throw new DiscoveryError('no-searchable-source', 'no job source that can search is configured');
 
   const answers = await Promise.all(targets.map(async (source): Promise<{ jobs: FullSourceJob[]; error?: unknown }> => {
-    try { return { jobs: await source.search(asked) }; } catch (error) { return { jobs: [], error }; }
+    try { return { jobs: await source.search(asked) }; } catch (error) { return { jobs: error instanceof PartialAnswerError ? error.jobs : [], error }; }
   }));
 
   const outcomes: SourceOutcome[] = [];

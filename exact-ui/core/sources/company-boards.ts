@@ -17,6 +17,8 @@ export interface Board { provider: Provider; region?: 'eu' | ''; name: string }
 
 export interface BoardEndpoints {
   greenhouseApi: string; greenhouseEuApi: string; leverApi: string; leverEuApi: string; ashbyApi: string; workableApi: string; smartRecruitersApi: string;
+  // The hosted pages that name a company (Lever's and Ashby's APIs do not); SmartRecruiters' is optional.
+  leverPages: string; leverEuPages: string; ashbyPages: string; smartRecruitersPages?: string;
 }
 export const defaultBoardEndpoints: BoardEndpoints = {
   greenhouseApi: 'https://boards-api.greenhouse.io', greenhouseEuApi: 'https://boards-api.eu.greenhouse.io', leverApi: 'https://api.lever.co',

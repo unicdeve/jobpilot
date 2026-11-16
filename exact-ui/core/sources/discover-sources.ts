@@ -57,7 +57,8 @@ export function cachedSource(
   };
 }
 
-export function discoverySources(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number): DiscoverySource[] {
+// `extra` are sources the host owns, searched after these (the watched companies, which live in the candidate's own database).
+export function discoverySources(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number, extra: DiscoverySource[] = []): DiscoverySource[] {
   const lock = { turn: Promise.resolve() as Promise<unknown> };
   const one = (id: string, name: string, ttl: number, fetchJobs: (c: SearchCriteria) => Promise<FullSourceJob[]>, key: (c: SearchCriteria) => string = () => id) =>
     cachedSource(db, now, { id, name, ttl, key, fetchJobs }, lock);
@@ -69,6 +70,7 @@ export function discoverySources(db: Db, doFetch: DoFetch, urls: SourceUrls, now
     one('jobicy', 'Jobicy', JOBICY_CACHE_MS, (c) => fetchJobicy(doFetch, c.workFrom ?? '', urls.jobicy), (c) => `jobicy:${(c.workFrom ?? '').toUpperCase()}`),
     one('weworkremotely', 'We Work Remotely', WWR_CACHE_MS, () => fetchWeWorkRemotely(doFetch, urls.wwr)),
     one('hackernews', 'Hacker News', HN_CACHE_MS, () => fetchHackerNews(doFetch, urls.hn)),
+    ...extra,
   ];
 }
 
@@ -87,11 +89,11 @@ export interface BoardSearch { jobs: FoundJob[]; sources: SourceOutcome[]; error
 
 // Searches every source, isolating each one's failure, and dedupes by URL. A search no source answered, or one with nothing to
 // look for, is an `error` for the view to say, never a throw: only a bug throws.
-export async function searchBoard(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number, criteria: SearchCriteria, turn?: () => Promise<void>, seeker: Seeker = noSeeker): Promise<BoardSearch> {
+export async function searchBoard(db: Db, doFetch: DoFetch, urls: SourceUrls, now: number, criteria: SearchCriteria, turn?: () => Promise<void>, seeker: Seeker = noSeeker, extra: DiscoverySource[] = []): Promise<BoardSearch> {
   if (turn !== undefined) await warmUp(turn);
   await db.execute(cacheSchema);
   try {
-    const found = await searchSources(discoverySources(db, doFetch, urls, now), criteria, seeker, turn);
+    const found = await searchSources(discoverySources(db, doFetch, urls, now, extra), criteria, seeker, turn);
     return { jobs: dedupe(found.jobs, new Map()).fresh, sources: found.sources, error: '' };
   } catch (e) {
     if (e instanceof DiscoveryError) return { jobs: [], sources: [], error: e.message };
