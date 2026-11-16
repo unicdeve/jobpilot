@@ -89,6 +89,21 @@ const sources: Sources = {
     const place = [str(p.location_city), str(p.location_region), str(p.location_country)].filter((s) => s !== '');
     return { name: `${str(p.first_name)} ${str(p.last_name)}`.trim(), email: str(p.email), phone: str(p.phone), location: place.join(', ') };
   },
+  loadResumes: async (): Promise<Result<'loadResumes'>> => {
+    const profile = await get('/v1/profile');
+    if (!isObject(profile)) return [];
+    const list = await get(`/v1/resumes?candidate_id=${encodeURIComponent(str(profile.id))}`);
+    if (!Array.isArray(list)) throw new Error('The daemon returned an invalid resume list.');
+    return list.filter(isObject).map((r) => ({ id: str(r.id), name: str(r.name), updated: str(r.updated_at).slice(0, 10) }));
+  },
+  loadRuns: async (): Promise<Result<'loadRuns'>> => {
+    const page = await get('/v1/agent-runs?limit=50');
+    if (!isObject(page) || !Array.isArray(page.runs)) throw new Error('The daemon returned an invalid activity list.');
+    return page.runs.filter(isObject).map((r) => ({
+      id: str(r.id), title: str(r.scout_name) || str(r.task_type), status: str(r.status),
+      started: str(r.started_at).slice(0, 10), events: num(r.event_count),
+    }));
+  },
   loadHistory: async ([id]): Promise<Result<'loadHistory'>> => {
     const list = await get(`/v1/applications/${encodeURIComponent(id)}/history`);
     if (!Array.isArray(list)) return [];

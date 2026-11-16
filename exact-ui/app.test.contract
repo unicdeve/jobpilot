@@ -53,6 +53,18 @@ test "the profile shows who the candidate is"
   expect text "profile-name" == "Ada Lovelace"
   expect text "profile-email" == "ada@example.com"
 
+test "resumes and activity open from the profile"
+  clock data
+  tap "tab-profile"
+  clock data
+  tap "open-resumes"
+  clock data
+  expect tree has "resume-r1"
+  tap "tab-profile"
+  tap "open-activity"
+  clock data
+  expect text "run-status-run1" == "completed"
+
 test "an unreachable daemon offers Try Again, and recovers"
   fail fetch "http://127.0.0.1:4417"
   reload

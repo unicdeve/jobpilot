@@ -24,6 +24,8 @@ const SCOUTS = [
   { id: 'sc1', name: 'Go roles in Europe', is_enabled: true, min_match_score: 70, max_applications_per_run: 5, last_run_at: '2026-11-14T08:00:00Z' },
   { id: 'sc2', name: 'Design, remote', is_enabled: false, min_match_score: 80, max_applications_per_run: 3 },
 ];
+const RESUMES = [{ id: 'r1', candidate_id: 'c1', name: 'Main resume', updated_at: '2026-11-02T10:00:00Z' }];
+const RUNS = [{ id: 'run1', scout_id: 'sc1', scout_name: 'Go roles in Europe', task_type: 'scout', status: 'completed', started_at: '2026-11-14T08:00:00Z', event_count: 7 }];
 const HISTORY = [
   { id: 's1', application_id: 'a1', from_state: '', to_state: 'DISCOVERED', reason: '', created_at: '2026-11-11T10:00:00Z' },
   { id: 's2', application_id: 'a1', from_state: 'DISCOVERED', to_state: 'SUBMITTED', reason: 'Sent from my own browser', created_at: '2026-11-13T10:00:00Z' },
@@ -43,6 +45,8 @@ Bun.serve({ hostname, port: Number(port), routes: {
   '/v1/jobs/:id/match': (req) => { const m = MATCHES[req.params.id]; return m ? send({ id: 'm1', job_id: req.params.id, ...m }) : send({ error: 'not found' }, 404); },
   '/v1/applications/:id/history': (req) => send(HISTORY.filter((h) => h.application_id === req.params.id)),
   '/v1/scouts': () => send(SCOUTS),
+  '/v1/resumes': () => send(RESUMES),
+  '/v1/agent-runs': () => send({ runs: RUNS, total: RUNS.length }),
   '/v1/applications': () => send(APPLICATIONS),
 } });
 console.log(`server.ts: ${API}`);
